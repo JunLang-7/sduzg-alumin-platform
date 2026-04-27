@@ -1,0 +1,17 @@
+version: "0.1"
+database:
+  db: "mysql"
+  dsn: "sdu_alumni:sdu_alumni_password@tcp(127.0.0.1:3306)/sdu_alumni?charset=utf8mb4&parseTime=true&loc=Local"
+  tables:
+    - users
+    - alumni_profiles
+    - operation_logs
+  onlyModel: true
+  outPath: "./internal/model"
+  outFile: ""
+  withUnitTest: false
+  modelPkgName: "model"
+  fieldNullable: true
+  fieldWithIndexTag: true
+  fieldWithTypeTag: true
+  fieldSignable: true

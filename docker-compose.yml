@@ -1,0 +1,59 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: sdu-alumni-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root_password
+      MYSQL_DATABASE: sdu_alumni
+      MYSQL_USER: sdu_alumni
+      MYSQL_PASSWORD: sdu_alumni_password
+      TZ: Asia/Shanghai
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./server/migrations/001_init_schema.sql:/docker-entrypoint-initdb.d/001_init_schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_password"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: sdu-alumni-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: ./server
+    container_name: sdu-alumni-api
+    environment:
+      APP_ENV: development
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      DB_ENABLED: "true"
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: sdu_alumni
+      DB_PASSWORD: sdu_alumni_password
+      DB_NAME: sdu_alumni
+      REDIS_ENABLED: "true"
+      REDIS_ADDR: redis:6379
+      REDIS_DB: 0
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  mysql-data:
