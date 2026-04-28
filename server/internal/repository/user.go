@@ -12,6 +12,7 @@ import (
 
 var (
 	ErrDatabaseUnavailable = errors.New("database unavailable")
+	ErrCacheUnavailable    = errors.New("cache unavailable")
 	ErrUserNotFound        = errors.New("user not found")
 )
 

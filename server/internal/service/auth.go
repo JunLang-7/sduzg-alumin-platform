@@ -21,26 +21,31 @@ import (
 )
 
 const (
-	UserStatusActive = "active"
+	UserStatusActive   = "active"
+	maxLoginFailures   = 5
+	loginFailureWindow = 5 * time.Minute
 )
 
 var (
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrAccountDisabled     = errors.New("account disabled")
+	ErrAccountLocked       = errors.New("account temporarily locked")
 	ErrDatabaseUnavailable = errors.New("database unavailable")
 )
 
 type AuthService struct {
 	users          repository.UserStore
+	loginAttempts  repository.LoginAttemptStore
 	jwtSecret      []byte
 	accessTokenTTL time.Duration
 	issuer         string
 	now            func() time.Time
 }
 
-func NewAuthService(users repository.UserStore, cfg config.Config) *AuthService {
+func NewAuthService(users repository.UserStore, loginAttempts repository.LoginAttemptStore, cfg config.Config) *AuthService {
 	return &AuthService{
 		users:          users,
+		loginAttempts:  loginAttempts,
 		jwtSecret:      []byte(cfg.Auth.JWTSecret),
 		accessTokenTTL: cfg.Auth.AccessTokenTTL,
 		issuer:         cfg.App.Name,
@@ -59,6 +64,11 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		logger.Error("User repository is not initialized")
 		return nil, ErrDatabaseUnavailable
 	}
+	// 检查是否登录锁定
+	if s.isLoginLocked(ctx, account) {
+		logger.Warn("account login temporarily locked", zap.String("account", account))
+		return nil, ErrAccountLocked
+	}
 
 	// 通过账户查找用户
 	user, err := s.users.FindByAccount(ctx, account)
@@ -68,6 +78,9 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 	if errors.Is(err, repository.ErrUserNotFound) {
 		logger.Warn("user not found", zap.String("account", account))
+		if s.recordLoginFailure(ctx, account) {
+			return nil, ErrAccountLocked
+		}
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -82,6 +95,10 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	// 验证密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		logger.Warn("invalid password", zap.Uint64("user_id", user.ID), zap.String("account", account))
+		// 记录登录失败，如果达到阈值则锁定账号
+		if s.recordLoginFailure(ctx, account) {
+			return nil, ErrAccountLocked
+		}
 		return nil, ErrInvalidCredentials
 	}
 
@@ -102,6 +119,8 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		logger.Error("failed to update last login time", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return nil, err
 	}
+	// 登录成功，清除登录失败记录
+	s.clearLoginFailures(ctx, account)
 
 	return &dto.LoginResult{
 		AccessToken: token,
@@ -114,6 +133,45 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 			RealName: user.RealName,
 		},
 	}, nil
+}
+
+// isLoginLocked 检查账号是否因连续登录失败而被临时锁定
+func (s *AuthService) isLoginLocked(ctx context.Context, account string) bool {
+	if s.loginAttempts == nil {
+		return false
+	}
+
+	count, err := s.loginAttempts.FailureCount(ctx, account)
+	if err != nil {
+		logger.Warn("failed to read login failure count", zap.String("account", account), zap.Error(err))
+		return false
+	}
+	return count >= maxLoginFailures
+}
+
+// recordLoginFailure 记录一次登录失败，并返回当前失败次数。如果达到锁定阈值，返回 true。
+func (s *AuthService) recordLoginFailure(ctx context.Context, account string) bool {
+	if s.loginAttempts == nil {
+		return false
+	}
+
+	count, err := s.loginAttempts.RecordFailure(ctx, account, loginFailureWindow)
+	if err != nil {
+		logger.Warn("failed to record login failure", zap.String("account", account), zap.Error(err))
+		return false
+	}
+	return count >= maxLoginFailures
+}
+
+// clearLoginFailures 清除指定账号的登录失败记录
+func (s *AuthService) clearLoginFailures(ctx context.Context, account string) {
+	if s.loginAttempts == nil {
+		return
+	}
+
+	if err := s.loginAttempts.ClearFailures(ctx, account); err != nil {
+		logger.Warn("failed to clear login failures", zap.String("account", account), zap.Error(err))
+	}
 }
 
 // Logout 完成退出登录。当前 JWT 为无状态模式，服务端不保存会话，客户端删除 token 即可。

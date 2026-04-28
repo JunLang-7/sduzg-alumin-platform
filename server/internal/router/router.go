@@ -41,8 +41,10 @@ func New(deps Dependencies) *gin.Engine {
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
 	// 用户仓库
 	userRepository := repository.NewUserRepository(deps.DB)
+	// 登录尝试仓库
+	loginAttemptRepository := repository.NewLoginAttemptRepository(deps.RedisClient)
 	// 认证服务和处理器
-	authService := service.NewAuthService(userRepository, deps.Config)
+	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
 
 	api := engine.Group("/api/v1")

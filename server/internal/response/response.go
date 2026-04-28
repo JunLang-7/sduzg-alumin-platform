@@ -12,6 +12,7 @@ const (
 	CodeUnauthorized       = 40100
 	CodeForbidden          = 40300
 	CodeNotFound           = 40400
+	CodeTooManyRequests    = 42900
 	CodeInternalError      = 50000
 	CodeServiceUnavailable = 50300
 )

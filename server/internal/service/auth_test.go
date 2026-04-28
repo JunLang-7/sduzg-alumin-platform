@@ -32,6 +32,30 @@ func (s *fakeUserStore) UpdateLastLoginAt(_ context.Context, id uint64, loggedIn
 	return s.updateErr
 }
 
+type fakeLoginAttemptStore struct {
+	failureCount int
+	recordErr    error
+	clearErr     error
+	cleared      bool
+}
+
+func (s *fakeLoginAttemptStore) FailureCount(context.Context, string) (int, error) {
+	return s.failureCount, nil
+}
+
+func (s *fakeLoginAttemptStore) RecordFailure(context.Context, string, time.Duration) (int, error) {
+	if s.recordErr != nil {
+		return 0, s.recordErr
+	}
+	s.failureCount++
+	return s.failureCount, nil
+}
+
+func (s *fakeLoginAttemptStore) ClearFailures(context.Context, string) error {
+	s.cleared = true
+	return s.clearErr
+}
+
 func TestAuthServiceLoginSuccess(t *testing.T) {
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte("Admin@123456"), bcrypt.MinCost)
 	if err != nil {
@@ -48,8 +72,9 @@ func TestAuthServiceLoginSuccess(t *testing.T) {
 			Status:       UserStatusActive,
 		},
 	}
+	attempts := &fakeLoginAttemptStore{failureCount: 3}
 	now := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
-	svc := NewAuthService(store, config.Config{
+	svc := NewAuthService(store, attempts, config.Config{
 		App: config.AppConfig{Name: "test-api"},
 		Auth: config.AuthConfig{
 			JWTSecret:      "test-secret",
@@ -80,6 +105,9 @@ func TestAuthServiceLoginSuccess(t *testing.T) {
 	if store.updatedUserID != 1 || !store.lastLoginAt.Equal(now) {
 		t.Fatalf("expected last login update for user 1 at %s", now)
 	}
+	if !attempts.cleared {
+		t.Fatal("expected login failures to be cleared")
+	}
 }
 
 func TestAuthServiceLoginInvalidPassword(t *testing.T) {
@@ -95,7 +123,7 @@ func TestAuthServiceLoginInvalidPassword(t *testing.T) {
 			Role:         "super_admin",
 			Status:       UserStatusActive,
 		},
-	}, config.Config{})
+	}, &fakeLoginAttemptStore{}, config.Config{})
 
 	_, err = svc.Login(context.Background(), dto.LoginRequest{
 		Account:  "admin",
@@ -119,7 +147,7 @@ func TestAuthServiceLoginDisabledUser(t *testing.T) {
 			Role:         "super_admin",
 			Status:       "disabled",
 		},
-	}, config.Config{})
+	}, &fakeLoginAttemptStore{}, config.Config{})
 
 	_, err = svc.Login(context.Background(), dto.LoginRequest{
 		Account:  "admin",
@@ -131,7 +159,7 @@ func TestAuthServiceLoginDisabledUser(t *testing.T) {
 }
 
 func TestAuthServiceLoginUserNotFound(t *testing.T) {
-	svc := NewAuthService(&fakeUserStore{findErr: repository.ErrUserNotFound}, config.Config{})
+	svc := NewAuthService(&fakeUserStore{findErr: repository.ErrUserNotFound}, &fakeLoginAttemptStore{}, config.Config{})
 
 	_, err := svc.Login(context.Background(), dto.LoginRequest{
 		Account:  "admin",
@@ -142,8 +170,44 @@ func TestAuthServiceLoginUserNotFound(t *testing.T) {
 	}
 }
 
+func TestAuthServiceLoginLocksOnFifthFailure(t *testing.T) {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte("Admin@123456"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("failed to generate password hash: %v", err)
+	}
+	svc := NewAuthService(&fakeUserStore{
+		user: &model.User{
+			ID:           1,
+			Account:      "admin",
+			PasswordHash: string(passwordHash),
+			Role:         "super_admin",
+			Status:       UserStatusActive,
+		},
+	}, &fakeLoginAttemptStore{failureCount: 4}, config.Config{})
+
+	_, err = svc.Login(context.Background(), dto.LoginRequest{
+		Account:  "admin",
+		Password: "wrong-password",
+	})
+	if !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("expected account locked, got %v", err)
+	}
+}
+
+func TestAuthServiceLoginRejectsLockedAccount(t *testing.T) {
+	svc := NewAuthService(&fakeUserStore{}, &fakeLoginAttemptStore{failureCount: 5}, config.Config{})
+
+	_, err := svc.Login(context.Background(), dto.LoginRequest{
+		Account:  "admin",
+		Password: "Admin@123456",
+	})
+	if !errors.Is(err, ErrAccountLocked) {
+		t.Fatalf("expected account locked, got %v", err)
+	}
+}
+
 func TestAuthServiceLogout(t *testing.T) {
-	svc := NewAuthService(nil, config.Config{})
+	svc := NewAuthService(nil, nil, config.Config{})
 
 	result, err := svc.Logout(context.Background())
 	if err != nil {

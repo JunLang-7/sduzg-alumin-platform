@@ -37,6 +37,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "用户名或密码错误")
 	case errors.Is(err, service.ErrAccountDisabled):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "account is disabled")
+	case errors.Is(err, service.ErrAccountLocked):
+		response.Fail(c, http.StatusTooManyRequests, response.CodeTooManyRequests, "账号已临时锁定，请稍后再试")
 	case errors.Is(err, service.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
