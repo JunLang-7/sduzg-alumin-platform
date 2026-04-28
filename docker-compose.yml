@@ -9,13 +9,14 @@ services:
       - --collation-server=utf8mb4_unicode_ci
     environment:
       MYSQL_ROOT_PASSWORD: root123456
-      MYSQL_DATABASE: mpa_platform
-      MYSQL_USER: platform
-      MYSQL_PASSWORD: platform123
+      MYSQL_DATABASE: sdu_alumni_db
+      MYSQL_USER: sdu_alumni
+      MYSQL_PASSWORD: sdu_alumni_password
     ports:
-      - "3306:3306"
+      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+      - ./server/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 10s
@@ -50,9 +51,9 @@ services:
       DB_ENABLED: "true"
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: mpa_platform
-      DB_USER: platform
-      DB_PASSWORD: platform123
+      DB_NAME: sdu_alumni_db
+      DB_USER: sdu_alumni
+      DB_PASSWORD: sdu_alumni_password
       REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
     depends_on:

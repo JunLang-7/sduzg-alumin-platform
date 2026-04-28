@@ -18,10 +18,10 @@ go run ./cmd/api
 ```bash
 DB_ENABLED=true
 DB_HOST=127.0.0.1
-DB_PORT=3306
+DB_PORT=3307
 DB_USER=sdu_alumni
 DB_PASSWORD=sdu_alumni_password
-DB_NAME=sdu_alumni
+DB_NAME=sdu_alumni_db
 ```
 
 需要启用 Redis 时设置：
@@ -37,6 +37,8 @@ REDIS_DB=0
 ```bash
 docker compose up --build
 ```
+
+Compose 会将 MySQL 容器的 `3306` 端口映射到本机 `3307`，并在首次创建数据卷时执行 `server/migrations` 下的 SQL 初始化脚本。
 
 启动后可检查：
 

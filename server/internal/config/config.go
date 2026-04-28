@@ -140,7 +140,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("DB_PORT", 3306)
 	v.SetDefault("DB_USER", "sdu_alumni")
 	v.SetDefault("DB_PASSWORD", "")
-	v.SetDefault("DB_NAME", "sdu_alumni")
+	v.SetDefault("DB_NAME", "sdu_alumni_db")
 	v.SetDefault("DB_PARAMS", "charset=utf8mb4&parseTime=true&loc=Local")
 	v.SetDefault("DB_MAX_OPEN_CONNS", 25)
 	v.SetDefault("DB_MAX_IDLE_CONNS", 5)

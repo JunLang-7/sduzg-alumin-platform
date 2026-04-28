@@ -1,17 +1,28 @@
 version: "0.1"
 database:
+  dsn: "sdu_alumni:sdu_alumni_password@tcp(127.0.0.1:3307)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=Local"
   db: "mysql"
-  dsn: "sdu_alumni:sdu_alumni_password@tcp(127.0.0.1:3306)/sdu_alumni?charset=utf8mb4&parseTime=true&loc=Local"
   tables:
     - users
     - alumni_profiles
     - operation_logs
-  onlyModel: true
-  outPath: "./internal/model"
+  # 是否只生成 model，不生成 query
+  onlyModel: false
+  # 指定生成的查询代码文件的输出目录
+  outPath: "./internal/query"
+  # 指定查询代码的主文件名，默认 gen.go
   outFile: ""
+  # 是否为查询代码生成单元测试
   withUnitTest: false
+  # 指定生成的模型代码的包名。当前配置会输出到 ./internal/model
   modelPkgName: "model"
+  # 当字段可为空时是否生成指针类型
   fieldNullable: true
+  # 当字段有默认值时是否生成指针类型
+  fieldCoverable: false
+  # 是否为字段生成 GORM 索引标签
   fieldWithIndexTag: true
+  # 是否为字段生成 GORM 列类型标签
   fieldWithTypeTag: true
+  # 是否检测无符号整数字段
   fieldSignable: true
