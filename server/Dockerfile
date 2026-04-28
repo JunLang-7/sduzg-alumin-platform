@@ -2,22 +2,27 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /src
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates git tzdata
 
-COPY go.mod go.sum* ./
+COPY go.mod ./
+COPY go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/server ./cmd/api
 
-FROM alpine:3.22
+FROM alpine:3.20
 
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S app \
+    && adduser -S app -G app
+
+ENV GIN_MODE=release
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata
-
-COPY --from=builder /out/api /app/api
+COPY --from=builder /out/server /app/server
 
 EXPOSE 8080
+USER app
 
-ENTRYPOINT ["/app/api"]
+ENTRYPOINT ["/app/server"]
