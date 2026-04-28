@@ -23,6 +23,9 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.Redis.Enabled {
 		t.Fatal("expected redis to be disabled by default")
 	}
+	if cfg.Auth.JWTSecret == "" {
+		t.Fatal("expected auth jwt secret default")
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -32,6 +35,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("DB_ENABLED", "true")
 	t.Setenv("REDIS_ENABLED", "true")
 	t.Setenv("REDIS_READ_TIMEOUT", "1500ms")
+	t.Setenv("AUTH_ACCESS_TOKEN_TTL", "2h")
 
 	cfg := Load()
 
@@ -49,6 +53,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Redis.ReadTimeout != 1500*time.Millisecond {
 		t.Fatalf("expected redis read timeout override, got %s", cfg.Redis.ReadTimeout)
+	}
+	if cfg.Auth.AccessTokenTTL != 2*time.Hour {
+		t.Fatalf("expected auth access token ttl override, got %s", cfg.Auth.AccessTokenTTL)
 	}
 }
 
@@ -105,6 +112,8 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_DIAL_TIMEOUT",
 		"REDIS_READ_TIMEOUT",
 		"REDIS_WRITE_TIMEOUT",
+		"AUTH_JWT_SECRET",
+		"AUTH_ACCESS_TOKEN_TTL",
 	} {
 		t.Setenv(key, "")
 	}

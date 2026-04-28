@@ -20,6 +20,7 @@ type Config struct {
 	Server   ServerConfig
 	Database DatabaseConfig
 	Redis    RedisConfig
+	Auth     AuthConfig
 }
 
 type AppConfig struct {
@@ -61,6 +62,11 @@ type RedisConfig struct {
 	DialTimeout  time.Duration
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
+}
+
+type AuthConfig struct {
+	JWTSecret      string
+	AccessTokenTTL time.Duration
 }
 
 func (c DatabaseConfig) DSN() string {
@@ -125,6 +131,10 @@ func Load() Config {
 			ReadTimeout:  v.GetDuration("REDIS_READ_TIMEOUT"),
 			WriteTimeout: v.GetDuration("REDIS_WRITE_TIMEOUT"),
 		},
+		Auth: AuthConfig{
+			JWTSecret:      v.GetString("AUTH_JWT_SECRET"),
+			AccessTokenTTL: v.GetDuration("AUTH_ACCESS_TOKEN_TTL"),
+		},
 	}
 }
 
@@ -154,4 +164,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("REDIS_DIAL_TIMEOUT", 5*time.Second)
 	v.SetDefault("REDIS_READ_TIMEOUT", 3*time.Second)
 	v.SetDefault("REDIS_WRITE_TIMEOUT", 3*time.Second)
+	v.SetDefault("AUTH_JWT_SECRET", "dev-only-change-me")
+	v.SetDefault("AUTH_ACCESS_TOKEN_TTL", 24*time.Hour)
 }

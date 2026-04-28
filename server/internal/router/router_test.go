@@ -47,3 +47,34 @@ func TestHealthRoutes(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthLoginRouteWithoutDatabase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+			Auth: config.AuthConfig{
+				JWTSecret:      "test-secret",
+				AccessTokenTTL: time.Hour,
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"account":"admin","password":"Admin@123456"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
+	}
+}

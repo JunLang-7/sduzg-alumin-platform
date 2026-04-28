@@ -32,6 +32,21 @@ REDIS_ADDR=127.0.0.1:6379
 REDIS_DB=0
 ```
 
+认证默认使用 HS256 JWT。生产环境必须覆盖：
+
+```bash
+AUTH_JWT_SECRET=change-me-to-a-long-random-secret
+AUTH_ACCESS_TOKEN_TTL=24h
+```
+
+初始化 SQL 会创建默认超级管理员账号：
+
+```text
+account: admin
+password: Admin@123456
+role: super_admin
+```
+
 ## Docker Compose
 
 ```bash

@@ -6,7 +6,9 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/handler"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -37,12 +39,20 @@ func New(deps Dependencies) *gin.Engine {
 
 	// 健康检查路由
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
+	// 用户仓库
+	userRepository := repository.NewUserRepository(deps.DB)
+	// 认证服务和处理器
+	authService := service.NewAuthService(userRepository, deps.Config)
+	authHandler := handler.NewAuthHandler(authService)
 
 	api := engine.Group("/api/v1")
 	{
 		// 健康检查
 		api.GET("/health/live", healthHandler.Live)
 		api.GET("/health/ready", healthHandler.Ready)
+
+		// 用户认证
+		api.POST("/auth/login", authHandler.Login)
 	}
 
 	return engine

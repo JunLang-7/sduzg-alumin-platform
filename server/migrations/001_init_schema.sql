@@ -73,3 +73,10 @@ CREATE TABLE IF NOT EXISTS operation_logs (
   INDEX idx_logs_target (target_type, target_id),
   INDEX idx_logs_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='operation logs';
+
+INSERT INTO users (account, password_hash, role, real_name, status)
+VALUES ('admin', '$2a$10$pQ.VLGGG9eSRSkvBcT22se8oqjURnsfeniK3tBG48hPdWssHDJSDC', 'super_admin', '系统管理员', 'active')
+ON DUPLICATE KEY UPDATE
+  role = VALUES(role),
+  real_name = VALUES(real_name),
+  status = VALUES(status);
