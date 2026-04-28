@@ -78,3 +78,29 @@ func TestAuthLoginRouteWithoutDatabase(t *testing.T) {
 		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
 	}
 }
+
+func TestAuthLogoutRoute(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"logged_out":true`) {
+		t.Fatalf("expected logout response, got %s", rec.Body.String())
+	}
+}

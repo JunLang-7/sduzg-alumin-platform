@@ -141,3 +141,15 @@ func TestAuthServiceLoginUserNotFound(t *testing.T) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 }
+
+func TestAuthServiceLogout(t *testing.T) {
+	svc := NewAuthService(nil, config.Config{})
+
+	result, err := svc.Logout(context.Background())
+	if err != nil {
+		t.Fatalf("expected logout success, got %v", err)
+	}
+	if !result.LoggedOut {
+		t.Fatal("expected logged out result")
+	}
+}

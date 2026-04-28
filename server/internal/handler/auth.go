@@ -43,3 +43,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
 	}
 }
+
+func (h *AuthHandler) Logout(c *gin.Context) {
+	result, err := h.auth.Logout(c.Request.Context())
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+		return
+	}
+
+	response.Success(c, result)
+}

@@ -14,6 +14,10 @@ type LoginResult struct {
 	User        UserDTO   `json:"user"`
 }
 
+type LogoutResult struct {
+	LoggedOut bool `json:"logged_out"`
+}
+
 type UserDTO struct {
 	ID       uint64  `json:"id"`
 	Account  string  `json:"account"`

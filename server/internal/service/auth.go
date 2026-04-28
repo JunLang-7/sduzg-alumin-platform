@@ -116,6 +116,13 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}, nil
 }
 
+// Logout 完成退出登录。当前 JWT 为无状态模式，服务端不保存会话，客户端删除 token 即可。
+func (s *AuthService) Logout(context.Context) (*dto.LogoutResult, error) {
+	return &dto.LogoutResult{
+		LoggedOut: true,
+	}, nil
+}
+
 // issueAccessToken 生成 JWT 访问令牌
 func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, expiresAt time.Time) (string, error) {
 	header := map[string]string{

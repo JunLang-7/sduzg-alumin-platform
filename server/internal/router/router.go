@@ -53,6 +53,7 @@ func New(deps Dependencies) *gin.Engine {
 
 		// 用户认证
 		api.POST("/auth/login", authHandler.Login)
+		api.POST("/auth/logout", authHandler.Logout)
 	}
 
 	return engine
