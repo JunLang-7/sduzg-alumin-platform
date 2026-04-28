@@ -1,7 +1,7 @@
 services:
   mysql:
     image: mysql:8.0
-    container_name: mpa-mysql
+    container_name: sdu-alumni-mysql
     restart: unless-stopped
     command:
       - --default-authentication-plugin=mysql_native_password
@@ -19,7 +19,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: mpa-redis
+    container_name: sdu-alumni-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
@@ -31,7 +31,7 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: mpa-api
+    container_name: sdu-alumni-api
     restart: unless-stopped
     environment:
       GIN_MODE: release
@@ -51,7 +51,7 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
-    container_name: mpa-web
+    container_name: sdu-alumni-web
     restart: unless-stopped
     depends_on:
       - api

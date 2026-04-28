@@ -1,0 +1,16 @@
+.DS_Store
+.env
+*.log
+
+# Go
+bin/
+coverage.out
+
+# Server
+server/.env
+server/tmp/
+server/bin/
+
+# Docker / local data
+.docker/
+mysql-data/
