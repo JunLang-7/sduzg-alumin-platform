@@ -1,0 +1,63 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mpa-mysql
+    restart: unless-stopped
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: root123456
+      MYSQL_DATABASE: mpa_platform
+      MYSQL_USER: platform
+      MYSQL_PASSWORD: platform123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  redis:
+    image: redis:7-alpine
+    container_name: mpa-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: mpa-api
+    restart: unless-stopped
+    environment:
+      GIN_MODE: release
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: mpa_platform
+      DB_USER: platform
+      DB_PASSWORD: platform123
+      REDIS_ADDR: redis:6379
+    depends_on:
+      - mysql
+      - redis
+    ports:
+      - "8080:8080"
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: mpa-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  mysql_data:
+  redis_data:
