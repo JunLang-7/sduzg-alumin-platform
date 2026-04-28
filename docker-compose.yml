@@ -16,6 +16,12 @@ services:
       - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
@@ -26,6 +32,11 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   api:
     build:
@@ -34,16 +45,21 @@ services:
     container_name: sdu-alumni-api
     restart: unless-stopped
     environment:
+      APP_ENV: production
       GIN_MODE: release
+      DB_ENABLED: "true"
       DB_HOST: mysql
       DB_PORT: 3306
       DB_NAME: mpa_platform
       DB_USER: platform
       DB_PASSWORD: platform123
+      REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
     depends_on:
-      - mysql
-      - redis
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     ports:
       - "8080:8080"
 
