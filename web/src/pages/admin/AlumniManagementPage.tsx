@@ -1,0 +1,332 @@
+import { useEffect, useMemo, useState } from 'react';
+import {
+  DeleteOutlined,
+  EditOutlined,
+  PlusOutlined,
+  SearchOutlined,
+  UndoOutlined,
+} from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Form,
+  Input,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  message,
+} from 'antd';
+import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import { alumniApi } from '../../api/alumni';
+import { PageHeader } from '../../components/PageHeader';
+import { StatusText } from '../../components/StatusText';
+import type { AlumniProfile, AlumniProfilePayload, AlumniQuery } from '../../types/alumni';
+import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
+
+const defaultPageSize = 20;
+
+export function AlumniManagementPage() {
+  const [searchForm] = Form.useForm<AlumniQuery>();
+  const [modalForm] = Form.useForm<AlumniProfilePayload>();
+  const [items, setItems] = useState<AlumniProfile[]>([]);
+  const [total, setTotal] = useState(0);
+  const [query, setQuery] = useState<AlumniQuery>({ page: 1, page_size: defaultPageSize });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState<AlumniProfile | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const loadData = async (nextQuery: AlumniQuery) => {
+    setLoading(true);
+    try {
+      const result = await alumniApi.list(nextQuery);
+      setItems(result.items || []);
+      setTotal(result.total || 0);
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '校友数据加载失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadData(query);
+  }, [query]);
+
+  const openCreateModal = () => {
+    setEditing(null);
+    modalForm.resetFields();
+    setModalOpen(true);
+  };
+
+  const openEditModal = (record: AlumniProfile) => {
+    setEditing(record);
+    modalForm.setFieldsValue(record);
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    modalForm.resetFields();
+  };
+
+  const handleSave = async () => {
+    const values = await modalForm.validateFields();
+    setSaving(true);
+    try {
+      if (editing) {
+        await alumniApi.update(editing.id, values);
+        message.success('校友档案已更新');
+      } else {
+        await alumniApi.create(values);
+        message.success('校友档案已新增');
+      }
+      closeModal();
+      await loadData(query);
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '保存失败');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemove = async (record: AlumniProfile) => {
+    try {
+      await alumniApi.remove(record.id);
+      message.success('校友档案已删除');
+      await loadData(query);
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '删除失败');
+    }
+  };
+
+  const columns = useMemo<ColumnsType<AlumniProfile>>(
+    () => [
+      {
+        title: '姓名',
+        dataIndex: 'name',
+        fixed: 'left',
+        width: 120,
+      },
+      {
+        title: '年级',
+        dataIndex: 'grade',
+        width: 110,
+      },
+      {
+        title: '班级',
+        dataIndex: 'class_name',
+        width: 180,
+      },
+      {
+        title: '届数',
+        dataIndex: 'cohort',
+        width: 110,
+      },
+      {
+        title: '专业',
+        dataIndex: 'major',
+        width: 140,
+      },
+      {
+        title: '行业',
+        dataIndex: 'industry',
+        width: 140,
+      },
+      {
+        title: '工作单位',
+        dataIndex: 'work_unit',
+        width: 220,
+        ellipsis: true,
+      },
+      {
+        title: '状态',
+        dataIndex: 'status',
+        width: 100,
+        render: (value: string) => <StatusText value={value} />,
+      },
+      {
+        title: '操作',
+        key: 'action',
+        fixed: 'right',
+        width: 160,
+        render: (_, record) => (
+          <Space size={4}>
+            <Button type="link" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
+              编辑
+            </Button>
+            <Popconfirm
+              title="删除校友档案"
+              description="确认删除该校友档案？"
+              onConfirm={() => handleRemove(record)}
+            >
+              <Button type="link" danger icon={<DeleteOutlined />}>
+                删除
+              </Button>
+            </Popconfirm>
+          </Space>
+        ),
+      },
+    ],
+    [handleRemove, openEditModal],
+  );
+
+  const handleSearch = (values: AlumniQuery) => {
+    setQuery({ ...values, page: 1, page_size: query.page_size || defaultPageSize });
+  };
+
+  const handleReset = () => {
+    searchForm.resetFields();
+    setQuery({ page: 1, page_size: defaultPageSize });
+  };
+
+  const handleTableChange = (pagination: TablePaginationConfig) => {
+    setQuery((prev) => ({
+      ...prev,
+      page: pagination.current || 1,
+      page_size: pagination.pageSize || defaultPageSize,
+    }));
+  };
+
+  return (
+    <>
+      <PageHeader
+        title="校友管理"
+        description="管理员维护 MPA 校友基础档案"
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
+            新增校友
+          </Button>
+        }
+      />
+      <Card className="tool-card">
+        <Form form={searchForm} layout="inline" onFinish={handleSearch} className="search-form">
+          <Form.Item name="keyword">
+            <Input allowClear placeholder="姓名、单位、导师" />
+          </Form.Item>
+          <Form.Item name="grade">
+            <Input allowClear placeholder="年级" />
+          </Form.Item>
+          <Form.Item name="class_name">
+            <Input allowClear placeholder="班级" />
+          </Form.Item>
+          <Form.Item name="cohort">
+            <Input allowClear placeholder="届数" />
+          </Form.Item>
+          <Form.Item name="industry">
+            <Select
+              allowClear
+              placeholder="行业"
+              options={industryOptions.map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
+          <Space>
+            <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+              查询
+            </Button>
+            <Button icon={<UndoOutlined />} onClick={handleReset}>
+              重置
+            </Button>
+          </Space>
+        </Form>
+      </Card>
+      <Card className="tool-card">
+        <Table<AlumniProfile>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={items}
+          scroll={{ x: 1300 }}
+          pagination={{
+            current: query.page,
+            pageSize: query.page_size,
+            total,
+            showSizeChanger: true,
+            showTotal: (value) => `共 ${value} 条`,
+          }}
+          onChange={handleTableChange}
+        />
+      </Card>
+      <Modal
+        title={editing ? '编辑校友' : '新增校友'}
+        open={modalOpen}
+        onCancel={closeModal}
+        onOk={handleSave}
+        confirmLoading={saving}
+        width={820}
+        destroyOnClose
+      >
+        <Form form={modalForm} layout="vertical" className="modal-grid">
+          <Form.Item
+            label="姓名"
+            name="name"
+            rules={[{ required: true, message: '请输入姓名' }]}
+          >
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item
+            label="年级"
+            name="grade"
+            rules={[{ required: true, message: '请输入年级' }]}
+          >
+            <Input maxLength={50} />
+          </Form.Item>
+          <Form.Item label="班级" name="class_name">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item label="届数" name="cohort">
+            <Input maxLength={50} />
+          </Form.Item>
+          <Form.Item label="性别" name="gender">
+            <Select
+              allowClear
+              options={genderOptions.map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
+          <Form.Item label="手机号" name="mobile">
+            <Input maxLength={30} />
+          </Form.Item>
+          <Form.Item label="专业" name="major">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item label="培养方式" name="training_mode">
+            <Select
+              allowClear
+              options={trainingModeOptions.map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
+          <Form.Item label="辅导员" name="counselor">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item label="导师" name="mentor">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item label="行业" name="industry">
+            <Select
+              allowClear
+              options={industryOptions.map((value) => ({ label: value, value }))}
+            />
+          </Form.Item>
+          <Form.Item label="工作单位" name="work_unit">
+            <Input maxLength={255} />
+          </Form.Item>
+          <Form.Item label="职务" name="position">
+            <Input maxLength={100} />
+          </Form.Item>
+          <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide">
+            <Input.TextArea rows={3} maxLength={255} showCount />
+          </Form.Item>
+          <Form.Item label="管理员备注" name="remark" className="modal-grid-wide">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
+    </>
+  );
+}
