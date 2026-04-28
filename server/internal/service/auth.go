@@ -13,8 +13,10 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
+	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -50,29 +52,36 @@ func NewAuthService(users repository.UserStore, cfg config.Config) *AuthService 
 func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.LoginResult, error) {
 	account := strings.TrimSpace(req.Account)
 	if account == "" || req.Password == "" {
+		logger.Error("Login failed", zap.String("account", account))
 		return nil, ErrInvalidCredentials
 	}
 	if s.users == nil {
+		logger.Error("User repository is not initialized")
 		return nil, ErrDatabaseUnavailable
 	}
 
 	// 通过账户查找用户
 	user, err := s.users.FindByAccount(ctx, account)
 	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+		logger.Error("database is unavailable", zap.Error(err))
 		return nil, ErrDatabaseUnavailable
 	}
 	if errors.Is(err, repository.ErrUserNotFound) {
+		logger.Warn("user not found", zap.String("account", account))
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
+		logger.Error("failed to find user by account", zap.String("account", account), zap.Error(err))
 		return nil, err
 	}
 
 	if user.Status != UserStatusActive {
+		logger.Warn("account is disabled", zap.Uint64("user_id", user.ID), zap.String("account", account))
 		return nil, ErrAccountDisabled
 	}
 	// 验证密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
+		logger.Warn("invalid password", zap.Uint64("user_id", user.ID), zap.String("account", account))
 		return nil, ErrInvalidCredentials
 	}
 
@@ -81,13 +90,16 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	// 颁发访问令牌
 	token, err := s.issueAccessToken(user, issuedAt, expiresAt)
 	if err != nil {
+		logger.Error("failed to issue access token", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return nil, err
 	}
 	// 更新用户最后登录时间
 	if err := s.users.UpdateLastLoginAt(ctx, user.ID, issuedAt); err != nil {
 		if errors.Is(err, repository.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Uint64("user_id", user.ID), zap.Error(err))
 			return nil, ErrDatabaseUnavailable
 		}
+		logger.Error("failed to update last login time", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return nil, err
 	}
 
@@ -122,10 +134,12 @@ func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, exp
 
 	headerJSON, err := json.Marshal(header)
 	if err != nil {
+		logger.Error("failed to marshal JWT header", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return "", err
 	}
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
+		logger.Error("failed to marshal JWT payload", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return "", err
 	}
 
@@ -136,6 +150,7 @@ func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, exp
 	// 使用 HMAC-SHA256 签名 JWT
 	mac := hmac.New(sha256.New, s.jwtSecret)
 	if _, err := mac.Write([]byte(unsigned)); err != nil {
+		logger.Error("failed to sign JWT", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return "", err
 	}
 
