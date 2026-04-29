@@ -213,6 +213,10 @@ func (s *AlumniService) currentAlumniID(ctx context.Context, userID uint64) (uin
 		logger.Error("failed to find current user", zap.Uint64("user_id", userID), zap.Error(err))
 		return 0, err
 	}
+	if user.Status != common.UserStatusActive {
+		logger.Warn("current user account is disabled", zap.Uint64("user_id", userID), zap.String("status", user.Status))
+		return 0, common.ErrAccountDisabled
+	}
 	if user.Role != common.RoleAlumni {
 		logger.Warn("current user is not alumni", zap.Uint64("user_id", userID), zap.String("role", user.Role))
 		return 0, common.ErrPermissionDenied

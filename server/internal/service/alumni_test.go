@@ -199,6 +199,36 @@ func TestAlumniServiceUpdateNormalizesAndMapsDetail(t *testing.T) {
 	}
 }
 
+func TestAlumniServiceUpdatePreservesEmptyOptionalFields(t *testing.T) {
+	className := " "
+	remark := ""
+	store := &fakeAlumniStore{
+		updateResult: &model.AlumniProfile{
+			ID:     9,
+			Name:   "张三",
+			Grade:  "2020级",
+			Status: common.AlumniStatusActive,
+		},
+	}
+	svc := NewAlumniService(store, nil)
+
+	_, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
+		Name:      "张三",
+		Grade:     "2020级",
+		ClassName: &className,
+		Remark:    &remark,
+	})
+	if err != nil {
+		t.Fatalf("expected update success, got %v", err)
+	}
+	if store.adminUpdate.ClassName == nil || *store.adminUpdate.ClassName != "" {
+		t.Fatalf("expected blank class name to be preserved, got %+v", store.adminUpdate.ClassName)
+	}
+	if store.adminUpdate.Remark == nil || *store.adminUpdate.Remark != "" {
+		t.Fatalf("expected blank remark to be preserved, got %+v", store.adminUpdate.Remark)
+	}
+}
+
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	workUnit := "山东大学"
 	position := "主任"
@@ -292,8 +322,9 @@ func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 	users := &fakeUserStore{
 		user: &model.User{
 			ID:       3,
-			Role:     "alumni",
+			Role:     common.RoleAlumni,
 			AlumniID: &alumniID,
+			Status:   common.UserStatusActive,
 		},
 	}
 	svc := NewAlumniService(store, users)
@@ -313,8 +344,9 @@ func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 func TestAlumniServiceGetMeRejectsNonAlumniUser(t *testing.T) {
 	users := &fakeUserStore{
 		user: &model.User{
-			ID:   3,
-			Role: "admin",
+			ID:     3,
+			Role:   common.RoleAdmin,
+			Status: common.UserStatusActive,
 		},
 	}
 	svc := NewAlumniService(&fakeAlumniStore{}, users)
@@ -322,6 +354,24 @@ func TestAlumniServiceGetMeRejectsNonAlumniUser(t *testing.T) {
 	_, err := svc.GetMe(context.Background(), 3)
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected permission denied, got %v", err)
+	}
+}
+
+func TestAlumniServiceGetMeRejectsDisabledUser(t *testing.T) {
+	alumniID := uint64(9)
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:       3,
+			Role:     common.RoleAlumni,
+			AlumniID: &alumniID,
+			Status:   "disabled",
+		},
+	}
+	svc := NewAlumniService(&fakeAlumniStore{}, users)
+
+	_, err := svc.GetMe(context.Background(), 3)
+	if err != common.ErrAccountDisabled {
+		t.Fatalf("expected account disabled, got %v", err)
 	}
 }
 
@@ -341,8 +391,9 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 	users := &fakeUserStore{
 		user: &model.User{
 			ID:       3,
-			Role:     "alumni",
+			Role:     common.RoleAlumni,
 			AlumniID: &alumniID,
+			Status:   common.UserStatusActive,
 		},
 	}
 	svc := NewAlumniService(store, users)
