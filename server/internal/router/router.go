@@ -49,7 +49,7 @@ func New(deps Dependencies) *gin.Engine {
 	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
 	// 校友服务和处理器
-	alumniService := service.NewAlumniService(alumniRepository)
+	alumniService := service.NewAlumniService(alumniRepository, userRepository)
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 
 	// 白名单路径
@@ -71,8 +71,10 @@ func New(deps Dependencies) *gin.Engine {
 		api.POST("/auth/logout", authHandler.Logout)
 		api.POST("/auth/change-password", authHandler.ChangePassword)
 
-		// 校友查询
+		// 校友查询与更新
 		api.GET("/alumni", alumniHandler.List)
+		api.GET("/alumni/me", alumniHandler.Me)
+		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.GET("/alumni/:id", alumniHandler.Detail)
 	}
 

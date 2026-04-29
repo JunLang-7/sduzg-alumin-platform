@@ -22,6 +22,26 @@ type AlumniListQuery struct {
 	Mobile       string
 }
 
+type AlumniEditableProfile struct {
+	WorkUnit       *string
+	Position       *string
+	MailingAddress *string
+	Mobile         *string
+}
+
+// Normalize 对校友本人可编辑字段去除首尾空格，保留 nil 以区分未提交字段。
+func (p AlumniEditableProfile) Normalize() AlumniEditableProfile {
+	p.WorkUnit = trimStringPointer(p.WorkUnit)
+	p.Position = trimStringPointer(p.Position)
+	p.MailingAddress = trimStringPointer(p.MailingAddress)
+	p.Mobile = trimStringPointer(p.Mobile)
+	return p
+}
+
+func (p AlumniEditableProfile) IsEmpty() bool {
+	return p.WorkUnit == nil && p.Position == nil && p.MailingAddress == nil && p.Mobile == nil
+}
+
 // Normalize 对查询参数进行规范化处理，例如去除多余的空格等
 func (q AlumniListQuery) Normalize() AlumniListQuery {
 	q.Page = q.Page.Normalize()
@@ -38,4 +58,13 @@ func (q AlumniListQuery) Normalize() AlumniListQuery {
 	q.Position = strings.TrimSpace(q.Position)
 	q.Mobile = strings.TrimSpace(q.Mobile)
 	return q
+}
+
+func trimStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+
+	trimmed := strings.TrimSpace(*value)
+	return &trimmed
 }
