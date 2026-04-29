@@ -14,10 +14,11 @@ import (
 
 type AlumniService struct {
 	alumni repository.AlumniStore
+	users  repository.UserStore
 }
 
-func NewAlumniService(alumni repository.AlumniStore) *AlumniService {
-	return &AlumniService{alumni: alumni}
+func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore) *AlumniService {
+	return &AlumniService{alumni: alumni, users: users}
 }
 
 // List 根据查询条件分页获取校友列表
@@ -62,6 +63,79 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDeta
 	}
 
 	return mapAlumniDetail(item), nil
+}
+
+// GetMe 获取当前登录校友绑定的本人资料。
+func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDetail, error) {
+	alumniID, err := s.currentAlumniID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.GetByID(ctx, alumniID)
+}
+
+// UpdateMe 更新当前登录校友本人允许维护的字段，并返回更新后的资料。
+func (s *AlumniService) UpdateMe(ctx context.Context, userID uint64, req dto.AlumniProfileUpdateRequest) (*dto.AlumniDetail, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	alumniID, err := s.currentAlumniID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	profile := req.ToProfile().Normalize()
+	if !profile.IsEmpty() {
+		if err := s.alumni.UpdateEditableFields(ctx, alumniID, userID, profile); err != nil {
+			if errors.Is(err, common.ErrDatabaseUnavailable) {
+				logger.Error("database is unavailable", zap.Uint64("alumni_id", alumniID), zap.Uint64("user_id", userID), zap.Error(err))
+				return nil, common.ErrDatabaseUnavailable
+			}
+			if errors.Is(err, common.ErrAlumniNotFound) {
+				logger.Warn("alumni not found", zap.Uint64("alumni_id", alumniID), zap.Uint64("user_id", userID))
+				return nil, common.ErrAlumniNotFound
+			}
+			logger.Error("failed to update alumni profile", zap.Uint64("alumni_id", alumniID), zap.Uint64("user_id", userID), zap.Error(err))
+			return nil, err
+		}
+	}
+
+	return s.GetByID(ctx, alumniID)
+}
+
+// currentAlumniID 获取当前用户绑定的校友 ID。如果用户不存在、不是校友、或未绑定校友资料，返回相应错误。
+func (s *AlumniService) currentAlumniID(ctx context.Context, userID uint64) (uint64, error) {
+	if s.users == nil {
+		logger.Error("user repository is not initialized")
+		return 0, common.ErrDatabaseUnavailable
+	}
+
+	user, err := s.users.FindByID(ctx, userID)
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
+		logger.Error("database is unavailable", zap.Uint64("user_id", userID), zap.Error(err))
+		return 0, common.ErrDatabaseUnavailable
+	}
+	if errors.Is(err, common.ErrUserNotFound) {
+		logger.Warn("current user not found", zap.Uint64("user_id", userID))
+		return 0, common.ErrUserNotFound
+	}
+	if err != nil {
+		logger.Error("failed to find current user", zap.Uint64("user_id", userID), zap.Error(err))
+		return 0, err
+	}
+	if user.Role != "alumni" {
+		logger.Warn("current user is not alumni", zap.Uint64("user_id", userID), zap.String("role", user.Role))
+		return 0, common.ErrPermissionDenied
+	}
+	if user.AlumniID == nil || *user.AlumniID == 0 {
+		logger.Warn("current user has no bound alumni profile", zap.Uint64("user_id", userID))
+		return 0, common.ErrAlumniProfileUnbound
+	}
+
+	return *user.AlumniID, nil
 }
 
 // mapAlumniListItems 将 AlumniProfile 列表转换为 AlumniListItem 列表

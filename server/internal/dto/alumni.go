@@ -45,6 +45,22 @@ func (r AlumniListRequest) ToQuery() do.AlumniListQuery {
 	}
 }
 
+type AlumniProfileUpdateRequest struct {
+	WorkUnit       *string `json:"work_unit"`
+	Position       *string `json:"position"`
+	MailingAddress *string `json:"mailing_address"`
+	Mobile         *string `json:"mobile"`
+}
+
+func (r AlumniProfileUpdateRequest) ToProfile() do.AlumniEditableProfile {
+	return do.AlumniEditableProfile{
+		WorkUnit:       r.WorkUnit,
+		Position:       r.Position,
+		MailingAddress: r.MailingAddress,
+		Mobile:         r.Mobile,
+	}
+}
+
 type AlumniListItem struct {
 	ID           uint64    `json:"id"`
 	Name         string    `json:"name"`

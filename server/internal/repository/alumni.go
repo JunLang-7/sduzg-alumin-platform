@@ -17,6 +17,7 @@ const AlumniStatusActive = "active"
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
+	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 }
 
 type AlumniRepository struct {
@@ -123,4 +124,46 @@ func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.Alumn
 	}
 
 	return &item, nil
+}
+
+// UpdateEditableFields 更新校友本人允许维护的四个字段。
+func (r *AlumniRepository) UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+
+	profile = profile.Normalize()
+	if profile.IsEmpty() {
+		return nil
+	}
+
+	qs := query.Use(r.db).AlumniProfile
+	updates := map[string]any{
+		qs.UpdatedBy.ColumnName().String(): updaterID,
+	}
+	if profile.WorkUnit != nil {
+		updates[qs.WorkUnit.ColumnName().String()] = *profile.WorkUnit
+	}
+	if profile.Position != nil {
+		updates[qs.Position.ColumnName().String()] = *profile.Position
+	}
+	if profile.MailingAddress != nil {
+		updates[qs.MailingAddress.ColumnName().String()] = *profile.MailingAddress
+	}
+	if profile.Mobile != nil {
+		updates[qs.Mobile.ColumnName().String()] = *profile.Mobile
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(AlumniStatusActive)).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return common.ErrAlumniNotFound
+	}
+
+	return nil
 }

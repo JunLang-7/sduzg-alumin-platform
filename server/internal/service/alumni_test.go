@@ -12,13 +12,17 @@ import (
 )
 
 type fakeAlumniStore struct {
-	query     do.AlumniListQuery
-	items     []*model.AlumniProfile
-	total     int64
-	err       error
-	detailID  uint64
-	detail    *model.AlumniProfile
-	detailErr error
+	query         do.AlumniListQuery
+	items         []*model.AlumniProfile
+	total         int64
+	err           error
+	detailID      uint64
+	detail        *model.AlumniProfile
+	detailErr     error
+	updateID      uint64
+	updateUserID  uint64
+	updateProfile do.AlumniEditableProfile
+	updateErr     error
 }
 
 func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
@@ -29,6 +33,13 @@ func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*
 func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64) (*model.AlumniProfile, error) {
 	s.detailID = id
 	return s.detail, s.detailErr
+}
+
+func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
+	s.updateID = id
+	s.updateUserID = updaterID
+	s.updateProfile = profile
+	return s.updateErr
 }
 
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
@@ -48,7 +59,7 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 		},
 		total: 12,
 	}
-	svc := NewAlumniService(store)
+	svc := NewAlumniService(store, nil)
 
 	pager, err := svc.List(context.Background(), dto.AlumniListRequest{
 		Page:     0,
@@ -94,7 +105,7 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 			UpdatedAt:      updatedAt,
 		},
 	}
-	svc := NewAlumniService(store)
+	svc := NewAlumniService(store, nil)
 
 	detail, err := svc.GetByID(context.Background(), 9)
 	if err != nil {
@@ -108,5 +119,98 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	}
 	if !detail.CreatedAt.Equal(createdAt) || !detail.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected detail times: %+v", detail)
+	}
+}
+
+func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
+	alumniID := uint64(9)
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:     alumniID,
+			Name:   "张三",
+			Grade:  "2020级",
+			Status: "active",
+		},
+	}
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:       3,
+			Role:     "alumni",
+			AlumniID: &alumniID,
+		},
+	}
+	svc := NewAlumniService(store, users)
+
+	detail, err := svc.GetMe(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("expected me success, got %v", err)
+	}
+	if store.detailID != alumniID {
+		t.Fatalf("expected detail id %d, got %d", alumniID, store.detailID)
+	}
+	if detail.ID != alumniID {
+		t.Fatalf("unexpected alumni detail: %+v", detail)
+	}
+}
+
+func TestAlumniServiceGetMeRejectsNonAlumniUser(t *testing.T) {
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:   3,
+			Role: "admin",
+		},
+	}
+	svc := NewAlumniService(&fakeAlumniStore{}, users)
+
+	_, err := svc.GetMe(context.Background(), 3)
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected permission denied, got %v", err)
+	}
+}
+
+func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
+	alumniID := uint64(9)
+	workUnit := " 山东大学 "
+	position := "主任"
+	mobile := " 13800000000 "
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:     alumniID,
+			Name:   "张三",
+			Grade:  "2020级",
+			Status: "active",
+		},
+	}
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:       3,
+			Role:     "alumni",
+			AlumniID: &alumniID,
+		},
+	}
+	svc := NewAlumniService(store, users)
+
+	_, err := svc.UpdateMe(context.Background(), 3, dto.AlumniProfileUpdateRequest{
+		WorkUnit: &workUnit,
+		Position: &position,
+		Mobile:   &mobile,
+	})
+	if err != nil {
+		t.Fatalf("expected update success, got %v", err)
+	}
+	if store.updateID != alumniID || store.updateUserID != 3 {
+		t.Fatalf("unexpected update target: alumni=%d user=%d", store.updateID, store.updateUserID)
+	}
+	if store.updateProfile.WorkUnit == nil || *store.updateProfile.WorkUnit != "山东大学" {
+		t.Fatalf("expected trimmed work unit, got %+v", store.updateProfile.WorkUnit)
+	}
+	if store.updateProfile.Position == nil || *store.updateProfile.Position != position {
+		t.Fatalf("expected position update, got %+v", store.updateProfile.Position)
+	}
+	if store.updateProfile.MailingAddress != nil {
+		t.Fatalf("expected mailing address untouched, got %+v", store.updateProfile.MailingAddress)
+	}
+	if store.updateProfile.Mobile == nil || *store.updateProfile.Mobile != "13800000000" {
+		t.Fatalf("expected trimmed mobile, got %+v", store.updateProfile.Mobile)
 	}
 }
