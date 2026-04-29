@@ -7,5 +7,6 @@ const (
 
 	UserStatusActive = "active"
 
-	AlumniStatusActive = "active"
+	AlumniStatusActive  = "active"
+	AlumniStatusDeleted = "deleted"
 )

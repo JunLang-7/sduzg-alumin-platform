@@ -484,6 +484,36 @@ func TestAdminAlumniUpdateRouteWithoutDatabase(t *testing.T) {
 	}
 }
 
+func TestAdminAlumniDeleteRouteWithoutDatabase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+			Auth: config.AuthConfig{
+				JWTSecret: "test-secret",
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/alumni/1", nil)
+	req.Header.Set("Authorization", "Bearer "+testAccessToken(t, "test-secret", time.Now().Add(time.Hour)))
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
+	}
+}
+
 func testAccessToken(t *testing.T, secret string, expiresAt time.Time) string {
 	t.Helper()
 

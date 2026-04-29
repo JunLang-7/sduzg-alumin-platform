@@ -813,6 +813,18 @@ DELETE /api/v1/admin/alumni/{id}
 
 实现建议：软删除。
 
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "deleted": true
+  }
+}
+```
+
 ### 6.5 数据大屏接口
 
 #### 6.5.1 总览

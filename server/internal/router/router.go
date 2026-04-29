@@ -85,6 +85,7 @@ func New(deps Dependencies) *gin.Engine {
 			// 管理校友信息
 			admin.POST("/alumni", alumniHandler.Create)
 			admin.PUT("/alumni/:id", alumniHandler.Update)
+			admin.DELETE("/alumni/:id", alumniHandler.Delete)
 		}
 	}
 
