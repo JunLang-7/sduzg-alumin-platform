@@ -96,6 +96,39 @@ func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.A
 	return mapAlumniDetail(created), nil
 }
 
+// Update 由管理员编辑校友档案。
+func (s *AlumniService) Update(ctx context.Context, operatorID uint64, id uint64, req dto.AdminAlumniUpdateRequest) (*dto.AlumniDetail, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	profile := req.ToProfile().Normalize()
+	if profile.Name == "" || profile.Grade == "" {
+		return nil, common.ErrInvalidRequest
+	}
+
+	if err := s.alumni.Update(ctx, id, operatorID, profile); err != nil {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+			return nil, common.ErrDatabaseUnavailable
+		}
+		if errors.Is(err, common.ErrAlumniNotFound) {
+			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operatorID))
+			return nil, common.ErrAlumniNotFound
+		}
+		logger.Error("failed to update alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+		return nil, err
+	}
+
+	updated, err := s.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return updated, nil
+}
+
 // GetMe 获取当前登录校友绑定的本人资料。
 func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDetail, error) {
 	alumniID, err := s.currentAlumniID(ctx, userID)

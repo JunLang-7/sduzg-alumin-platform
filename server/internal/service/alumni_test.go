@@ -22,9 +22,11 @@ type fakeAlumniStore struct {
 	createProfile *model.AlumniProfile
 	createResult  *model.AlumniProfile
 	createErr     error
+	updateResult  *model.AlumniProfile
 	updateID      uint64
 	updateUserID  uint64
 	updateProfile do.AlumniEditableProfile
+	adminUpdate   do.AlumniUpdateProfile
 	updateErr     error
 }
 
@@ -63,6 +65,16 @@ func (s *fakeAlumniStore) Create(_ context.Context, profile *do.AlumniCreateProf
 		return s.createResult, s.createErr
 	}
 	return s.createProfile, nil
+}
+
+func (s *fakeAlumniStore) Update(_ context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error {
+	s.updateID = id
+	s.updateUserID = updaterID
+	s.adminUpdate = profile
+	if s.updateResult != nil {
+		s.detail = s.updateResult
+	}
+	return s.updateErr
 }
 
 func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
@@ -127,6 +139,54 @@ func TestAlumniServiceCreateRejectsMissingRequiredFields(t *testing.T) {
 	})
 	if err != common.ErrInvalidRequest {
 		t.Fatalf("expected invalid request, got %v", err)
+	}
+}
+
+func TestAlumniServiceUpdateNormalizesAndMapsDetail(t *testing.T) {
+	className := " 2020级MPA周末班 "
+	normalizedClassName := "2020级MPA周末班"
+	remark := " 管理端备注 "
+	normalizedRemark := "管理端备注"
+	updatedAt := time.Date(2026, 4, 30, 9, 0, 0, 0, time.UTC)
+	store := &fakeAlumniStore{
+		updateResult: &model.AlumniProfile{
+			ID:        9,
+			Name:      "张三",
+			Grade:     "2020级",
+			ClassName: &normalizedClassName,
+			Remark:    &normalizedRemark,
+			Status:    "active",
+			UpdatedAt: updatedAt,
+		},
+	}
+	svc := NewAlumniService(store, nil)
+
+	detail, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
+		Name:      " 张三 ",
+		Grade:     " 2020级 ",
+		ClassName: &className,
+		Remark:    &remark,
+	})
+	if err != nil {
+		t.Fatalf("expected update success, got %v", err)
+	}
+	if store.adminUpdate.Name != "张三" || store.adminUpdate.Grade != "2020级" {
+		t.Fatalf("expected trimmed required fields, got %+v", store.adminUpdate)
+	}
+	if store.adminUpdate.ClassName == nil || *store.adminUpdate.ClassName != "2020级MPA周末班" {
+		t.Fatalf("expected trimmed class name, got %+v", store.adminUpdate.ClassName)
+	}
+	if store.adminUpdate.Remark == nil || *store.adminUpdate.Remark != "管理端备注" {
+		t.Fatalf("expected trimmed remark, got %+v", store.adminUpdate.Remark)
+	}
+	if store.updateID != 9 || store.updateUserID != 7 {
+		t.Fatalf("unexpected update target: alumni=%d user=%d", store.updateID, store.updateUserID)
+	}
+	if detail.ID != 9 || detail.Name != "张三" || detail.ClassName == nil || *detail.ClassName != "2020级MPA周末班" {
+		t.Fatalf("unexpected updated detail: %+v", detail)
+	}
+	if !detail.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("unexpected updated time: %+v", detail.UpdatedAt)
 	}
 }
 
