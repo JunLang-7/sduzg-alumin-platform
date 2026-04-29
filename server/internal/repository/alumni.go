@@ -178,43 +178,43 @@ func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint
 		qs.UpdatedBy.ColumnName().String(): updaterID,
 	}
 	if profile.ClassName != nil {
-		updates[qs.ClassName.ColumnName().String()] = *profile.ClassName
+		updates[qs.ClassName.ColumnName().String()] = nullableString(*profile.ClassName)
 	}
 	if profile.Cohort != nil {
-		updates[qs.Cohort.ColumnName().String()] = *profile.Cohort
+		updates[qs.Cohort.ColumnName().String()] = nullableString(*profile.Cohort)
 	}
 	if profile.Counselor != nil {
-		updates[qs.Counselor.ColumnName().String()] = *profile.Counselor
+		updates[qs.Counselor.ColumnName().String()] = nullableString(*profile.Counselor)
 	}
 	if profile.Mentor != nil {
-		updates[qs.Mentor.ColumnName().String()] = *profile.Mentor
+		updates[qs.Mentor.ColumnName().String()] = nullableString(*profile.Mentor)
 	}
 	if profile.Major != nil {
-		updates[qs.Major.ColumnName().String()] = *profile.Major
+		updates[qs.Major.ColumnName().String()] = nullableString(*profile.Major)
 	}
 	if profile.TrainingMode != nil {
-		updates[qs.TrainingMode.ColumnName().String()] = *profile.TrainingMode
+		updates[qs.TrainingMode.ColumnName().String()] = nullableString(*profile.TrainingMode)
 	}
 	if profile.Industry != nil {
-		updates[qs.Industry.ColumnName().String()] = *profile.Industry
+		updates[qs.Industry.ColumnName().String()] = nullableString(*profile.Industry)
 	}
 	if profile.WorkUnit != nil {
-		updates[qs.WorkUnit.ColumnName().String()] = *profile.WorkUnit
+		updates[qs.WorkUnit.ColumnName().String()] = nullableString(*profile.WorkUnit)
 	}
 	if profile.Position != nil {
-		updates[qs.Position.ColumnName().String()] = *profile.Position
+		updates[qs.Position.ColumnName().String()] = nullableString(*profile.Position)
 	}
 	if profile.MailingAddress != nil {
-		updates[qs.MailingAddress.ColumnName().String()] = *profile.MailingAddress
+		updates[qs.MailingAddress.ColumnName().String()] = nullableString(*profile.MailingAddress)
 	}
 	if profile.Gender != nil {
-		updates[qs.Gender.ColumnName().String()] = *profile.Gender
+		updates[qs.Gender.ColumnName().String()] = nullableString(*profile.Gender)
 	}
 	if profile.Mobile != nil {
-		updates[qs.Mobile.ColumnName().String()] = *profile.Mobile
+		updates[qs.Mobile.ColumnName().String()] = nullableString(*profile.Mobile)
 	}
 	if profile.Remark != nil {
-		updates[qs.Remark.ColumnName().String()] = *profile.Remark
+		updates[qs.Remark.ColumnName().String()] = nullableString(*profile.Remark)
 	}
 
 	result := r.db.WithContext(ctx).
@@ -229,6 +229,13 @@ func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint
 	}
 
 	return nil
+}
+
+func nullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // Delete 软删除校友档案。
@@ -281,16 +288,16 @@ func (r *AlumniRepository) UpdateEditableFields(ctx context.Context, id uint64, 
 		qs.UpdatedBy.ColumnName().String(): updaterID,
 	}
 	if profile.WorkUnit != nil {
-		updates[qs.WorkUnit.ColumnName().String()] = *profile.WorkUnit
+		updates[qs.WorkUnit.ColumnName().String()] = nullableString(*profile.WorkUnit)
 	}
 	if profile.Position != nil {
-		updates[qs.Position.ColumnName().String()] = *profile.Position
+		updates[qs.Position.ColumnName().String()] = nullableString(*profile.Position)
 	}
 	if profile.MailingAddress != nil {
-		updates[qs.MailingAddress.ColumnName().String()] = *profile.MailingAddress
+		updates[qs.MailingAddress.ColumnName().String()] = nullableString(*profile.MailingAddress)
 	}
 	if profile.Mobile != nil {
-		updates[qs.Mobile.ColumnName().String()] = *profile.Mobile
+		updates[qs.Mobile.ColumnName().String()] = nullableString(*profile.Mobile)
 	}
 
 	result := r.db.WithContext(ctx).

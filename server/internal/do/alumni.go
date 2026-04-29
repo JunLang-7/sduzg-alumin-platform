@@ -99,23 +99,23 @@ func (p AlumniEditableProfile) Normalize() AlumniEditableProfile {
 	return p
 }
 
-// Normalize 对管理员编辑校友字段做基础清理。
+// Normalize 对管理员编辑校友字段做基础清理，并保留已提交但清空的字段语义。
 func (p AlumniUpdateProfile) Normalize() AlumniUpdateProfile {
 	p.Name = strings.TrimSpace(p.Name)
 	p.Grade = strings.TrimSpace(p.Grade)
-	p.ClassName = trimEmptyStringPointer(p.ClassName)
-	p.Cohort = trimEmptyStringPointer(p.Cohort)
-	p.Counselor = trimEmptyStringPointer(p.Counselor)
-	p.Mentor = trimEmptyStringPointer(p.Mentor)
-	p.Major = trimEmptyStringPointer(p.Major)
-	p.TrainingMode = trimEmptyStringPointer(p.TrainingMode)
-	p.Industry = trimEmptyStringPointer(p.Industry)
-	p.WorkUnit = trimEmptyStringPointer(p.WorkUnit)
-	p.Position = trimEmptyStringPointer(p.Position)
-	p.MailingAddress = trimEmptyStringPointer(p.MailingAddress)
-	p.Gender = trimEmptyStringPointer(p.Gender)
-	p.Mobile = trimEmptyStringPointer(p.Mobile)
-	p.Remark = trimEmptyStringPointer(p.Remark)
+	p.ClassName = trimStringPointer(p.ClassName)
+	p.Cohort = trimStringPointer(p.Cohort)
+	p.Counselor = trimStringPointer(p.Counselor)
+	p.Mentor = trimStringPointer(p.Mentor)
+	p.Major = trimStringPointer(p.Major)
+	p.TrainingMode = trimStringPointer(p.TrainingMode)
+	p.Industry = trimStringPointer(p.Industry)
+	p.WorkUnit = trimStringPointer(p.WorkUnit)
+	p.Position = trimStringPointer(p.Position)
+	p.MailingAddress = trimStringPointer(p.MailingAddress)
+	p.Gender = trimStringPointer(p.Gender)
+	p.Mobile = trimStringPointer(p.Mobile)
+	p.Remark = trimStringPointer(p.Remark)
 	return p
 }
 

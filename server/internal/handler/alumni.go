@@ -202,6 +202,8 @@ func (h *AlumniHandler) writeMeError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, common.ErrUserNotFound):
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+	case errors.Is(err, common.ErrAccountDisabled):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "account is disabled")
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "仅校友账号可访问本人资料")
 	case errors.Is(err, common.ErrAlumniProfileUnbound):
