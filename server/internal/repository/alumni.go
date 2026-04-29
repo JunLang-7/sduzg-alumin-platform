@@ -17,6 +17,7 @@ type AlumniStore interface {
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
 	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error
+	Delete(ctx context.Context, id uint64, updaterID uint64) error
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 }
 
@@ -228,6 +229,40 @@ func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint
 	}
 
 	return nil
+}
+
+// Delete 软删除校友档案。
+func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).AlumniProfile
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates := map[string]any{
+			qs.Status.ColumnName().String():    common.AlumniStatusDeleted,
+			qs.UpdatedBy.ColumnName().String(): updaterID,
+		}
+		updateResult := tx.Model(&model.AlumniProfile{}).
+			Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+			Updates(updates)
+		if updateResult.Error != nil {
+			return updateResult.Error
+		}
+		if updateResult.RowsAffected == 0 {
+			return common.ErrAlumniNotFound
+		}
+
+		deleteResult := tx.Where(qs.ID.Eq(id), qs.DeletedAt.IsNull()).Delete(&model.AlumniProfile{})
+		if deleteResult.Error != nil {
+			return deleteResult.Error
+		}
+		if deleteResult.RowsAffected == 0 {
+			return common.ErrAlumniNotFound
+		}
+
+		return nil
+	})
 }
 
 // UpdateEditableFields 更新校友本人允许维护的四个字段。

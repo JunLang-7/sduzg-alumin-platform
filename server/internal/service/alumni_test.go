@@ -28,6 +28,9 @@ type fakeAlumniStore struct {
 	updateProfile do.AlumniEditableProfile
 	adminUpdate   do.AlumniUpdateProfile
 	updateErr     error
+	deleteID      uint64
+	deleteUserID  uint64
+	deleteErr     error
 }
 
 func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
@@ -82,6 +85,12 @@ func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, upd
 	s.updateUserID = updaterID
 	s.updateProfile = profile
 	return s.updateErr
+}
+
+func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64) error {
+	s.deleteID = id
+	s.deleteUserID = updaterID
+	return s.deleteErr
 }
 
 func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {
@@ -360,5 +369,28 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 	}
 	if store.updateProfile.Mobile == nil || *store.updateProfile.Mobile != "13800000000" {
 		t.Fatalf("expected trimmed mobile, got %+v", store.updateProfile.Mobile)
+	}
+}
+
+func TestAlumniServiceDeleteSuccess(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+
+	err := svc.Delete(context.Background(), 7, 9)
+	if err != nil {
+		t.Fatalf("expected delete success, got %v", err)
+	}
+	if store.deleteID != 9 || store.deleteUserID != 7 {
+		t.Fatalf("unexpected delete target: alumni=%d user=%d", store.deleteID, store.deleteUserID)
+	}
+}
+
+func TestAlumniServiceDeleteReturnsNotFound(t *testing.T) {
+	store := &fakeAlumniStore{deleteErr: common.ErrAlumniNotFound}
+	svc := NewAlumniService(store, nil)
+
+	err := svc.Delete(context.Background(), 7, 9)
+	if err != common.ErrAlumniNotFound {
+		t.Fatalf("expected alumni not found, got %v", err)
 	}
 }

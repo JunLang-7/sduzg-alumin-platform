@@ -129,6 +129,29 @@ func (s *AlumniService) Update(ctx context.Context, operatorID uint64, id uint64
 	return updated, nil
 }
 
+// Delete 由管理员软删除校友档案。
+func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64) error {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return common.ErrDatabaseUnavailable
+	}
+
+	if err := s.alumni.Delete(ctx, id, operatorID); err != nil {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+			return common.ErrDatabaseUnavailable
+		}
+		if errors.Is(err, common.ErrAlumniNotFound) {
+			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operatorID))
+			return common.ErrAlumniNotFound
+		}
+		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // GetMe 获取当前登录校友绑定的本人资料。
 func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDetail, error) {
 	alumniID, err := s.currentAlumniID(ctx, userID)
