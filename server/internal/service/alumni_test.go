@@ -12,15 +12,23 @@ import (
 )
 
 type fakeAlumniStore struct {
-	query do.AlumniListQuery
-	items []*model.AlumniProfile
-	total int64
-	err   error
+	query     do.AlumniListQuery
+	items     []*model.AlumniProfile
+	total     int64
+	err       error
+	detailID  uint64
+	detail    *model.AlumniProfile
+	detailErr error
 }
 
 func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
 	s.query = query
 	return s.items, s.total, s.err
+}
+
+func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64) (*model.AlumniProfile, error) {
+	s.detailID = id
+	return s.detail, s.detailErr
 }
 
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
@@ -64,5 +72,41 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	}
 	if pager.Items[0].ID != 9 || pager.Items[0].Name != "张三" || pager.Items[0].WorkUnit == nil || *pager.Items[0].WorkUnit != workUnit {
 		t.Fatalf("unexpected alumni item: %+v", pager.Items[0])
+	}
+}
+
+func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
+	counselor := "李老师"
+	mentor := "王老师"
+	mailingAddress := "济南市"
+	createdAt := time.Date(2026, 4, 28, 9, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 4, 29, 9, 0, 0, 0, time.UTC)
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:             9,
+			Name:           "张三",
+			Grade:          "2020级",
+			Counselor:      &counselor,
+			Mentor:         &mentor,
+			MailingAddress: &mailingAddress,
+			Status:         "active",
+			CreatedAt:      createdAt,
+			UpdatedAt:      updatedAt,
+		},
+	}
+	svc := NewAlumniService(store)
+
+	detail, err := svc.GetByID(context.Background(), 9)
+	if err != nil {
+		t.Fatalf("expected detail success, got %v", err)
+	}
+	if store.detailID != 9 {
+		t.Fatalf("expected detail id 9, got %d", store.detailID)
+	}
+	if detail.ID != 9 || detail.Name != "张三" || detail.Counselor == nil || *detail.Counselor != counselor {
+		t.Fatalf("unexpected alumni detail: %+v", detail)
+	}
+	if !detail.CreatedAt.Equal(createdAt) || !detail.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("unexpected detail times: %+v", detail)
 	}
 }

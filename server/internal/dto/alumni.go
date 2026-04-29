@@ -59,3 +59,24 @@ type AlumniListItem struct {
 	Mobile       *string   `json:"mobile"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
+
+type AlumniDetail struct {
+	ID             uint64    `json:"id"`
+	Name           string    `json:"name"`
+	Grade          string    `json:"grade"`
+	ClassName      *string   `json:"class_name"`
+	Cohort         *string   `json:"cohort"`
+	Counselor      *string   `json:"counselor"`
+	Mentor         *string   `json:"mentor"`
+	Major          *string   `json:"major"`
+	TrainingMode   *string   `json:"training_mode"`
+	Industry       *string   `json:"industry"`
+	WorkUnit       *string   `json:"work_unit"`
+	Position       *string   `json:"position"`
+	MailingAddress *string   `json:"mailing_address"`
+	Gender         *string   `json:"gender"`
+	Mobile         *string   `json:"mobile"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}

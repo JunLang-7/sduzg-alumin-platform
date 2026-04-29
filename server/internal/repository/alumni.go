@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"errors"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
@@ -12,8 +13,11 @@ import (
 
 const AlumniStatusActive = "active"
 
+var ErrAlumniNotFound = errors.New("alumni not found")
+
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
+	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 }
 
 type AlumniRepository struct {
@@ -98,4 +102,26 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 	}
 
 	return items, total, nil
+}
+
+// GetByID 根据 ID 获取校友详情
+func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).AlumniProfile
+	var item model.AlumniProfile
+	err := r.db.WithContext(ctx).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(AlumniStatusActive)).
+		First(&item).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, ErrAlumniNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &item, nil
 }
