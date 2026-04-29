@@ -679,7 +679,8 @@ GET /api/v1/alumni?page=1&page_size=20&keyword=&grade=&class_name=&cohort=&major
       "industry": "党政机关",
       "work_unit": "某某单位",
       "position": "科长",
-      "mobile": "13800000000"
+      "mobile": "13800000000",
+      "updated_at": "2026-04-29T09:00:00+08:00"
     }
   ],
   "page": 1,
@@ -1017,4 +1018,3 @@ flowchart LR
 5. 超级管理员是否允许创建新的超级管理员？
 6. 生产部署方式是传统服务器部署，还是 Docker 部署？
 7. 是否需要保留旧 Flask/MySQL 数据并迁移到新 Go 服务？
-
