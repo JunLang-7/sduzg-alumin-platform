@@ -697,6 +697,33 @@ GET /api/v1/alumni/{id}
 
 权限：校友、管理员、超级管理员。
 
+响应字段：
+
+```json
+{
+  "id": 1,
+  "name": "张三",
+  "grade": "2020级",
+  "class_name": "2020级MPA周末班",
+  "cohort": "2023届",
+  "counselor": "李老师",
+  "mentor": "王老师",
+  "major": "公共管理",
+  "training_mode": "非全日制",
+  "industry": "党政机关",
+  "work_unit": "某某单位",
+  "position": "科长",
+  "mailing_address": "山东省济南市",
+  "gender": "男",
+  "mobile": "13800000000",
+  "status": "active",
+  "created_at": "2026-04-28T09:00:00+08:00",
+  "updated_at": "2026-04-29T09:00:00+08:00"
+}
+```
+
+说明：公开校友详情接口不返回管理员内部备注 `remark`，如后续管理端需要展示备注，使用管理端详情或编辑接口返回。
+
 #### 6.3.3 我的资料
 
 ```http

@@ -73,6 +73,7 @@ func New(deps Dependencies) *gin.Engine {
 
 		// 校友查询
 		api.GET("/alumni", alumniHandler.List)
+		api.GET("/alumni/:id", alumniHandler.Detail)
 	}
 
 	return engine
