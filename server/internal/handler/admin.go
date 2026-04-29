@@ -39,3 +39,28 @@ func (h *AdminHandler) List(c *gin.Context) {
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
 	}
 }
+
+func (h *AdminHandler) Create(c *gin.Context) {
+	var req dto.AdminCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+
+	result, err := h.admin.Create(c.Request.Context(), req)
+	if err == nil {
+		response.JSON(c, http.StatusCreated, response.CodeSuccess, "success", result)
+		return
+	}
+
+	switch {
+	case errors.Is(err, common.ErrInvalidRequest):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrAccountAlreadyExists):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "账号已存在")
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	}
+}

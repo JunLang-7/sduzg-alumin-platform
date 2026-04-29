@@ -570,6 +570,64 @@ func TestSuperAdminAdminsListRouteWithoutDatabase(t *testing.T) {
 	}
 }
 
+func TestSuperAdminAdminsCreateRouteRequiresAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/super-admin/admins", strings.NewReader(`{"account":"manager01","password":"InitPass123"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":40100`) {
+		t.Fatalf("expected unauthorized response, got %s", rec.Body.String())
+	}
+}
+
+func TestSuperAdminAdminsCreateRouteWithoutDatabase(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+			Auth: config.AuthConfig{
+				JWTSecret: "test-secret",
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/super-admin/admins", strings.NewReader(`{"account":"manager01","password":"InitPass123"}`))
+	req.Header.Set("Authorization", "Bearer "+testAccessToken(t, "test-secret", time.Now().Add(time.Hour)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
+	}
+}
+
 func testAccessToken(t *testing.T, secret string, expiresAt time.Time) string {
 	t.Helper()
 
