@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
@@ -12,8 +13,6 @@ import (
 )
 
 const AlumniStatusActive = "active"
-
-var ErrAlumniNotFound = errors.New("alumni not found")
 
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
@@ -31,7 +30,7 @@ func NewAlumniRepository(db *gorm.DB) *AlumniRepository {
 // List 根据查询条件分页获取校友列表
 func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
 	if r.db == nil {
-		return nil, 0, ErrDatabaseUnavailable
+		return nil, 0, common.ErrDatabaseUnavailable
 	}
 
 	listQuery = listQuery.Normalize()
@@ -107,7 +106,7 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 // GetByID 根据 ID 获取校友详情
 func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error) {
 	if r.db == nil {
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 
 	qs := query.Use(r.db).AlumniProfile
@@ -117,7 +116,7 @@ func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.Alumn
 		First(&item).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrAlumniNotFound
+		return nil, common.ErrAlumniNotFound
 	}
 	if err != nil {
 		return nil, err

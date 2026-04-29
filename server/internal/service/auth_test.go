@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
-	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -140,7 +140,7 @@ func TestAuthServiceLoginInvalidPassword(t *testing.T) {
 		Account:  "admin",
 		Password: "wrong-password",
 	})
-	if !errors.Is(err, ErrInvalidCredentials) {
+	if !errors.Is(err, common.ErrInvalidCredentials) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 }
@@ -164,19 +164,19 @@ func TestAuthServiceLoginDisabledUser(t *testing.T) {
 		Account:  "admin",
 		Password: "Admin@123456",
 	})
-	if !errors.Is(err, ErrAccountDisabled) {
+	if !errors.Is(err, common.ErrAccountDisabled) {
 		t.Fatalf("expected account disabled, got %v", err)
 	}
 }
 
 func TestAuthServiceLoginUserNotFound(t *testing.T) {
-	svc := NewAuthService(&fakeUserStore{findErr: repository.ErrUserNotFound}, &fakeLoginAttemptStore{}, config.Config{})
+	svc := NewAuthService(&fakeUserStore{findErr: common.ErrUserNotFound}, &fakeLoginAttemptStore{}, config.Config{})
 
 	_, err := svc.Login(context.Background(), dto.LoginRequest{
 		Account:  "admin",
 		Password: "Admin@123456",
 	})
-	if !errors.Is(err, ErrInvalidCredentials) {
+	if !errors.Is(err, common.ErrInvalidCredentials) {
 		t.Fatalf("expected invalid credentials, got %v", err)
 	}
 }
@@ -200,7 +200,7 @@ func TestAuthServiceLoginLocksOnFifthFailure(t *testing.T) {
 		Account:  "admin",
 		Password: "wrong-password",
 	})
-	if !errors.Is(err, ErrAccountLocked) {
+	if !errors.Is(err, common.ErrAccountLocked) {
 		t.Fatalf("expected account locked, got %v", err)
 	}
 }
@@ -212,7 +212,7 @@ func TestAuthServiceLoginRejectsLockedAccount(t *testing.T) {
 		Account:  "admin",
 		Password: "Admin@123456",
 	})
-	if !errors.Is(err, ErrAccountLocked) {
+	if !errors.Is(err, common.ErrAccountLocked) {
 		t.Fatalf("expected account locked, got %v", err)
 	}
 }

@@ -5,15 +5,10 @@ import (
 	"errors"
 	"time"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
-)
-
-var (
-	ErrDatabaseUnavailable = errors.New("database unavailable")
-	ErrCacheUnavailable    = errors.New("cache unavailable")
-	ErrUserNotFound        = errors.New("user not found")
 )
 
 type UserStore interface {
@@ -34,7 +29,7 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 // FindByAccount 根据账户查找用户
 func (r *UserRepository) FindByAccount(ctx context.Context, account string) (*model.User, error) {
 	if r.db == nil {
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 
 	var user model.User
@@ -44,7 +39,7 @@ func (r *UserRepository) FindByAccount(ctx context.Context, account string) (*mo
 		First(&user).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrUserNotFound
+		return nil, common.ErrUserNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -56,7 +51,7 @@ func (r *UserRepository) FindByAccount(ctx context.Context, account string) (*mo
 // UpdateLastLoginAt 更新用户最后登录时间
 func (r *UserRepository) UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error {
 	if r.db == nil {
-		return ErrDatabaseUnavailable
+		return common.ErrDatabaseUnavailable
 	}
 
 	qs := query.Use(r.db).User
@@ -70,7 +65,7 @@ func (r *UserRepository) UpdateLastLoginAt(ctx context.Context, id uint64, logge
 // FindByID 根据 ID 查找用户
 func (r *UserRepository) FindByID(ctx context.Context, id uint64) (*model.User, error) {
 	if r.db == nil {
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 
 	var user model.User
@@ -80,7 +75,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id uint64) (*model.User, 
 		First(&user).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrUserNotFound
+		return nil, common.ErrUserNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -92,7 +87,7 @@ func (r *UserRepository) FindByID(ctx context.Context, id uint64) (*model.User, 
 // UpdatePasswordHash 更新用户密码哈希
 func (r *UserRepository) UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error {
 	if r.db == nil {
-		return ErrDatabaseUnavailable
+		return common.ErrDatabaseUnavailable
 	}
 
 	qs := query.Use(r.db).User

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
@@ -33,7 +34,7 @@ func (h *AlumniHandler) List(c *gin.Context) {
 	}
 
 	switch {
-	case errors.Is(err, service.ErrDatabaseUnavailable):
+	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
@@ -54,9 +55,9 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 	}
 
 	switch {
-	case errors.Is(err, service.ErrAlumniNotFound):
+	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
-	case errors.Is(err, service.ErrDatabaseUnavailable):
+	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")

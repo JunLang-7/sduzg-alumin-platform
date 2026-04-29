@@ -16,8 +16,6 @@ type AlumniService struct {
 	alumni repository.AlumniStore
 }
 
-var ErrAlumniNotFound = errors.New("alumni not found")
-
 func NewAlumniService(alumni repository.AlumniStore) *AlumniService {
 	return &AlumniService{alumni: alumni}
 }
@@ -26,13 +24,13 @@ func NewAlumniService(alumni repository.AlumniStore) *AlumniService {
 func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (common.Pager[dto.AlumniListItem], error) {
 	query := req.ToQuery().Normalize()
 	if s.alumni == nil {
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), ErrDatabaseUnavailable
+		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
 
 	items, total, err := s.alumni.List(ctx, query)
-	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Error(err))
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), ErrDatabaseUnavailable
+		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
 	if err != nil {
 		logger.Error("failed to list alumni", zap.Error(err))
@@ -46,17 +44,17 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (co
 func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 
 	item, err := s.alumni.GetByID(ctx, id)
-	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Uint64("alumni_id", id), zap.Error(err))
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
-	if errors.Is(err, repository.ErrAlumniNotFound) {
+	if errors.Is(err, common.ErrAlumniNotFound) {
 		logger.Warn("alumni not found", zap.Uint64("alumni_id", id))
-		return nil, ErrAlumniNotFound
+		return nil, common.ErrAlumniNotFound
 	}
 	if err != nil {
 		logger.Error("failed to get alumni", zap.Uint64("alumni_id", id), zap.Error(err))

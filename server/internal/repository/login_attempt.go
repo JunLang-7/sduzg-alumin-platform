@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -27,7 +28,7 @@ func NewLoginAttemptRepository(redisClient *redis.Client) *LoginAttemptRepositor
 // FailureCount 获取指定账号的登录失败次数
 func (r *LoginAttemptRepository) FailureCount(ctx context.Context, account string) (int, error) {
 	if r.redis == nil {
-		return 0, ErrCacheUnavailable
+		return 0, common.ErrCacheUnavailable
 	}
 
 	count, err := r.redis.Get(ctx, loginFailureKey(account)).Int()
@@ -43,7 +44,7 @@ func (r *LoginAttemptRepository) FailureCount(ctx context.Context, account strin
 // RecordFailure 记录一次登录失败，并返回当前失败次数。如果达到锁定阈值，返回 true。
 func (r *LoginAttemptRepository) RecordFailure(ctx context.Context, account string, window time.Duration) (int, error) {
 	if r.redis == nil {
-		return 0, ErrCacheUnavailable
+		return 0, common.ErrCacheUnavailable
 	}
 
 	key := loginFailureKey(account)
@@ -63,7 +64,7 @@ func (r *LoginAttemptRepository) RecordFailure(ctx context.Context, account stri
 // ClearFailures 清除指定账号的登录失败记录
 func (r *LoginAttemptRepository) ClearFailures(ctx context.Context, account string) error {
 	if r.redis == nil {
-		return ErrCacheUnavailable
+		return common.ErrCacheUnavailable
 	}
 
 	return r.redis.Del(ctx, loginFailureKey(account)).Err()
