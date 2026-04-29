@@ -26,9 +26,20 @@ func (s *fakeUserStore) FindByAccount(context.Context, string) (*model.User, err
 	return s.user, s.findErr
 }
 
+func (s *fakeUserStore) FindByID(_ context.Context, id uint64) (*model.User, error) {
+	return s.user, s.findErr
+}
+
 func (s *fakeUserStore) UpdateLastLoginAt(_ context.Context, id uint64, loggedInAt time.Time) error {
 	s.updatedUserID = id
 	s.lastLoginAt = loggedInAt
+	return s.updateErr
+}
+
+func (s *fakeUserStore) UpdatePasswordHash(_ context.Context, id uint64, passwordHash string) error {
+	if s.user != nil && s.user.ID == id {
+		s.user.PasswordHash = passwordHash
+	}
 	return s.updateErr
 }
 
@@ -215,5 +226,45 @@ func TestAuthServiceLogout(t *testing.T) {
 	}
 	if !result.LoggedOut {
 		t.Fatal("expected logged out result")
+	}
+}
+
+func TestAuthServiceParseAccessToken(t *testing.T) {
+	now := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
+	svc := NewAuthService(nil, nil, config.Config{
+		App:  config.AppConfig{Name: "test-api"},
+		Auth: config.AuthConfig{JWTSecret: "test-secret"},
+	})
+	svc.now = func() time.Time { return now }
+
+	token, err := svc.issueAccessToken(&model.User{ID: 1, Account: "admin", Role: "super_admin"}, now, now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("failed to issue token: %v", err)
+	}
+
+	uid, err := svc.ParseAccessToken(token)
+	if err != nil {
+		t.Fatalf("expected token to parse, got %v", err)
+	}
+	if uid != 1 {
+		t.Fatalf("expected uid 1, got %d", uid)
+	}
+}
+
+func TestAuthServiceParseAccessTokenRejectsExpiredToken(t *testing.T) {
+	now := time.Date(2026, 4, 28, 12, 0, 0, 0, time.UTC)
+	svc := NewAuthService(nil, nil, config.Config{
+		App:  config.AppConfig{Name: "test-api"},
+		Auth: config.AuthConfig{JWTSecret: "test-secret"},
+	})
+	svc.now = func() time.Time { return now }
+
+	token, err := svc.issueAccessToken(&model.User{ID: 1, Account: "admin", Role: "super_admin"}, now.Add(-2*time.Hour), now.Add(-time.Hour))
+	if err != nil {
+		t.Fatalf("failed to issue token: %v", err)
+	}
+
+	if _, err := svc.ParseAccessToken(token); err == nil {
+		t.Fatal("expected expired token to be rejected")
 	}
 }

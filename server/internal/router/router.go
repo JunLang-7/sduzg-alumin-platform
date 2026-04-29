@@ -47,7 +47,15 @@ func New(deps Dependencies) *gin.Engine {
 	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
 
+	// 白名单路径
+	whiteList := []string{
+		"/api/v1/health/live",
+		"/api/v1/health/ready",
+		"/api/v1/auth/login",
+	}
+
 	api := engine.Group("/api/v1")
+	api.Use(middleware.Auth(authService, whiteList...))
 	{
 		// 健康检查
 		api.GET("/health/live", healthHandler.Live)
@@ -56,6 +64,7 @@ func New(deps Dependencies) *gin.Engine {
 		// 用户认证
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/logout", authHandler.Logout)
+		api.POST("/auth/change-password", authHandler.ChangePassword)
 	}
 
 	return engine

@@ -1,6 +1,10 @@
 package router
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -79,7 +83,7 @@ func TestAuthLoginRouteWithoutDatabase(t *testing.T) {
 	}
 }
 
-func TestAuthLogoutRoute(t *testing.T) {
+func TestAuthLogoutRouteRequiresAuth(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := New(Dependencies{
@@ -97,10 +101,95 @@ func TestAuthLogoutRoute(t *testing.T) {
 
 	engine.ServeHTTP(rec, req)
 
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":40100`) {
+		t.Fatalf("expected unauthorized response, got %s", rec.Body.String())
+	}
+}
+
+func TestAuthLogoutRouteWithToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+			Auth: config.AuthConfig{
+				JWTSecret: "test-secret",
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+testAccessToken(t, "test-secret", time.Now().Add(time.Hour)))
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), `"logged_out":true`) {
 		t.Fatalf("expected logout response, got %s", rec.Body.String())
 	}
+}
+
+func TestAuthChangePasswordRouteRequiresAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/change-password", strings.NewReader(`{"old_password":"oldpass","new_password":"NewPassw1","confirm_password":"NewPassw1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"code":40100`) {
+		t.Fatalf("expected unauthorized response, got %s", rec.Body.String())
+	}
+}
+
+func testAccessToken(t *testing.T, secret string, expiresAt time.Time) string {
+	t.Helper()
+
+	encoder := base64.RawURLEncoding
+	header, err := json.Marshal(map[string]string{
+		"alg": "HS256",
+		"typ": "JWT",
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal token header: %v", err)
+	}
+	payload, err := json.Marshal(map[string]any{
+		"uid": 1,
+		"exp": expiresAt.Unix(),
+	})
+	if err != nil {
+		t.Fatalf("failed to marshal token payload: %v", err)
+	}
+
+	unsigned := encoder.EncodeToString(header) + "." + encoder.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	if _, err := mac.Write([]byte(unsigned)); err != nil {
+		t.Fatalf("failed to sign token: %v", err)
+	}
+
+	return unsigned + "." + encoder.EncodeToString(mac.Sum(nil))
 }

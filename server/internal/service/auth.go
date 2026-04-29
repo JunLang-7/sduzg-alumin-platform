@@ -181,6 +181,51 @@ func (s *AuthService) Logout(context.Context) (*dto.LogoutResult, error) {
 	}, nil
 }
 
+// ChangePassword 校验旧密码并更新为新密码
+func (s *AuthService) ChangePassword(ctx context.Context, userID uint64, oldPassword string, newPassword string) error {
+	if s.users == nil {
+		return ErrDatabaseUnavailable
+	}
+
+	user, err := s.users.FindByID(ctx, userID)
+	if errors.Is(err, repository.ErrUserNotFound) {
+		logger.Warn("user not found", zap.Uint64("user_id", userID))
+		return ErrInvalidCredentials
+	}
+	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+		logger.Error("database is unavailable", zap.Uint64("user_id", userID), zap.Error(err))
+		return ErrDatabaseUnavailable
+	}
+	if err != nil {
+		logger.Error("failed to find user", zap.Uint64("user_id", userID), zap.Error(err))
+		return err
+	}
+
+	// 验证旧密码
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword)); err != nil {
+		return ErrInvalidCredentials
+	}
+
+	// 生成新密码哈希
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		logger.Error("failed to hash new password", zap.Uint64("user_id", userID), zap.Error(err))
+		return err
+	}
+
+	// 更新密码哈希
+	if err := s.users.UpdatePasswordHash(ctx, userID, string(hashed)); err != nil {
+		if errors.Is(err, repository.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Uint64("user_id", userID), zap.Error(err))
+			return ErrDatabaseUnavailable
+		}
+		logger.Error("failed to update password hash", zap.Uint64("user_id", userID), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // issueAccessToken 生成 JWT 访问令牌
 func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, expiresAt time.Time) (string, error) {
 	header := map[string]string{
@@ -220,4 +265,92 @@ func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, exp
 	}
 
 	return unsigned + "." + encoder.EncodeToString(mac.Sum(nil)), nil
+}
+
+// ParseAccessToken 验证并解析简单的 HS256 JWT，返回 uid 字段（用户 ID）
+func (s *AuthService) ParseAccessToken(token string) (uint64, error) {
+	if token == "" {
+		return 0, errors.New("empty token")
+	}
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return 0, errors.New("invalid token format")
+	}
+
+	encoder := base64.RawURLEncoding
+	unsigned := parts[0] + "." + parts[1]
+	sig, err := encoder.DecodeString(parts[2])
+	if err != nil {
+		return 0, errors.New("invalid token signature encoding")
+	}
+
+	mac := hmac.New(sha256.New, s.jwtSecret)
+	if _, err := mac.Write([]byte(unsigned)); err != nil {
+		return 0, err
+	}
+	expected := mac.Sum(nil)
+	if !hmac.Equal(expected, sig) {
+		return 0, errors.New("invalid token signature")
+	}
+
+	// decode payload
+	payloadJSON, err := encoder.DecodeString(parts[1])
+	if err != nil {
+		return 0, errors.New("invalid token payload encoding")
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+		return 0, errors.New("invalid token payload")
+	}
+
+	// extract uid
+	uidAny, ok := payload["uid"]
+	if !ok {
+		return 0, errors.New("uid not found in token")
+	}
+	expAny, ok := payload["exp"]
+	if !ok {
+		return 0, errors.New("exp not found in token")
+	}
+	expiresAt, err := parseUnixTime(expAny)
+	if err != nil {
+		return 0, errors.New("invalid exp value")
+	}
+	now := time.Now
+	if s.now != nil {
+		now = s.now
+	}
+	if !now().Before(expiresAt) {
+		return 0, errors.New("token expired")
+	}
+
+	switch v := uidAny.(type) {
+	case float64:
+		return uint64(v), nil
+	case string:
+		i, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return 0, errors.New("invalid uid value")
+		}
+		return i, nil
+	default:
+		return 0, errors.New("invalid uid type")
+	}
+}
+
+func parseUnixTime(value any) (time.Time, error) {
+	switch v := value.(type) {
+	case float64:
+		return time.Unix(int64(v), 0), nil
+	case string:
+		i, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return time.Time{}, err
+		}
+		return time.Unix(i, 0), nil
+	default:
+		return time.Time{}, errors.New("invalid unix time type")
+	}
 }
