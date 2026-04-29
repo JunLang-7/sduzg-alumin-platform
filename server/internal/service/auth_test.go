@@ -9,6 +9,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"golang.org/x/crypto/bcrypt"
@@ -16,7 +17,10 @@ import (
 
 type fakeUserStore struct {
 	user          *model.User
+	users         []*model.User
+	total         int64
 	findErr       error
+	listErr       error
 	updateErr     error
 	lastLoginAt   time.Time
 	updatedUserID uint64
@@ -28,6 +32,10 @@ func (s *fakeUserStore) FindByAccount(context.Context, string) (*model.User, err
 
 func (s *fakeUserStore) FindByID(_ context.Context, id uint64) (*model.User, error) {
 	return s.user, s.findErr
+}
+
+func (s *fakeUserStore) ListAdmins(_ context.Context, _ do.AdminListQuery) ([]*model.User, int64, error) {
+	return s.users, s.total, s.listErr
 }
 
 func (s *fakeUserStore) UpdateLastLoginAt(_ context.Context, id uint64, loggedInAt time.Time) error {

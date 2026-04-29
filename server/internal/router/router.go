@@ -52,6 +52,9 @@ func New(deps Dependencies) *gin.Engine {
 	// 校友服务和处理器
 	alumniService := service.NewAlumniService(alumniRepository, userRepository)
 	alumniHandler := handler.NewAlumniHandler(alumniService)
+	// 超级管理员服务和处理器
+	adminService := service.NewAdminService(userRepository)
+	adminHandler := handler.NewAdminHandler(adminService)
 
 	// 白名单路径
 	whiteList := []string{
@@ -86,6 +89,14 @@ func New(deps Dependencies) *gin.Engine {
 			admin.POST("/alumni", alumniHandler.Create)
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
+		}
+
+		// 超级管理员专用接口
+		superAdmin := api.Group("/super-admin")
+		superAdmin.Use(middleware.RequireRoles(userRepository, common.RoleSuperAdmin))
+		{
+			// 管理员账号管理
+			superAdmin.GET("/admins", adminHandler.List)
 		}
 	}
 
