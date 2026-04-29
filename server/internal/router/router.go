@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/handler"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
@@ -76,6 +77,13 @@ func New(deps Dependencies) *gin.Engine {
 		api.GET("/alumni/me", alumniHandler.Me)
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.GET("/alumni/:id", alumniHandler.Detail)
+
+		// 管理员专用接口
+		admin := api.Group("/admin")
+		admin.Use(middleware.RequireRoles(userRepository, common.RoleAdmin, common.RoleSuperAdmin))
+		{
+			admin.POST("/alumni", alumniHandler.Create)
+		}
 	}
 
 	return engine

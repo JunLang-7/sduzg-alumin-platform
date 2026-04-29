@@ -22,7 +22,6 @@ import (
 )
 
 const (
-	UserStatusActive   = "active"
 	maxLoginFailures   = 5
 	loginFailureWindow = 5 * time.Minute
 )
@@ -82,7 +81,7 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 		return nil, err
 	}
 
-	if user.Status != UserStatusActive {
+	if user.Status != common.UserStatusActive {
 		logger.Warn("account is disabled", zap.Uint64("user_id", user.ID), zap.String("account", account))
 		return nil, common.ErrAccountDisabled
 	}

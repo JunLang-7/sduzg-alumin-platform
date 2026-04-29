@@ -765,6 +765,36 @@ POST /api/v1/admin/alumni
 
 权限：管理员、超级管理员。
 
+请求字段：
+
+1. `name`：必填，姓名。
+2. `grade`：必填，年级。
+3. `class_name`、`cohort`、`counselor`、`mentor`、`major`、`training_mode`、`industry`、`work_unit`、`position`、`mailing_address`、`gender`、`mobile`、`remark`：可选。
+
+请求示例：
+
+```json
+{
+  "name": "张三",
+  "grade": "2020级",
+  "class_name": "2020级MPA周末班",
+  "cohort": "2020",
+  "counselor": "李老师",
+  "mentor": "王老师",
+  "major": "公共管理",
+  "training_mode": "非全日制",
+  "industry": "教育科研",
+  "work_unit": "山东大学政治学与公共管理学院",
+  "position": "办公室主任",
+  "mailing_address": "山东省济南市山大南路27号",
+  "gender": "男",
+  "mobile": "13800000000",
+  "remark": "管理端备注"
+}
+```
+
+响应返回新增后的校友详情；公开详情响应不包含 `remark`。
+
 #### 6.4.2 编辑校友
 
 ```http

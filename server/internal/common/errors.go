@@ -6,6 +6,7 @@ var (
 	ErrDatabaseUnavailable = errors.New("database unavailable")
 	ErrCacheUnavailable    = errors.New("cache unavailable")
 
+	ErrInvalidRequest       = errors.New("invalid request")
 	ErrUserNotFound         = errors.New("user not found")
 	ErrAlumniNotFound       = errors.New("alumni not found")
 	ErrPermissionDenied     = errors.New("permission denied")

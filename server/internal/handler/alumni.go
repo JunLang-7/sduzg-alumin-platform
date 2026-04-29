@@ -65,6 +65,35 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 	}
 }
 
+func (h *AlumniHandler) Create(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	var req dto.AdminAlumniCreateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+
+	result, err := h.alumni.Create(c.Request.Context(), userID, req)
+	if err == nil {
+		response.JSON(c, http.StatusCreated, response.CodeSuccess, "success", result)
+		return
+	}
+
+	switch {
+	case errors.Is(err, common.ErrInvalidRequest):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	}
+}
+
 func (h *AlumniHandler) Me(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
