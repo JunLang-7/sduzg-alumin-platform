@@ -933,6 +933,25 @@ POST /api/v1/super-admin/admins
 }
 ```
 
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "id": 2,
+    "account": "manager01",
+    "role": "admin",
+    "real_name": "管理员01",
+    "mobile": "13800000000",
+    "status": "active",
+    "created_at": "2026-04-29T11:20:00Z",
+    "updated_at": "2026-04-29T11:20:00Z"
+  }
+}
+```
+
 #### 6.6.3 删除管理员
 
 ```http

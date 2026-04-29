@@ -19,8 +19,12 @@ type fakeUserStore struct {
 	user          *model.User
 	users         []*model.User
 	total         int64
+	created       *model.User
+	createProfile do.AdminCreateProfile
+	createHash    string
 	findErr       error
 	listErr       error
+	createErr     error
 	updateErr     error
 	lastLoginAt   time.Time
 	updatedUserID uint64
@@ -36,6 +40,26 @@ func (s *fakeUserStore) FindByID(_ context.Context, id uint64) (*model.User, err
 
 func (s *fakeUserStore) ListAdmins(_ context.Context, _ do.AdminListQuery) ([]*model.User, int64, error) {
 	return s.users, s.total, s.listErr
+}
+
+func (s *fakeUserStore) CreateAdmin(_ context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error) {
+	s.createProfile = profile
+	s.createHash = passwordHash
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	if s.created != nil {
+		return s.created, nil
+	}
+	return &model.User{
+		ID:           2,
+		Account:      profile.Account,
+		PasswordHash: passwordHash,
+		Role:         common.RoleAdmin,
+		RealName:     profile.RealName,
+		Mobile:       profile.Mobile,
+		Status:       common.UserStatusActive,
+	}, nil
 }
 
 func (s *fakeUserStore) UpdateLastLoginAt(_ context.Context, id uint64, loggedInAt time.Time) error {

@@ -54,3 +54,55 @@ func TestAdminServiceListReturnsDatabaseUnavailable(t *testing.T) {
 		t.Fatalf("expected database unavailable, got %v", err)
 	}
 }
+
+func TestAdminServiceCreateHashesPasswordAndMapsDetail(t *testing.T) {
+	realName := "管理员01"
+	mobile := "13800000000"
+	createdAt := time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 4, 29, 11, 0, 0, 0, time.UTC)
+	store := &fakeUserStore{
+		created: &model.User{
+			ID:        2,
+			Account:   "manager01",
+			Role:      common.RoleAdmin,
+			RealName:  &realName,
+			Mobile:    &mobile,
+			Status:    common.UserStatusActive,
+			CreatedAt: createdAt,
+			UpdatedAt: updatedAt,
+		},
+	}
+	svc := NewAdminService(store)
+
+	result, err := svc.Create(context.Background(), dto.AdminCreateRequest{
+		Account:  " manager01 ",
+		Password: "InitPass123",
+		RealName: &realName,
+		Mobile:   &mobile,
+	})
+	if err != nil {
+		t.Fatalf("expected create success, got %v", err)
+	}
+	if store.createProfile.Account != "manager01" {
+		t.Fatalf("expected trimmed account, got %q", store.createProfile.Account)
+	}
+	if store.createHash == "" || store.createHash == "InitPass123" {
+		t.Fatal("expected password to be hashed before persisting")
+	}
+	if result.ID != 2 || result.Account != "manager01" || result.Role != common.RoleAdmin {
+		t.Fatalf("unexpected create result: %+v", result)
+	}
+}
+
+func TestAdminServiceCreateReturnsAccountAlreadyExists(t *testing.T) {
+	store := &fakeUserStore{createErr: common.ErrAccountAlreadyExists}
+	svc := NewAdminService(store)
+
+	_, err := svc.Create(context.Background(), dto.AdminCreateRequest{
+		Account:  "manager01",
+		Password: "InitPass123",
+	})
+	if err != common.ErrAccountAlreadyExists {
+		t.Fatalf("expected account already exists, got %v", err)
+	}
+}

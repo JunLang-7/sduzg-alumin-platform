@@ -97,6 +97,7 @@ func New(deps Dependencies) *gin.Engine {
 		{
 			// 管理员账号管理
 			superAdmin.GET("/admins", adminHandler.List)
+			superAdmin.POST("/admins", adminHandler.Create)
 		}
 	}
 

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -16,6 +17,7 @@ type UserStore interface {
 	FindByAccount(ctx context.Context, account string) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
+	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
 }
@@ -116,6 +118,30 @@ func (r *UserRepository) ListAdmins(ctx context.Context, listQuery do.AdminListQ
 	}
 
 	return items, total, nil
+}
+
+// CreateAdmin 创建管理员账号。
+func (r *UserRepository) CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	item := &model.User{
+		Account:      profile.Account,
+		PasswordHash: passwordHash,
+		Role:         common.RoleAdmin,
+		RealName:     profile.RealName,
+		Mobile:       profile.Mobile,
+		Status:       common.UserStatusActive,
+	}
+	if err := r.db.WithContext(ctx).Create(item).Error; err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			return nil, common.ErrAccountAlreadyExists
+		}
+		return nil, err
+	}
+
+	return item, nil
 }
 
 // UpdatePasswordHash 更新用户密码哈希

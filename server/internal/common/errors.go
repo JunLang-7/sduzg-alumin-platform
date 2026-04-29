@@ -8,6 +8,7 @@ var (
 
 	ErrInvalidRequest       = errors.New("invalid request")
 	ErrUserNotFound         = errors.New("user not found")
+	ErrAccountAlreadyExists = errors.New("account already exists")
 	ErrAlumniNotFound       = errors.New("alumni not found")
 	ErrPermissionDenied     = errors.New("permission denied")
 	ErrAlumniProfileUnbound = errors.New("alumni profile unbound")
