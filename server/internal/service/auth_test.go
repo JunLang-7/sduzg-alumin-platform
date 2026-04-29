@@ -17,14 +17,17 @@ import (
 
 type fakeUserStore struct {
 	user          *model.User
+	usersByID     map[uint64]*model.User
 	users         []*model.User
 	total         int64
 	created       *model.User
 	createProfile do.AdminCreateProfile
 	createHash    string
+	deleteID      uint64
 	findErr       error
 	listErr       error
 	createErr     error
+	deleteErr     error
 	updateErr     error
 	lastLoginAt   time.Time
 	updatedUserID uint64
@@ -35,6 +38,13 @@ func (s *fakeUserStore) FindByAccount(context.Context, string) (*model.User, err
 }
 
 func (s *fakeUserStore) FindByID(_ context.Context, id uint64) (*model.User, error) {
+	if s.usersByID != nil {
+		user, ok := s.usersByID[id]
+		if !ok {
+			return nil, common.ErrUserNotFound
+		}
+		return user, s.findErr
+	}
 	return s.user, s.findErr
 }
 
@@ -60,6 +70,11 @@ func (s *fakeUserStore) CreateAdmin(_ context.Context, profile do.AdminCreatePro
 		Mobile:       profile.Mobile,
 		Status:       common.UserStatusActive,
 	}, nil
+}
+
+func (s *fakeUserStore) DeleteAdmin(_ context.Context, id uint64) error {
+	s.deleteID = id
+	return s.deleteErr
 }
 
 func (s *fakeUserStore) UpdateLastLoginAt(_ context.Context, id uint64, loggedInAt time.Time) error {

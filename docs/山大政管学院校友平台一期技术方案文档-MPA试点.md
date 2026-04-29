@@ -964,6 +964,18 @@ DELETE /api/v1/super-admin/admins/{id}
 2. 不能删除超级管理员账号。
 3. 删除管理员建议设置 `status = deleted`。
 
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "deleted": true
+  }
+}
+```
+
 ### 6.7 接口安全认证
 
 推荐方案：
