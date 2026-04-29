@@ -41,11 +41,16 @@ func New(deps Dependencies) *gin.Engine {
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
 	// 用户仓库
 	userRepository := repository.NewUserRepository(deps.DB)
+	// 校友仓库
+	alumniRepository := repository.NewAlumniRepository(deps.DB)
 	// 登录尝试仓库
 	loginAttemptRepository := repository.NewLoginAttemptRepository(deps.RedisClient)
 	// 认证服务和处理器
 	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
+	// 校友服务和处理器
+	alumniService := service.NewAlumniService(alumniRepository)
+	alumniHandler := handler.NewAlumniHandler(alumniService)
 
 	// 白名单路径
 	whiteList := []string{
@@ -65,6 +70,9 @@ func New(deps Dependencies) *gin.Engine {
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/logout", authHandler.Logout)
 		api.POST("/auth/change-password", authHandler.ChangePassword)
+
+		// 校友查询
+		api.GET("/alumni", alumniHandler.List)
 	}
 
 	return engine
