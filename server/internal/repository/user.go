@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
@@ -14,6 +15,7 @@ import (
 type UserStore interface {
 	FindByAccount(ctx context.Context, account string) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
+	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
 }
@@ -82,6 +84,38 @@ func (r *UserRepository) FindByID(ctx context.Context, id uint64) (*model.User, 
 	}
 
 	return &user, nil
+}
+
+// ListAdmins 分页查询管理员账号列表（admin 与 super_admin）。
+func (r *UserRepository) ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error) {
+	if r.db == nil {
+		return nil, 0, common.ErrDatabaseUnavailable
+	}
+
+	listQuery = listQuery.Normalize()
+	qs := query.Use(r.db).User
+	db := r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where(qs.DeletedAt.IsNull()).
+		Where(qs.Status.Neq(common.UserStatusDeleted)).
+		Where(qs.Role.In(common.RoleAdmin, common.RoleSuperAdmin))
+
+	var total int64
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var items []*model.User
+	if err := db.
+		Order(qs.ID.Asc()).
+		Offset(listQuery.Page.Offset()).
+		Limit(listQuery.Page.PageSize).
+		Find(&items).
+		Error; err != nil {
+		return nil, 0, err
+	}
+
+	return items, total, nil
 }
 
 // UpdatePasswordHash 更新用户密码哈希

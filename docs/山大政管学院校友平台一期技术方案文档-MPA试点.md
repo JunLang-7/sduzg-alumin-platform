@@ -890,6 +890,32 @@ GET /api/v1/super-admin/admins?page=1&page_size=20
 
 权限：超级管理员。
 
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": 1,
+        "account": "admin",
+        "role": "super_admin",
+        "real_name": "系统管理员",
+        "mobile": "13800000000",
+        "status": "active",
+        "last_login_at": "2026-04-29T10:00:00Z",
+        "created_at": "2026-04-01T08:00:00Z"
+      }
+    ],
+    "page": 1,
+    "page_size": 20,
+    "total": 1
+  }
+}
+```
+
 #### 6.6.2 创建管理员
 
 ```http
