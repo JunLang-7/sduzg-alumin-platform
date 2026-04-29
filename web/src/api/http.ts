@@ -19,6 +19,21 @@ const client = axios.create({
   withCredentials: true,
 });
 
+const accessTokenKey = 'sdu_alumni_access_token';
+
+export function readAccessToken() {
+  return window.localStorage.getItem(accessTokenKey);
+}
+
+export function cacheAccessToken(token: string | null) {
+  if (token) {
+    window.localStorage.setItem(accessTokenKey, token);
+    return;
+  }
+
+  window.localStorage.removeItem(accessTokenKey);
+}
+
 function isEnvelope<T>(value: unknown): value is ApiEnvelope<T> {
   return (
     typeof value === 'object' &&
@@ -34,14 +49,30 @@ function redirectToLogin() {
   }
 }
 
+function withAuthHeader(config: AxiosRequestConfig): AxiosRequestConfig {
+  const token = readAccessToken();
+  if (!token) {
+    return config;
+  }
+
+  return {
+    ...config,
+    headers: {
+      ...config.headers,
+      Authorization: `Bearer ${token}`,
+    },
+  };
+}
+
 export async function request<T>(config: AxiosRequestConfig): Promise<T> {
   try {
-    const response = await client.request<ApiEnvelope<T> | T>(config);
+    const response = await client.request<ApiEnvelope<T> | T>(withAuthHeader(config));
     const body = response.data;
 
     if (isEnvelope<T>(body)) {
       if (body.code !== 0) {
-        if (body.code === 401) {
+        if (response.status === 401) {
+          cacheAccessToken(null);
           redirectToLogin();
         }
         throw new ApiError(body.message || '请求失败', body.code, response.status);
@@ -64,6 +95,7 @@ export async function request<T>(config: AxiosRequestConfig): Promise<T> {
       '网络异常，请稍后重试';
 
     if (status === 401) {
+      cacheAccessToken(null);
       redirectToLogin();
     }
 

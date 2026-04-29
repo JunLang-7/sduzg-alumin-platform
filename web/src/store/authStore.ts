@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { authApi } from '../api/auth';
+import { cacheAccessToken, readAccessToken } from '../api/http';
 import type { ChangePasswordRequest, CurrentUser, LoginRequest } from '../types/auth';
 
 const cacheKey = 'sdu_alumni_current_user';
@@ -41,6 +42,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ loading: true });
     try {
       const response = await authApi.login(payload);
+      cacheAccessToken(response.access_token);
       cacheUser(response.user);
       set({ user: response.user, sessionChecked: true, loading: false });
       return response.user;
@@ -52,8 +54,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async ensureCurrentUser() {
     const { user, sessionChecked } = get();
-    if (user) {
+    if (user && readAccessToken()) {
       return user;
+    }
+    if (user && !readAccessToken()) {
+      cacheUser(null);
+      set({ user: null, sessionChecked: true });
+      return null;
     }
 
     if (sessionChecked) {
@@ -67,6 +74,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: currentUser, sessionChecked: true, loading: false });
       return currentUser;
     } catch {
+      cacheAccessToken(null);
       cacheUser(null);
       set({ user: null, sessionChecked: true, loading: false });
       return null;
@@ -77,6 +85,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await authApi.logout();
     } finally {
+      cacheAccessToken(null);
       cacheUser(null);
       set({ user: null, sessionChecked: true });
     }

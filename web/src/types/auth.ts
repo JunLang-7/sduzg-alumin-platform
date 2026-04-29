@@ -18,6 +18,9 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
+  access_token: string;
+  token_type: 'Bearer';
+  expires_at: string;
   user: CurrentUser;
 }
 
