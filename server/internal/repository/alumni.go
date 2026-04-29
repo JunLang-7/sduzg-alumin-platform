@@ -16,6 +16,7 @@ type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
+	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 }
 
@@ -160,6 +161,73 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 	}
 
 	return item, nil
+}
+
+// Update 编辑管理员可维护的校友档案字段。
+func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+
+	profile = profile.Normalize()
+	qs := query.Use(r.db).AlumniProfile
+	updates := map[string]any{
+		qs.Name.ColumnName().String():      profile.Name,
+		qs.Grade.ColumnName().String():     profile.Grade,
+		qs.UpdatedBy.ColumnName().String(): updaterID,
+	}
+	if profile.ClassName != nil {
+		updates[qs.ClassName.ColumnName().String()] = *profile.ClassName
+	}
+	if profile.Cohort != nil {
+		updates[qs.Cohort.ColumnName().String()] = *profile.Cohort
+	}
+	if profile.Counselor != nil {
+		updates[qs.Counselor.ColumnName().String()] = *profile.Counselor
+	}
+	if profile.Mentor != nil {
+		updates[qs.Mentor.ColumnName().String()] = *profile.Mentor
+	}
+	if profile.Major != nil {
+		updates[qs.Major.ColumnName().String()] = *profile.Major
+	}
+	if profile.TrainingMode != nil {
+		updates[qs.TrainingMode.ColumnName().String()] = *profile.TrainingMode
+	}
+	if profile.Industry != nil {
+		updates[qs.Industry.ColumnName().String()] = *profile.Industry
+	}
+	if profile.WorkUnit != nil {
+		updates[qs.WorkUnit.ColumnName().String()] = *profile.WorkUnit
+	}
+	if profile.Position != nil {
+		updates[qs.Position.ColumnName().String()] = *profile.Position
+	}
+	if profile.MailingAddress != nil {
+		updates[qs.MailingAddress.ColumnName().String()] = *profile.MailingAddress
+	}
+	if profile.Gender != nil {
+		updates[qs.Gender.ColumnName().String()] = *profile.Gender
+	}
+	if profile.Mobile != nil {
+		updates[qs.Mobile.ColumnName().String()] = *profile.Mobile
+	}
+	if profile.Remark != nil {
+		updates[qs.Remark.ColumnName().String()] = *profile.Remark
+	}
+
+	result := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+		Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return common.ErrAlumniNotFound
+	}
+
+	return nil
 }
 
 // UpdateEditableFields 更新校友本人允许维护的四个字段。

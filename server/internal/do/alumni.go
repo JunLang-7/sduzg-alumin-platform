@@ -29,6 +29,24 @@ type AlumniEditableProfile struct {
 	Mobile         *string
 }
 
+type AlumniUpdateProfile struct {
+	Name           string
+	Grade          string
+	ClassName      *string
+	Cohort         *string
+	Counselor      *string
+	Mentor         *string
+	Major          *string
+	TrainingMode   *string
+	Industry       *string
+	WorkUnit       *string
+	Position       *string
+	MailingAddress *string
+	Gender         *string
+	Mobile         *string
+	Remark         *string
+}
+
 type AlumniCreateProfile struct {
 	Name           string
 	Grade          string
@@ -78,6 +96,26 @@ func (p AlumniEditableProfile) Normalize() AlumniEditableProfile {
 	p.Position = trimStringPointer(p.Position)
 	p.MailingAddress = trimStringPointer(p.MailingAddress)
 	p.Mobile = trimStringPointer(p.Mobile)
+	return p
+}
+
+// Normalize 对管理员编辑校友字段做基础清理。
+func (p AlumniUpdateProfile) Normalize() AlumniUpdateProfile {
+	p.Name = strings.TrimSpace(p.Name)
+	p.Grade = strings.TrimSpace(p.Grade)
+	p.ClassName = trimEmptyStringPointer(p.ClassName)
+	p.Cohort = trimEmptyStringPointer(p.Cohort)
+	p.Counselor = trimEmptyStringPointer(p.Counselor)
+	p.Mentor = trimEmptyStringPointer(p.Mentor)
+	p.Major = trimEmptyStringPointer(p.Major)
+	p.TrainingMode = trimEmptyStringPointer(p.TrainingMode)
+	p.Industry = trimEmptyStringPointer(p.Industry)
+	p.WorkUnit = trimEmptyStringPointer(p.WorkUnit)
+	p.Position = trimEmptyStringPointer(p.Position)
+	p.MailingAddress = trimEmptyStringPointer(p.MailingAddress)
+	p.Gender = trimEmptyStringPointer(p.Gender)
+	p.Mobile = trimEmptyStringPointer(p.Mobile)
+	p.Remark = trimEmptyStringPointer(p.Remark)
 	return p
 }
 

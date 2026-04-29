@@ -94,6 +94,43 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 	}
 }
 
+func (h *AlumniHandler) Update(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil || id == 0 {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid alumni id")
+		return
+	}
+
+	var req dto.AdminAlumniUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+
+	result, err := h.alumni.Update(c.Request.Context(), userID, id, req)
+	if err == nil {
+		response.Success(c, result)
+		return
+	}
+
+	switch {
+	case errors.Is(err, common.ErrInvalidRequest):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrAlumniNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	}
+}
+
 func (h *AlumniHandler) Me(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {

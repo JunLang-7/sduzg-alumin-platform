@@ -79,8 +79,46 @@ type AdminAlumniCreateRequest struct {
 	Remark         *string `json:"remark"`
 }
 
+type AdminAlumniUpdateRequest struct {
+	Name           string  `json:"name" binding:"required"`
+	Grade          string  `json:"grade" binding:"required"`
+	ClassName      *string `json:"class_name"`
+	Cohort         *string `json:"cohort"`
+	Counselor      *string `json:"counselor"`
+	Mentor         *string `json:"mentor"`
+	Major          *string `json:"major"`
+	TrainingMode   *string `json:"training_mode"`
+	Industry       *string `json:"industry"`
+	WorkUnit       *string `json:"work_unit"`
+	Position       *string `json:"position"`
+	MailingAddress *string `json:"mailing_address"`
+	Gender         *string `json:"gender"`
+	Mobile         *string `json:"mobile"`
+	Remark         *string `json:"remark"`
+}
+
 func (r AdminAlumniCreateRequest) ToProfile() do.AlumniCreateProfile {
 	return do.AlumniCreateProfile{
+		Name:           r.Name,
+		Grade:          r.Grade,
+		ClassName:      r.ClassName,
+		Cohort:         r.Cohort,
+		Counselor:      r.Counselor,
+		Mentor:         r.Mentor,
+		Major:          r.Major,
+		TrainingMode:   r.TrainingMode,
+		Industry:       r.Industry,
+		WorkUnit:       r.WorkUnit,
+		Position:       r.Position,
+		MailingAddress: r.MailingAddress,
+		Gender:         r.Gender,
+		Mobile:         r.Mobile,
+		Remark:         r.Remark,
+	}
+}
+
+func (r AdminAlumniUpdateRequest) ToProfile() do.AlumniUpdateProfile {
+	return do.AlumniUpdateProfile{
 		Name:           r.Name,
 		Grade:          r.Grade,
 		ClassName:      r.ClassName,

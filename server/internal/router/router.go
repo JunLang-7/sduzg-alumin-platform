@@ -82,7 +82,9 @@ func New(deps Dependencies) *gin.Engine {
 		admin := api.Group("/admin")
 		admin.Use(middleware.RequireRoles(userRepository, common.RoleAdmin, common.RoleSuperAdmin))
 		{
+			// 管理校友信息
 			admin.POST("/alumni", alumniHandler.Create)
+			admin.PUT("/alumni/:id", alumniHandler.Update)
 		}
 	}
 
