@@ -8,7 +8,6 @@ import { AlumniListPage } from '../pages/alumni/AlumniListPage';
 import { AlumniDetailPage } from '../pages/alumni/AlumniDetailPage';
 import { ProfilePage } from '../pages/profile/ProfilePage';
 import { ChangePasswordPage } from '../pages/profile/ChangePasswordPage';
-import { AdminHomePage } from '../pages/admin/AdminHomePage';
 import { AlumniManagementPage } from '../pages/admin/AlumniManagementPage';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { AdminUsersPage } from '../pages/admin/AdminUsersPage';
@@ -57,7 +56,7 @@ export const router = createBrowserRouter([
         children: [
           {
             path: '/admin',
-            element: <AdminHomePage />,
+            element: <Navigate to="/admin/dashboard" replace />,
           },
           {
             path: '/admin/alumni',
