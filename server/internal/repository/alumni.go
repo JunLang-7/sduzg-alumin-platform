@@ -12,11 +12,10 @@ import (
 	"gorm.io/gorm"
 )
 
-const AlumniStatusActive = "active"
-
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
+	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 }
 
@@ -39,7 +38,7 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 	db := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
 		Where(qs.DeletedAt.IsNull()).
-		Where(qs.Status.Eq(AlumniStatusActive))
+		Where(qs.Status.Eq(common.AlumniStatusActive))
 
 	if listQuery.Keyword != "" {
 		like := "%" + listQuery.Keyword + "%"
@@ -113,7 +112,7 @@ func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.Alumn
 	qs := query.Use(r.db).AlumniProfile
 	var item model.AlumniProfile
 	err := r.db.WithContext(ctx).
-		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(AlumniStatusActive)).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
 		First(&item).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -124,6 +123,43 @@ func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.Alumn
 	}
 
 	return &item, nil
+}
+
+// Create 新增校友档案。
+func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	if profile == nil {
+		return nil, common.ErrInvalidRequest
+	}
+
+	item := &model.AlumniProfile{
+		Name:           profile.Name,
+		Grade:          profile.Grade,
+		ClassName:      profile.ClassName,
+		Cohort:         profile.Cohort,
+		Counselor:      profile.Counselor,
+		Mentor:         profile.Mentor,
+		Major:          profile.Major,
+		TrainingMode:   profile.TrainingMode,
+		Industry:       profile.Industry,
+		WorkUnit:       profile.WorkUnit,
+		Position:       profile.Position,
+		MailingAddress: profile.MailingAddress,
+		Gender:         profile.Gender,
+		Mobile:         profile.Mobile,
+		Remark:         profile.Remark,
+		Status:         profile.Status,
+		CreatedBy:      &operatorID,
+		UpdatedBy:      &operatorID,
+	}
+
+	if err := r.db.WithContext(ctx).Create(item).Error; err != nil {
+		return nil, err
+	}
+
+	return item, nil
 }
 
 // UpdateEditableFields 更新校友本人允许维护的四个字段。
@@ -156,7 +192,7 @@ func (r *AlumniRepository) UpdateEditableFields(ctx context.Context, id uint64, 
 
 	result := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
-		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(AlumniStatusActive)).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
 		Updates(updates)
 	if result.Error != nil {
 		return result.Error

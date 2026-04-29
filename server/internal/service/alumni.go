@@ -65,6 +65,37 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDeta
 	return mapAlumniDetail(item), nil
 }
 
+// Create 由管理员新增校友档案。
+func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.AdminAlumniCreateRequest) (*dto.AlumniDetail, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	profile := req.ToProfile().Normalize()
+	if profile.Name == "" || profile.Grade == "" {
+		return nil, common.ErrInvalidRequest
+	}
+	if profile.Status != common.AlumniStatusActive {
+		return nil, common.ErrInvalidRequest
+	}
+
+	created, err := s.alumni.Create(ctx, &profile, operatorID)
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
+		logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Error(err))
+		return nil, common.ErrDatabaseUnavailable
+	}
+	if errors.Is(err, common.ErrInvalidRequest) {
+		return nil, common.ErrInvalidRequest
+	}
+	if err != nil {
+		logger.Error("failed to create alumni", zap.Uint64("operator_id", operatorID), zap.Error(err))
+		return nil, err
+	}
+
+	return mapAlumniDetail(created), nil
+}
+
 // GetMe 获取当前登录校友绑定的本人资料。
 func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDetail, error) {
 	alumniID, err := s.currentAlumniID(ctx, userID)
@@ -126,7 +157,7 @@ func (s *AlumniService) currentAlumniID(ctx context.Context, userID uint64) (uin
 		logger.Error("failed to find current user", zap.Uint64("user_id", userID), zap.Error(err))
 		return 0, err
 	}
-	if user.Role != "alumni" {
+	if user.Role != common.RoleAlumni {
 		logger.Warn("current user is not alumni", zap.Uint64("user_id", userID), zap.String("role", user.Role))
 		return 0, common.ErrPermissionDenied
 	}

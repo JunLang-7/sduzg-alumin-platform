@@ -29,6 +29,49 @@ type AlumniEditableProfile struct {
 	Mobile         *string
 }
 
+type AlumniCreateProfile struct {
+	Name           string
+	Grade          string
+	ClassName      *string
+	Cohort         *string
+	Counselor      *string
+	Mentor         *string
+	Major          *string
+	TrainingMode   *string
+	Industry       *string
+	WorkUnit       *string
+	Position       *string
+	MailingAddress *string
+	Gender         *string
+	Mobile         *string
+	Remark         *string
+	Status         string
+}
+
+// Normalize 对管理端新增校友字段做基础清理，并设置默认状态。
+func (p AlumniCreateProfile) Normalize() AlumniCreateProfile {
+	p.Name = strings.TrimSpace(p.Name)
+	p.Grade = strings.TrimSpace(p.Grade)
+	p.ClassName = trimEmptyStringPointer(p.ClassName)
+	p.Cohort = trimEmptyStringPointer(p.Cohort)
+	p.Counselor = trimEmptyStringPointer(p.Counselor)
+	p.Mentor = trimEmptyStringPointer(p.Mentor)
+	p.Major = trimEmptyStringPointer(p.Major)
+	p.TrainingMode = trimEmptyStringPointer(p.TrainingMode)
+	p.Industry = trimEmptyStringPointer(p.Industry)
+	p.WorkUnit = trimEmptyStringPointer(p.WorkUnit)
+	p.Position = trimEmptyStringPointer(p.Position)
+	p.MailingAddress = trimEmptyStringPointer(p.MailingAddress)
+	p.Gender = trimEmptyStringPointer(p.Gender)
+	p.Mobile = trimEmptyStringPointer(p.Mobile)
+	p.Remark = trimEmptyStringPointer(p.Remark)
+	p.Status = strings.TrimSpace(p.Status)
+	if p.Status == "" {
+		p.Status = common.AlumniStatusActive
+	}
+	return p
+}
+
 // Normalize 对校友本人可编辑字段去除首尾空格，保留 nil 以区分未提交字段。
 func (p AlumniEditableProfile) Normalize() AlumniEditableProfile {
 	p.WorkUnit = trimStringPointer(p.WorkUnit)
@@ -67,4 +110,12 @@ func trimStringPointer(value *string) *string {
 
 	trimmed := strings.TrimSpace(*value)
 	return &trimmed
+}
+
+func trimEmptyStringPointer(value *string) *string {
+	value = trimStringPointer(value)
+	if value == nil || *value == "" {
+		return nil
+	}
+	return value
 }

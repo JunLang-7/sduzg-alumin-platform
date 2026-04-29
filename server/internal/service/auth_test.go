@@ -80,7 +80,7 @@ func TestAuthServiceLoginSuccess(t *testing.T) {
 			PasswordHash: string(passwordHash),
 			Role:         "super_admin",
 			RealName:     &realName,
-			Status:       UserStatusActive,
+			Status:       common.UserStatusActive,
 		},
 	}
 	attempts := &fakeLoginAttemptStore{failureCount: 3}
@@ -132,7 +132,7 @@ func TestAuthServiceLoginInvalidPassword(t *testing.T) {
 			Account:      "admin",
 			PasswordHash: string(passwordHash),
 			Role:         "super_admin",
-			Status:       UserStatusActive,
+			Status:       common.UserStatusActive,
 		},
 	}, &fakeLoginAttemptStore{}, config.Config{})
 
@@ -192,7 +192,7 @@ func TestAuthServiceLoginLocksOnFifthFailure(t *testing.T) {
 			Account:      "admin",
 			PasswordHash: string(passwordHash),
 			Role:         "super_admin",
-			Status:       UserStatusActive,
+			Status:       common.UserStatusActive,
 		},
 	}, &fakeLoginAttemptStore{failureCount: 4}, config.Config{})
 

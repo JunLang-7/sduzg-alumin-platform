@@ -19,6 +19,9 @@ type fakeAlumniStore struct {
 	detailID      uint64
 	detail        *model.AlumniProfile
 	detailErr     error
+	createProfile *model.AlumniProfile
+	createResult  *model.AlumniProfile
+	createErr     error
 	updateID      uint64
 	updateUserID  uint64
 	updateProfile do.AlumniEditableProfile
@@ -35,11 +38,96 @@ func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64) (*model.AlumniPr
 	return s.detail, s.detailErr
 }
 
+func (s *fakeAlumniStore) Create(_ context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error) {
+	s.createProfile = &model.AlumniProfile{
+		Name:           profile.Name,
+		Grade:          profile.Grade,
+		ClassName:      profile.ClassName,
+		Cohort:         profile.Cohort,
+		Counselor:      profile.Counselor,
+		Mentor:         profile.Mentor,
+		Major:          profile.Major,
+		TrainingMode:   profile.TrainingMode,
+		Industry:       profile.Industry,
+		WorkUnit:       profile.WorkUnit,
+		Position:       profile.Position,
+		MailingAddress: profile.MailingAddress,
+		Gender:         profile.Gender,
+		Mobile:         profile.Mobile,
+		Remark:         profile.Remark,
+		Status:         profile.Status,
+		CreatedBy:      &operatorID,
+		UpdatedBy:      &operatorID,
+	}
+	if s.createResult != nil || s.createErr != nil {
+		return s.createResult, s.createErr
+	}
+	return s.createProfile, nil
+}
+
 func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
 	s.updateID = id
 	s.updateUserID = updaterID
 	s.updateProfile = profile
 	return s.updateErr
+}
+
+func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {
+	className := " 2020级MPA周末班 "
+	emptyMentor := " "
+	workUnit := " 山东大学 "
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+
+	detail, err := svc.Create(context.Background(), 7, dto.AdminAlumniCreateRequest{
+		Name:      " 张三 ",
+		Grade:     " 2020级 ",
+		ClassName: &className,
+		Mentor:    &emptyMentor,
+		WorkUnit:  &workUnit,
+	})
+	if err != nil {
+		t.Fatalf("expected create success, got %v", err)
+	}
+	if store.createProfile == nil {
+		t.Fatal("expected create profile to be recorded")
+	}
+	if store.createProfile.Name != "张三" || store.createProfile.Grade != "2020级" {
+		t.Fatalf("expected trimmed required fields, got %+v", store.createProfile)
+	}
+	if store.createProfile.ClassName == nil || *store.createProfile.ClassName != "2020级MPA周末班" {
+		t.Fatalf("expected trimmed class name, got %+v", store.createProfile.ClassName)
+	}
+	if store.createProfile.Mentor != nil {
+		t.Fatalf("expected blank mentor to be nil, got %+v", store.createProfile.Mentor)
+	}
+	if store.createProfile.WorkUnit == nil || *store.createProfile.WorkUnit != "山东大学" {
+		t.Fatalf("expected trimmed work unit, got %+v", store.createProfile.WorkUnit)
+	}
+	if store.createProfile.CreatedBy == nil || *store.createProfile.CreatedBy != 7 {
+		t.Fatalf("expected creator id 7, got %+v", store.createProfile.CreatedBy)
+	}
+	if store.createProfile.UpdatedBy == nil || *store.createProfile.UpdatedBy != 7 {
+		t.Fatalf("expected updater id 7, got %+v", store.createProfile.UpdatedBy)
+	}
+	if store.createProfile.Status != common.AlumniStatusActive {
+		t.Fatalf("expected active status, got %q", store.createProfile.Status)
+	}
+	if detail.Name != "张三" || detail.Grade != "2020级" || detail.WorkUnit == nil || *detail.WorkUnit != "山东大学" {
+		t.Fatalf("unexpected created detail: %+v", detail)
+	}
+}
+
+func TestAlumniServiceCreateRejectsMissingRequiredFields(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+
+	_, err := svc.Create(context.Background(), 7, dto.AdminAlumniCreateRequest{
+		Name:  " ",
+		Grade: "2020级",
+	})
+	if err != common.ErrInvalidRequest {
+		t.Fatalf("expected invalid request, got %v", err)
+	}
 }
 
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
