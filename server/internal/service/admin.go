@@ -77,6 +77,52 @@ func (s *AdminService) Create(ctx context.Context, req dto.AdminCreateRequest) (
 	return mapAdminDetail(created), nil
 }
 
+// Delete 由超级管理员删除管理员账号。
+func (s *AdminService) Delete(ctx context.Context, operatorID uint64, id uint64) error {
+	if s.users == nil {
+		logger.Error("user repository is not initialized")
+		return common.ErrDatabaseUnavailable
+	}
+	if operatorID == id {
+		return common.ErrCannotDeleteSelf
+	}
+
+	target, err := s.users.FindByID(ctx, id)
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
+		logger.Error("database is unavailable", zap.Uint64("target_user_id", id), zap.Error(err))
+		return common.ErrDatabaseUnavailable
+	}
+	if errors.Is(err, common.ErrUserNotFound) {
+		logger.Warn("target user not found", zap.Uint64("target_user_id", id))
+		return common.ErrUserNotFound
+	}
+	if err != nil {
+		logger.Error("failed to find target user", zap.Uint64("target_user_id", id), zap.Error(err))
+		return err
+	}
+	if target.Role == common.RoleSuperAdmin {
+		return common.ErrCannotDeleteSuper
+	}
+	if target.Role != common.RoleAdmin {
+		return common.ErrUserNotFound
+	}
+
+	if err := s.users.DeleteAdmin(ctx, id); err != nil {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Uint64("target_user_id", id), zap.Error(err))
+			return common.ErrDatabaseUnavailable
+		}
+		if errors.Is(err, common.ErrUserNotFound) {
+			logger.Warn("target admin not found when deleting", zap.Uint64("target_user_id", id))
+			return common.ErrUserNotFound
+		}
+		logger.Error("failed to delete admin", zap.Uint64("target_user_id", id), zap.Error(err))
+		return err
+	}
+
+	return nil
+}
+
 // mapAdminListItems 将 User 模型列表转换为 AdminListItem 列表
 func mapAdminListItems(users []*model.User) []dto.AdminListItem {
 	result := make([]dto.AdminListItem, 0, len(users))

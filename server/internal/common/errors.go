@@ -9,6 +9,8 @@ var (
 	ErrInvalidRequest       = errors.New("invalid request")
 	ErrUserNotFound         = errors.New("user not found")
 	ErrAccountAlreadyExists = errors.New("account already exists")
+	ErrCannotDeleteSelf     = errors.New("cannot delete self")
+	ErrCannotDeleteSuper    = errors.New("cannot delete super admin")
 	ErrAlumniNotFound       = errors.New("alumni not found")
 	ErrPermissionDenied     = errors.New("permission denied")
 	ErrAlumniProfileUnbound = errors.New("alumni profile unbound")

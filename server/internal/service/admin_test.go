@@ -106,3 +106,42 @@ func TestAdminServiceCreateReturnsAccountAlreadyExists(t *testing.T) {
 		t.Fatalf("expected account already exists, got %v", err)
 	}
 }
+
+func TestAdminServiceDeleteSuccess(t *testing.T) {
+	store := &fakeUserStore{
+		usersByID: map[uint64]*model.User{
+			2: {ID: 2, Role: common.RoleAdmin, Status: common.UserStatusActive},
+		},
+	}
+	svc := NewAdminService(store)
+
+	err := svc.Delete(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("expected delete success, got %v", err)
+	}
+	if store.deleteID != 2 {
+		t.Fatalf("expected delete target id 2, got %d", store.deleteID)
+	}
+}
+
+func TestAdminServiceDeleteRejectsSelfDelete(t *testing.T) {
+	svc := NewAdminService(&fakeUserStore{})
+	err := svc.Delete(context.Background(), 1, 1)
+	if err != common.ErrCannotDeleteSelf {
+		t.Fatalf("expected cannot delete self, got %v", err)
+	}
+}
+
+func TestAdminServiceDeleteRejectsSuperAdmin(t *testing.T) {
+	store := &fakeUserStore{
+		usersByID: map[uint64]*model.User{
+			2: {ID: 2, Role: common.RoleSuperAdmin, Status: common.UserStatusActive},
+		},
+	}
+	svc := NewAdminService(store)
+
+	err := svc.Delete(context.Background(), 1, 2)
+	if err != common.ErrCannotDeleteSuper {
+		t.Fatalf("expected cannot delete super admin, got %v", err)
+	}
+}

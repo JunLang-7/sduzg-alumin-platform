@@ -18,6 +18,7 @@ type UserStore interface {
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
 	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
+	DeleteAdmin(ctx context.Context, id uint64) error
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
 }
@@ -142,6 +143,35 @@ func (r *UserRepository) CreateAdmin(ctx context.Context, profile do.AdminCreate
 	}
 
 	return item, nil
+}
+
+// DeleteAdmin 软删除管理员账号。
+func (r *UserRepository) DeleteAdmin(ctx context.Context, id uint64) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).User
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updateResult := tx.Model(&model.User{}).
+			Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Neq(common.UserStatusDeleted), qs.Role.Eq(common.RoleAdmin)).
+			Update(qs.Status.ColumnName().String(), common.UserStatusDeleted)
+		if updateResult.Error != nil {
+			return updateResult.Error
+		}
+		if updateResult.RowsAffected == 0 {
+			return common.ErrUserNotFound
+		}
+
+		deleteResult := tx.Where(qs.ID.Eq(id), qs.DeletedAt.IsNull()).Delete(&model.User{})
+		if deleteResult.Error != nil {
+			return deleteResult.Error
+		}
+		if deleteResult.RowsAffected == 0 {
+			return common.ErrUserNotFound
+		}
+		return nil
+	})
 }
 
 // UpdatePasswordHash 更新用户密码哈希
