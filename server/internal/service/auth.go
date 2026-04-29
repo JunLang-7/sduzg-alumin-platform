@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
@@ -24,13 +25,6 @@ const (
 	UserStatusActive   = "active"
 	maxLoginFailures   = 5
 	loginFailureWindow = 5 * time.Minute
-)
-
-var (
-	ErrInvalidCredentials  = errors.New("invalid credentials")
-	ErrAccountDisabled     = errors.New("account disabled")
-	ErrAccountLocked       = errors.New("account temporarily locked")
-	ErrDatabaseUnavailable = errors.New("database unavailable")
 )
 
 type AuthService struct {
@@ -58,30 +52,30 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	account := strings.TrimSpace(req.Account)
 	if account == "" || req.Password == "" {
 		logger.Error("Login failed", zap.String("account", account))
-		return nil, ErrInvalidCredentials
+		return nil, common.ErrInvalidCredentials
 	}
 	if s.users == nil {
 		logger.Error("User repository is not initialized")
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 	// 检查是否登录锁定
 	if s.isLoginLocked(ctx, account) {
 		logger.Warn("account login temporarily locked", zap.String("account", account))
-		return nil, ErrAccountLocked
+		return nil, common.ErrAccountLocked
 	}
 
 	// 通过账户查找用户
 	user, err := s.users.FindByAccount(ctx, account)
-	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Error(err))
-		return nil, ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
-	if errors.Is(err, repository.ErrUserNotFound) {
+	if errors.Is(err, common.ErrUserNotFound) {
 		logger.Warn("user not found", zap.String("account", account))
 		if s.recordLoginFailure(ctx, account) {
-			return nil, ErrAccountLocked
+			return nil, common.ErrAccountLocked
 		}
-		return nil, ErrInvalidCredentials
+		return nil, common.ErrInvalidCredentials
 	}
 	if err != nil {
 		logger.Error("failed to find user by account", zap.String("account", account), zap.Error(err))
@@ -90,16 +84,16 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 
 	if user.Status != UserStatusActive {
 		logger.Warn("account is disabled", zap.Uint64("user_id", user.ID), zap.String("account", account))
-		return nil, ErrAccountDisabled
+		return nil, common.ErrAccountDisabled
 	}
 	// 验证密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		logger.Warn("invalid password", zap.Uint64("user_id", user.ID), zap.String("account", account))
 		// 记录登录失败，如果达到阈值则锁定账号
 		if s.recordLoginFailure(ctx, account) {
-			return nil, ErrAccountLocked
+			return nil, common.ErrAccountLocked
 		}
-		return nil, ErrInvalidCredentials
+		return nil, common.ErrInvalidCredentials
 	}
 
 	issuedAt := s.now()
@@ -112,9 +106,9 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	}
 	// 更新用户最后登录时间
 	if err := s.users.UpdateLastLoginAt(ctx, user.ID, issuedAt); err != nil {
-		if errors.Is(err, repository.ErrDatabaseUnavailable) {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
 			logger.Error("database is unavailable", zap.Uint64("user_id", user.ID), zap.Error(err))
-			return nil, ErrDatabaseUnavailable
+			return nil, common.ErrDatabaseUnavailable
 		}
 		logger.Error("failed to update last login time", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return nil, err
@@ -184,17 +178,17 @@ func (s *AuthService) Logout(context.Context) (*dto.LogoutResult, error) {
 // ChangePassword 校验旧密码并更新为新密码
 func (s *AuthService) ChangePassword(ctx context.Context, userID uint64, oldPassword string, newPassword string) error {
 	if s.users == nil {
-		return ErrDatabaseUnavailable
+		return common.ErrDatabaseUnavailable
 	}
 
 	user, err := s.users.FindByID(ctx, userID)
-	if errors.Is(err, repository.ErrUserNotFound) {
+	if errors.Is(err, common.ErrUserNotFound) {
 		logger.Warn("user not found", zap.Uint64("user_id", userID))
-		return ErrInvalidCredentials
+		return common.ErrInvalidCredentials
 	}
-	if errors.Is(err, repository.ErrDatabaseUnavailable) {
+	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Uint64("user_id", userID), zap.Error(err))
-		return ErrDatabaseUnavailable
+		return common.ErrDatabaseUnavailable
 	}
 	if err != nil {
 		logger.Error("failed to find user", zap.Uint64("user_id", userID), zap.Error(err))
@@ -203,7 +197,7 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uint64, oldPass
 
 	// 验证旧密码
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(oldPassword)); err != nil {
-		return ErrInvalidCredentials
+		return common.ErrInvalidCredentials
 	}
 
 	// 生成新密码哈希
@@ -215,9 +209,9 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uint64, oldPass
 
 	// 更新密码哈希
 	if err := s.users.UpdatePasswordHash(ctx, userID, string(hashed)); err != nil {
-		if errors.Is(err, repository.ErrDatabaseUnavailable) {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
 			logger.Error("database is unavailable", zap.Uint64("user_id", userID), zap.Error(err))
-			return ErrDatabaseUnavailable
+			return common.ErrDatabaseUnavailable
 		}
 		logger.Error("failed to update password hash", zap.Uint64("user_id", userID), zap.Error(err))
 		return err
