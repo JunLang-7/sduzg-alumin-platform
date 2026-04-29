@@ -76,14 +76,10 @@ func New(deps Dependencies) *gin.Engine {
 		api.POST("/auth/change-password", authHandler.ChangePassword)
 
 		// 校友查询与更新
-		alumni := api.Group("/alumni")
-		alumni.Use(middleware.RequireRoles(userRepository, common.RoleAlumni, common.RoleAdmin, common.RoleSuperAdmin))
-		{
-			alumni.GET("", alumniHandler.List)
-			alumni.GET("/me", alumniHandler.Me)
-			alumni.PUT("/me", alumniHandler.UpdateMe)
-			alumni.GET("/:id", alumniHandler.Detail)
-		}
+		api.GET("/alumni", alumniHandler.List)
+		api.GET("/alumni/me", alumniHandler.Me)
+		api.PUT("/alumni/me", alumniHandler.UpdateMe)
+		api.GET("/alumni/:id", alumniHandler.Detail)
 
 		// 管理员专用接口
 		admin := api.Group("/admin")
