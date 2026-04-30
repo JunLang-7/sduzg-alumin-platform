@@ -37,8 +37,13 @@ export const router = createBrowserRouter([
             element: <AlumniDetailPage />,
           },
           {
-            path: '/profile',
-            element: <ProfilePage />,
+            element: <RequireAuth exactRole="alumni" />,
+            children: [
+              {
+                path: '/profile',
+                element: <ProfilePage />,
+              },
+            ],
           },
           {
             path: '/profile/password',

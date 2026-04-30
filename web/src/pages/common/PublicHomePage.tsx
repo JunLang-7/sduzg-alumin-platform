@@ -27,11 +27,15 @@ export function PublicHomePage() {
     navigate(user ? getDefaultPath(user.role) : '/login');
   };
 
+  const openBrandHome = () => {
+    navigate(user ? getDefaultPath(user.role) : '/');
+  };
+
   return (
     <main className="public-page">
       <header className="public-header">
         <div className="public-header-main">
-          <button className="public-brand" type="button" onClick={() => navigate('/')}>
+          <button className="public-brand" type="button" onClick={openBrandHome}>
             <img className="public-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
             <span className="public-brand-text" aria-hidden="true">
               <strong>山东大学</strong>
@@ -142,14 +146,16 @@ export function PublicHomePage() {
                 查询 MPA 校友名录
                 <ArrowRightOutlined />
               </button>
-              <button
-                type="button"
-                className="notice-link"
-                onClick={() => navigate('/admin/dashboard')}
-              >
-                进入管理员后台
-                <ArrowRightOutlined />
-              </button>
+              {user && hasRole(user, 'admin') ? (
+                <button
+                  type="button"
+                  className="notice-link"
+                  onClick={() => navigate('/admin/dashboard')}
+                >
+                  进入管理员后台
+                  <ArrowRightOutlined />
+                </button>
+              ) : null}
             </Card>
           </Col>
         </Row>

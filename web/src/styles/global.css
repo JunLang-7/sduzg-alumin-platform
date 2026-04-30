@@ -162,8 +162,7 @@ button {
   min-width: min(520px, 42vw);
 }
 
-.public-login,
-.site-login-button {
+.public-login {
   min-width: 112px;
   height: 44px;
   border: 0;
@@ -175,8 +174,7 @@ button {
   box-shadow: none;
 }
 
-.public-login:hover,
-.site-login-button:hover {
+.public-login:hover {
   background: rgba(255, 255, 255, 0.2) !important;
   color: #fff !important;
 }
