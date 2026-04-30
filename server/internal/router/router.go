@@ -96,6 +96,7 @@ func New(deps Dependencies) *gin.Engine {
 
 			// 数据大屏
 			admin.GET("/dashboard/overview", dashboardHandler.Overview)
+			admin.GET("/dashboard/distribution", dashboardHandler.Distribution)
 		}
 
 		// 超级管理员专用接口

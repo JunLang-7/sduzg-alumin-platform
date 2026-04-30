@@ -12,6 +12,7 @@ import (
 
 type DashboardStore interface {
 	Overview(ctx context.Context) (do.DashboardOverviewStats, error)
+	Distribution(ctx context.Context, query do.DashboardDistributionQuery) ([]do.DashboardDistributionItem, error)
 }
 
 type DashboardRepository struct {
@@ -62,4 +63,56 @@ func (r *DashboardRepository) Overview(ctx context.Context) (do.DashboardOvervie
 	}
 
 	return stats, nil
+}
+
+// Distribution 获取指定维度的校友分布统计。
+func (r *DashboardRepository) Distribution(ctx context.Context, dashboardQuery do.DashboardDistributionQuery) ([]do.DashboardDistributionItem, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	dashboardQuery = dashboardQuery.Normalize()
+	column, ok := dashboardDistributionColumn(dashboardQuery.Dimension)
+	if !ok {
+		return nil, common.ErrInvalidRequest
+	}
+
+	nameExpr := "COALESCE(NULLIF(TRIM(" + column + "), ''), '未填')"
+	qs := query.Use(r.db).AlumniProfile
+	var items []do.DashboardDistributionItem
+	if err := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Select(nameExpr + " AS name, COUNT(*) AS value").
+		Where(qs.DeletedAt.IsNull()).
+		Where(qs.Status.Eq(common.AlumniStatusActive)).
+		Group(nameExpr).
+		Order("value DESC").
+		Order("name ASC").
+		Scan(&items).
+		Error; err != nil {
+		return nil, err
+	}
+
+	return items, nil
+}
+
+func dashboardDistributionColumn(dimension string) (string, bool) {
+	switch dimension {
+	case do.DashboardDistributionDimensionGrade:
+		return "grade", true
+	case do.DashboardDistributionDimensionClassName:
+		return "class_name", true
+	case do.DashboardDistributionDimensionCohort:
+		return "cohort", true
+	case do.DashboardDistributionDimensionGender:
+		return "gender", true
+	case do.DashboardDistributionDimensionMajor:
+		return "major", true
+	case do.DashboardDistributionDimensionTrainingMode:
+		return "training_mode", true
+	case do.DashboardDistributionDimensionIndustry:
+		return "industry", true
+	default:
+		return "", false
+	}
 }
