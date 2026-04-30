@@ -1,13 +1,17 @@
 :root {
-  --sdu-red: #a90f05;
-  --sdu-red-dark: #7f0903;
-  --sdu-red-bright: #c51a0d;
-  --sdu-gold: #f7dfae;
+  --sdu-red: #a7190f;
+  --sdu-red-dark: #7e1009;
+  --sdu-red-bright: #c32618;
+  --sdu-gold: #f2c66d;
+  --teal: #1d7068;
+  --amber: #a96916;
   --ink: #241817;
   --muted: #746764;
   --line: #eadfdc;
   --paper: #fffaf7;
-  --page: #f7f3f1;
+  --page: #f6f2ef;
+  --surface: #ffffff;
+  --surface-strong: #fff7f1;
 }
 
 html,
@@ -21,6 +25,10 @@ body,
 body {
   background: var(--page);
   color: var(--ink);
+}
+
+::selection {
+  background: rgba(167, 25, 15, 0.2);
 }
 
 button,
@@ -48,7 +56,9 @@ button {
 
 .public-header,
 .site-header {
-  background: var(--sdu-red);
+  background:
+    linear-gradient(135deg, rgba(126, 16, 9, 0.98), rgba(178, 29, 18, 0.96)),
+    var(--sdu-red);
   color: #fff;
 }
 
@@ -57,18 +67,18 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 28px;
-  min-height: 116px;
+  gap: 24px;
+  min-height: 92px;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 26px clamp(20px, 4vw, 54px);
+  padding: 18px clamp(18px, 3.4vw, 48px);
 }
 
 .public-brand,
 .site-brand {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   min-width: 0;
   border: 0;
   background: transparent;
@@ -77,18 +87,32 @@ button {
   text-align: left;
 }
 
+.public-logo,
+.site-logo {
+  display: block;
+  width: min(515px, 45vw);
+  height: auto;
+  max-height: 62px;
+  object-fit: contain;
+}
+
+.public-logo + .public-brand-text,
+.site-logo + .site-title {
+  display: none;
+}
+
 .public-emblem,
 .site-emblem,
 .brand-mark {
   display: grid;
-  width: 62px;
-  height: 62px;
+  width: 54px;
+  height: 54px;
   flex: 0 0 auto;
   place-items: center;
   border: 2px solid rgba(255, 255, 255, 0.78);
   border-radius: 50%;
   color: #fff;
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 800;
   line-height: 1;
 }
@@ -97,15 +121,15 @@ button {
 .site-title {
   display: flex;
   align-items: baseline;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
 .public-brand-text strong,
 .site-title strong {
-  padding-right: 18px;
+  padding-right: 14px;
   border-right: 2px solid rgba(255, 255, 255, 0.72);
-  font-size: clamp(27px, 3vw, 42px);
+  font-size: clamp(24px, 2.4vw, 34px);
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
@@ -113,22 +137,32 @@ button {
 
 .public-brand-text span,
 .site-title span {
-  font-size: clamp(25px, 3vw, 40px);
+  font-size: clamp(22px, 2.2vw, 32px);
   font-weight: 800;
   line-height: 1;
   white-space: nowrap;
 }
 
-.public-tools,
-.site-actions {
-  display: grid;
-  justify-items: end;
-  gap: 14px;
-  min-width: min(430px, 38vw);
+.site-title em {
+  display: none;
+  color: rgba(255, 244, 214, 0.78);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0;
+  white-space: nowrap;
 }
 
-.public-login,
-.site-login-button {
+.public-tools,
+.site-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: min(520px, 42vw);
+}
+
+.public-login {
   min-width: 112px;
   height: 44px;
   border: 0;
@@ -140,24 +174,27 @@ button {
   box-shadow: none;
 }
 
-.public-login:hover,
-.site-login-button:hover {
+.public-login:hover {
   background: rgba(255, 255, 255, 0.2) !important;
   color: #fff !important;
 }
 
 .public-search,
 .site-search {
-  width: min(430px, 38vw);
+  width: min(380px, 34vw);
+}
+
+.site-search {
+  width: min(300px, 28vw);
 }
 
 .public-search .ant-input-affix-wrapper,
 .site-search .ant-input-affix-wrapper {
-  height: 54px;
-  border: 3px solid rgba(255, 255, 255, 0.92);
+  height: 44px;
+  border: 2px solid rgba(255, 255, 255, 0.88);
   border-right: 0;
-  border-radius: 0;
-  background: transparent;
+  border-radius: 6px 0 0 6px;
+  background: rgba(93, 8, 5, 0.18);
   color: #fff;
 }
 
@@ -180,9 +217,9 @@ button {
 
 .public-search .ant-btn,
 .site-search .ant-btn {
-  height: 54px;
-  min-width: 112px;
-  border: 3px solid rgba(255, 255, 255, 0.92);
+  height: 44px;
+  min-width: 92px;
+  border: 2px solid rgba(255, 255, 255, 0.88);
   border-radius: 0 6px 6px 0 !important;
   background: #fff;
   color: var(--sdu-red);
@@ -192,20 +229,22 @@ button {
 .public-nav,
 .site-nav {
   display: flex;
-  min-height: 72px;
+  min-height: 58px;
   align-items: center;
   justify-content: center;
-  background: #bd1b20;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(126, 14, 9, 0.62);
+  backdrop-filter: blur(8px);
 }
 
 .public-nav button {
-  height: 72px;
-  padding: 0 clamp(18px, 2.6vw, 38px);
+  height: 58px;
+  padding: 0 clamp(16px, 2.2vw, 30px);
   border: 0;
   background: transparent;
   color: #fff;
   cursor: pointer;
-  font-size: 21px;
+  font-size: 17px;
   font-weight: 800;
 }
 
@@ -223,13 +262,13 @@ button {
   border: 0;
   background: transparent;
   color: #fff;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .site-nav .ant-menu-item,
 .site-nav .ant-menu-submenu-title {
-  min-height: 72px;
+  min-height: 58px;
   display: inline-flex !important;
   align-items: center;
   color: #fff !important;
@@ -240,15 +279,27 @@ button {
 }
 
 .site-nav .ant-menu-item::after {
-  border-bottom-color: #fff !important;
+  display: none !important;
+  border-bottom: 0 !important;
+}
+
+.site-nav .ant-menu-submenu::after,
+.site-nav .ant-menu-overflow-item::after {
+  display: none !important;
+  border-bottom: 0 !important;
+}
+
+.site-nav .ant-menu-item-selected,
+.site-nav .ant-menu-submenu-selected {
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 .hero-banner {
   position: relative;
-  min-height: min(58vw, 610px);
+  min-height: min(50vw, 560px);
   overflow: hidden;
   background:
-    linear-gradient(130deg, rgba(112, 3, 1, 0.98), rgba(166, 12, 6, 0.95) 46%, rgba(225, 44, 18, 0.92)),
+    linear-gradient(130deg, rgba(104, 13, 8, 0.98), rgba(161, 27, 16, 0.95) 48%, rgba(207, 67, 33, 0.9)),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 560'%3E%3Cpath d='M0 458C218 536 371 440 543 477c193 41 302 96 508 24 204-72 346-135 549-42v101H0z' fill='%23f35b36' fill-opacity='.55'/%3E%3Cpath d='M0 476c231 76 374 38 537-15 239-78 378 28 593-24 178-43 293-104 470-20v143H0z' fill='%23ffcfbb' fill-opacity='.38'/%3E%3Cpath d='M0 448c230 92 374 34 579-37 178-61 280 27 448-1 240-40 317-134 573-23v173H0z' fill='%23b00602' fill-opacity='.72'/%3E%3C/svg%3E");
   background-position: center, bottom center;
   background-repeat: no-repeat;
@@ -269,12 +320,12 @@ button {
   position: relative;
   z-index: 1;
   display: grid;
-  min-height: min(58vw, 610px);
+  min-height: min(50vw, 560px);
   align-content: center;
   justify-items: center;
   max-width: 1180px;
   margin: 0 auto;
-  padding: 80px 24px 120px;
+  padding: 68px 24px 82px;
   text-align: center;
 }
 
@@ -292,15 +343,15 @@ button {
 
 .hero-inner h1.ant-typography {
   max-width: 980px;
-  font-size: clamp(46px, 7vw, 94px);
+  font-size: clamp(42px, 5.8vw, 76px);
   font-weight: 900;
   line-height: 1.08;
   text-shadow: 0 8px 28px rgba(68, 0, 0, 0.32);
 }
 
 .hero-inner .ant-typography + .ant-typography {
-  margin-top: 26px;
-  font-size: clamp(28px, 4vw, 58px);
+  margin-top: 22px;
+  font-size: clamp(24px, 3vw, 42px);
   font-weight: 800;
   line-height: 1.14;
 }
@@ -313,6 +364,38 @@ button {
   min-width: 134px;
   height: 46px;
   font-weight: 700;
+}
+
+.hero-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  width: min(100%, 720px);
+  margin-top: 34px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 238, 203, 0.26);
+  border-radius: 8px;
+  background: rgba(255, 238, 203, 0.18);
+}
+
+.hero-highlights span {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  background: rgba(91, 12, 8, 0.3);
+  text-align: left;
+}
+
+.hero-highlights strong {
+  color: #fff8df;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.hero-highlights em {
+  color: rgba(255, 248, 223, 0.72);
+  font-size: 13px;
+  font-style: normal;
 }
 
 .hero-actions .ant-btn-default {
@@ -444,7 +527,7 @@ button {
 
 .login-page {
   display: grid;
-  grid-template-columns: minmax(320px, 1.08fr) minmax(320px, 0.92fr);
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 0.84fr);
   min-height: 100vh;
   background: var(--page);
 }
@@ -453,10 +536,10 @@ button {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 18px;
+  gap: 16px;
   padding: 56px clamp(32px, 7vw, 88px);
   background:
-    linear-gradient(132deg, rgba(126, 6, 2, 0.98), rgba(181, 17, 9, 0.95)),
+    linear-gradient(132deg, rgba(111, 13, 7, 0.98), rgba(171, 27, 16, 0.95)),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 900 700'%3E%3Cpath d='M0 555c147 56 250 36 392-20 151-59 257 44 508-33v198H0z' fill='%23ff6b45' fill-opacity='.32'/%3E%3Cpath d='M0 515c174 76 313 12 468-47 167-63 249 24 432-19v251H0z' fill='%23fff0d4' fill-opacity='.16'/%3E%3C/svg%3E");
   background-position: center, bottom center;
   background-repeat: no-repeat;
@@ -475,18 +558,49 @@ button {
 
 .login-brand h1.ant-typography {
   max-width: 720px;
-  font-size: clamp(42px, 5vw, 72px);
+  font-size: clamp(40px, 4.7vw, 66px);
   line-height: 1.12;
+}
+
+.login-brand p.ant-typography {
+  max-width: 560px;
+  color: rgba(255, 246, 226, 0.82);
+  font-size: 18px;
+  line-height: 1.8;
 }
 
 .login-badge {
   width: max-content;
   border: 1px solid rgba(255, 255, 255, 0.38);
-  border-radius: 999px;
+  border-radius: 8px;
   padding: 7px 14px;
   color: rgba(255, 255, 255, 0.9);
   font-size: 14px;
   font-weight: 700;
+}
+
+.login-kpis {
+  margin-top: 18px;
+}
+
+.login-kpis span {
+  display: grid;
+  min-width: 138px;
+  gap: 4px;
+  border: 1px solid rgba(255, 236, 201, 0.18);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.login-kpis strong {
+  color: #fff7df;
+  font-size: 16px;
+}
+
+.login-kpis .ant-typography {
+  color: rgba(255, 248, 223, 0.72);
+  font-size: 13px;
 }
 
 .login-panel {
@@ -497,7 +611,7 @@ button {
 
 .login-card {
   width: min(100%, 420px);
-  padding: 34px;
+  padding: 32px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
@@ -506,6 +620,11 @@ button {
 
 .login-card .ant-typography {
   margin-top: 0;
+}
+
+.login-card-note {
+  display: block;
+  margin: -8px 0 24px;
 }
 
 .app-shell {
@@ -518,7 +637,13 @@ button {
 }
 
 .user-menu {
-  border: 0;
+  min-height: 44px;
+  max-width: 190px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 8px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
   cursor: pointer;
 }
 
@@ -528,8 +653,8 @@ button {
   line-height: 1.2;
 }
 
-.site-login-button .ant-typography,
-.site-login-button .ant-typography strong {
+.user-menu .ant-typography,
+.user-menu .ant-typography strong {
   color: #fff;
 }
 
@@ -542,19 +667,21 @@ button {
   width: 100%;
   max-width: 1440px;
   margin: 0 auto;
-  padding: 28px clamp(16px, 3vw, 42px) 48px;
+  padding: 30px clamp(18px, 3vw, 44px) 48px;
 }
 
 .content-panel {
-  min-height: calc(100vh - 260px);
+  min-height: calc(100vh - 210px);
 }
 
 .page-header {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 18px;
 }
 
 .page-header .ant-typography {
@@ -563,7 +690,7 @@ button {
 
 .page-header h3.ant-typography {
   color: var(--sdu-red);
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 900;
 }
 
@@ -572,7 +699,8 @@ button {
 .action-card {
   border-color: var(--line);
   border-radius: 8px;
-  box-shadow: 0 12px 30px rgba(72, 18, 12, 0.05);
+  background: var(--surface);
+  box-shadow: 0 10px 26px rgba(72, 18, 12, 0.05);
 }
 
 .tool-card + .tool-card,
@@ -612,7 +740,13 @@ button {
 }
 
 .action-card > .anticon {
-  color: var(--sdu-red);
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 8px;
+  background: #fff3e3;
+  color: var(--amber);
   font-size: 28px;
 }
 
@@ -626,10 +760,29 @@ button {
 
 .metric-card .ant-statistic-title {
   color: var(--muted);
+  font-weight: 700;
 }
 
 .metric-card .ant-statistic-content {
   color: var(--ink);
+}
+
+.metric-card {
+  min-height: 112px;
+}
+
+.metric-card::before {
+  display: block;
+  width: 38px;
+  height: 3px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--sdu-red), var(--sdu-gold));
+  content: "";
+}
+
+.tool-card .ant-card-head {
+  border-bottom-color: var(--line);
 }
 
 .chart-card .ant-card-extra {
@@ -651,7 +804,35 @@ button {
   grid-column: 1 / -1;
 }
 
-@media (max-width: 1024px) {
+@media (min-width: 1180px) {
+  .site-title em {
+    display: block;
+  }
+}
+
+@media (max-width: 980px) {
+  .site-actions {
+    min-width: 0;
+  }
+
+  .site-search {
+    width: min(280px, 34vw);
+  }
+
+  .user-menu {
+    display: grid;
+    width: 48px;
+    min-width: 48px;
+    padding: 0;
+    place-items: center;
+  }
+
+  .user-meta {
+    display: none;
+  }
+}
+
+@media (max-width: 820px) {
   .public-header-main,
   .site-header-main {
     align-items: stretch;
@@ -663,6 +844,11 @@ button {
     width: 100%;
     min-width: 0;
     justify-items: stretch;
+  }
+
+  .public-tools,
+  .site-actions {
+    display: grid;
   }
 
   .public-search,
@@ -698,21 +884,12 @@ button {
 
   .public-brand-text,
   .site-title {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 6px;
+    display: none;
   }
 
-  .public-brand-text strong,
-  .site-title strong {
-    padding-right: 0;
-    border-right: 0;
-    font-size: 26px;
-  }
-
-  .public-brand-text span,
-  .site-title span {
-    font-size: 24px;
+  .public-logo,
+  .site-logo {
+    width: min(100%, 420px);
   }
 
   .public-search .ant-input-affix-wrapper,
@@ -759,6 +936,15 @@ button {
   .hero-actions .ant-space-item,
   .hero-actions .ant-btn {
     width: 100%;
+  }
+
+  .hero-highlights {
+    grid-template-columns: 1fr;
+    width: min(100%, 340px);
+  }
+
+  .hero-highlights span {
+    text-align: center;
   }
 
   .hero-controls {

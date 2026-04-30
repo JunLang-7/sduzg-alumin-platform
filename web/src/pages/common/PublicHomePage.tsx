@@ -7,8 +7,9 @@ import {
 } from '@ant-design/icons';
 import { Button, Card, Col, Input, Row, Space, Typography } from 'antd';
 import { useNavigate } from 'react-router-dom';
+import logoUrl from '../../assets/pspa-logo.png';
 import { useAuthStore } from '../../store/authStore';
-import { getDefaultPath } from '../../utils/permissions';
+import { getDefaultPath, hasRole } from '../../utils/permissions';
 
 const { Title, Paragraph } = Typography;
 
@@ -26,13 +27,17 @@ export function PublicHomePage() {
     navigate(user ? getDefaultPath(user.role) : '/login');
   };
 
+  const openBrandHome = () => {
+    navigate(user ? getDefaultPath(user.role) : '/');
+  };
+
   return (
     <main className="public-page">
       <header className="public-header">
         <div className="public-header-main">
-          <button className="public-brand" type="button" onClick={() => navigate('/')}>
-            <span className="public-emblem">山</span>
-            <span className="public-brand-text">
+          <button className="public-brand" type="button" onClick={openBrandHome}>
+            <img className="public-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
+            <span className="public-brand-text" aria-hidden="true">
               <strong>山东大学</strong>
               <span>MPA校友网</span>
             </span>
@@ -56,17 +61,16 @@ export function PublicHomePage() {
           <button type="button" onClick={() => navigate('/')}>
             首页
           </button>
-          <button type="button" onClick={() => navigate('/admin/dashboard')}>
-            数据大屏
-          </button>
+          {hasRole(user, 'admin') ? (
+            <button type="button" onClick={() => navigate('/admin/dashboard')}>
+              数据大屏
+            </button>
+          ) : null}
           <button type="button" onClick={() => navigate('/alumni')}>
             校友服务
           </button>
-          <button type="button" disabled>
-            AI+
-          </button>
           <button type="button" onClick={openUserEntry}>
-            用户中心
+            {user ? '进入平台' : '登录入口'}
           </button>
         </nav>
       </header>
@@ -84,6 +88,20 @@ export function PublicHomePage() {
               校友服务
             </Button>
           </Space>
+          <div className="hero-highlights">
+            <span>
+              <strong>一期试点</strong>
+              <em>MPA 校友</em>
+            </span>
+            <span>
+              <strong>档案维护</strong>
+              <em>基础信息与履历</em>
+            </span>
+            <span>
+              <strong>数据看板</strong>
+              <em>规模与分布统计</em>
+            </span>
+          </div>
         </div>
         <div className="hero-seal">MPA</div>
         <div className="hero-controls" aria-hidden="true">
@@ -128,10 +146,16 @@ export function PublicHomePage() {
                 查询 MPA 校友名录
                 <ArrowRightOutlined />
               </button>
-              <button type="button" className="notice-link" onClick={() => navigate('/admin')}>
-                进入管理员后台
-                <ArrowRightOutlined />
-              </button>
+              {user && hasRole(user, 'admin') ? (
+                <button
+                  type="button"
+                  className="notice-link"
+                  onClick={() => navigate('/admin/dashboard')}
+                >
+                  进入管理员后台
+                  <ArrowRightOutlined />
+                </button>
+              ) : null}
             </Card>
           </Col>
         </Row>

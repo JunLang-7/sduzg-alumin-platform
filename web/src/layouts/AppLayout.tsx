@@ -2,7 +2,6 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChartOutlined,
-  DashboardOutlined,
   IdcardOutlined,
   LogoutOutlined,
   SearchOutlined,
@@ -11,8 +10,9 @@ import {
 } from '@ant-design/icons';
 import { Avatar, Dropdown, Input, Layout, Menu, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
+import logoUrl from '../assets/pspa-logo.png';
 import { useAuthStore } from '../store/authStore';
-import { hasRole } from '../utils/permissions';
+import { getDefaultPath, hasRole } from '../utils/permissions';
 
 const { Content } = Layout;
 const { Text } = Typography;
@@ -27,34 +27,18 @@ export function AppLayout() {
   const menuItems = useMemo<MenuProps['items']>(() => {
     const items: MenuProps['items'] = [
       {
-        key: '/',
-        icon: <DashboardOutlined />,
-        label: '首页',
-      },
-      {
-        key: '/admin/dashboard',
-        icon: <BarChartOutlined />,
-        label: '数据大屏',
-        disabled: !hasRole(user, 'admin'),
-      },
-      {
         key: '/alumni',
         icon: <TeamOutlined />,
         label: '校友服务',
-      },
-      {
-        key: '/profile',
-        icon: <IdcardOutlined />,
-        label: '用户中心',
       },
     ];
 
     if (hasRole(user, 'admin')) {
       items.push(
         {
-          key: '/admin',
-          icon: <DashboardOutlined />,
-          label: '管理后台',
+          key: '/admin/dashboard',
+          icon: <BarChartOutlined />,
+          label: '数据大屏',
         },
         {
           key: '/admin/alumni',
@@ -62,6 +46,14 @@ export function AppLayout() {
           label: '校友管理',
         },
       );
+    }
+
+    if (user?.role === 'alumni') {
+      items.push({
+        key: '/profile',
+        icon: <IdcardOutlined />,
+        label: '用户中心',
+      });
     }
 
     if (hasRole(user, 'super_admin')) {
@@ -76,9 +68,6 @@ export function AppLayout() {
   }, [user]);
 
   const selectedKeys = useMemo(() => {
-    if (location.pathname === '/') {
-      return ['/'];
-    }
     if (location.pathname.startsWith('/admin/users')) {
       return ['/admin/users'];
     }
@@ -87,9 +76,6 @@ export function AppLayout() {
     }
     if (location.pathname.startsWith('/admin/alumni')) {
       return ['/admin/alumni'];
-    }
-    if (location.pathname === '/admin') {
-      return ['/admin'];
     }
     if (location.pathname.startsWith('/profile')) {
       return ['/profile'];
@@ -122,15 +108,20 @@ export function AppLayout() {
     navigate(keyword ? `/alumni?keyword=${encodeURIComponent(keyword)}` : '/alumni');
   };
 
+  const openHome = () => {
+    navigate(getDefaultPath(user?.role));
+  };
+
   return (
     <Layout className="app-shell">
       <header className="site-header">
         <div className="site-header-main">
-          <button className="site-brand" type="button" onClick={() => navigate('/')}>
-            <span className="site-emblem">山</span>
-            <span className="site-title">
+          <button className="site-brand" type="button" onClick={openHome}>
+            <img className="site-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
+            <span className="site-title" aria-hidden="true">
               <strong>山东大学</strong>
               <span>MPA校友网</span>
+              <em>政管学院校友服务平台</em>
             </span>
           </button>
           <div className="site-actions">
@@ -144,7 +135,7 @@ export function AppLayout() {
               placeholder="搜索..."
             />
             <Dropdown menu={{ items: userMenu }} trigger={['click']}>
-              <button className="user-menu site-login-button" type="button">
+              <button className="user-menu" type="button">
                 <Space size={8}>
                   <Avatar size={30} icon={<UserOutlined />} />
                   <span className="user-meta">

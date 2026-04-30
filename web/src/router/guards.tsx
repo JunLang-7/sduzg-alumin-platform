@@ -7,9 +7,10 @@ import { hasRole } from '../utils/permissions';
 
 interface RequireAuthProps {
   minRole?: UserRole;
+  exactRole?: UserRole;
 }
 
-export function RequireAuth({ minRole = 'alumni' }: RequireAuthProps) {
+export function RequireAuth({ minRole = 'alumni', exactRole }: RequireAuthProps) {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
   const loading = useAuthStore((state) => state.loading);
@@ -33,6 +34,10 @@ export function RequireAuth({ minRole = 'alumni' }: RequireAuthProps) {
   }
 
   if (!hasRole(user, minRole)) {
+    return <Navigate to="/403" replace />;
+  }
+
+  if (exactRole && user.role !== exactRole) {
     return <Navigate to="/403" replace />;
   }
 
