@@ -3,26 +3,6 @@ import { authApi } from '../api/auth';
 import { cacheAccessToken, readAccessToken } from '../api/http';
 import type { ChangePasswordRequest, CurrentUser, LoginRequest } from '../types/auth';
 
-const cacheKey = 'sdu_alumni_current_user';
-
-function readCachedUser(): CurrentUser | null {
-  try {
-    const raw = window.localStorage.getItem(cacheKey);
-    return raw ? (JSON.parse(raw) as CurrentUser) : null;
-  } catch {
-    return null;
-  }
-}
-
-function cacheUser(user: CurrentUser | null) {
-  if (user) {
-    window.localStorage.setItem(cacheKey, JSON.stringify(user));
-    return;
-  }
-
-  window.localStorage.removeItem(cacheKey);
-}
-
 interface AuthState {
   user: CurrentUser | null;
   sessionChecked: boolean;
@@ -34,8 +14,8 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
-  user: readCachedUser(),
-  sessionChecked: Boolean(readCachedUser()),
+  user: null,
+  sessionChecked: false,
   loading: false,
 
   async login(payload) {
@@ -43,7 +23,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await authApi.login(payload);
       cacheAccessToken(response.access_token);
-      cacheUser(response.user);
       set({ user: response.user, sessionChecked: true, loading: false });
       return response.user;
     } catch (error) {
@@ -54,28 +33,33 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   async ensureCurrentUser() {
     const { user, sessionChecked } = get();
-    if (user && readAccessToken()) {
+
+    // 如果内存中已有用户信息，直接返回
+    if (user) {
       return user;
     }
-    if (user && !readAccessToken()) {
-      cacheUser(null);
-      set({ user: null, sessionChecked: true });
-      return null;
-    }
 
+    // 如果已经检查过且没有用户，返回 null
     if (sessionChecked) {
       return null;
     }
 
+    // 检查是否有 token
+    const token = readAccessToken();
+    if (!token) {
+      set({ sessionChecked: true });
+      return null;
+    }
+
+    // 调用 API 获取用户信息
     set({ loading: true });
     try {
       const currentUser = await authApi.me();
-      cacheUser(currentUser);
       set({ user: currentUser, sessionChecked: true, loading: false });
       return currentUser;
     } catch {
+      // 401/403 或其他错误，清除登录状态
       cacheAccessToken(null);
-      cacheUser(null);
       set({ user: null, sessionChecked: true, loading: false });
       return null;
     }
@@ -86,7 +70,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await authApi.logout();
     } finally {
       cacheAccessToken(null);
-      cacheUser(null);
       set({ user: null, sessionChecked: true });
     }
   },

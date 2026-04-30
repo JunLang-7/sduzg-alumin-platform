@@ -1,0 +1,2043 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [],
+  "paths": {
+    "/auth/logout": {
+      "post": {
+        "summary": "退出登录",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "logged_out": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/auth/change-password": {
+      "post": {
+        "summary": "修改密码",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "old_password": {
+                    "type": "string"
+                  },
+                  "new_password": {
+                    "type": "string"
+                  },
+                  "confirm_password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "old_password",
+                  "new_password",
+                  "confirm_password"
+                ]
+              },
+              "example": {
+                "old_password": "Admin@123456",
+                "new_password": "NewPassw1",
+                "confirm_password": "NewPassw1"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "用户登录",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "account",
+                  "password"
+                ]
+              },
+              "example": {
+                "account": "admin",
+                "password": "Admin@123456"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2NvdW50IjoiYWRtaW4iLCJleHAiOjE3Nzc1MTc5MjQsImlhdCI6MTc3NzQzMTUyNCwiaXNzIjoic2R1LWFsdW1uaS1wbGF0Zm9ybSIsInJvbGUiOiJzdXBlcl9hZG1pbiIsInN1YiI6IjEiLCJ1aWQiOjF9.CfxRoIp1MnfqksXerVKbmjuAZ021qLZpppHFCBevq_o",
+                    "token_type": "Bearer",
+                    "expires_at": "2026-04-30T02:58:44.69508418Z",
+                    "user": {
+                      "id": 1,
+                      "account": "admin",
+                      "role": "super_admin",
+                      "real_name": "系统管理员"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/alumni": {
+      "get": {
+        "summary": "校友列表",
+        "deprecated": false,
+        "description": "GET /api/v1/alumni?page=1&page_size=20&keyword=&grade=&class_name=&cohort=&major=&training_mode=&industry=",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 1,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 20,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "grade",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "class_name",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "cohort",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "counselor",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mentor",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "major",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "training_mode",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "industry",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "working_unit",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "position",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "mobile",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "grade": {
+                                "type": "string"
+                              },
+                              "class_name": {
+                                "type": "string"
+                              },
+                              "cohort": {
+                                "type": "string"
+                              },
+                              "major": {
+                                "type": "string"
+                              },
+                              "training_mode": {
+                                "type": "string"
+                              },
+                              "industry": {
+                                "type": "string"
+                              },
+                              "work_unit": {
+                                "type": "string"
+                              },
+                              "position": {
+                                "type": "string"
+                              },
+                              "mobile": {
+                                "type": "string"
+                              },
+                              "updated_at": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "page",
+                        "page_size",
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "items": [
+                      {
+                        "id": 1,
+                        "name": "",
+                        "grade": "2020",
+                        "class_name": "2020MPA",
+                        "cohort": "2023",
+                        "major": "",
+                        "training_mode": "",
+                        "industry": "",
+                        "work_unit": "",
+                        "position": "",
+                        "mobile": "13800000000",
+                        "updated_at": "2026-04-29T09:00:00Z"
+                      }
+                    ],
+                    "page": 1,
+                    "page_size": 20,
+                    "total": 1
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/alumni/{id}": {
+      "get": {
+        "summary": "校友详情",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": "1",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grade": {
+                          "type": "string"
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "string"
+                        },
+                        "counselor": {
+                          "type": "null"
+                        },
+                        "mentor": {
+                          "type": "null"
+                        },
+                        "major": {
+                          "type": "string"
+                        },
+                        "training_mode": {
+                          "type": "string"
+                        },
+                        "industry": {
+                          "type": "string"
+                        },
+                        "work_unit": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        },
+                        "mailing_address": {
+                          "type": "null"
+                        },
+                        "gender": {
+                          "type": "null"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grade",
+                        "class_name",
+                        "cohort",
+                        "counselor",
+                        "mentor",
+                        "major",
+                        "training_mode",
+                        "industry",
+                        "work_unit",
+                        "position",
+                        "mailing_address",
+                        "gender",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "examples": {
+                  "1": {
+                    "summary": "成功示例",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "id": 1,
+                        "name": "张三",
+                        "grade": "2020级",
+                        "class_name": "2020级MPA周末班",
+                        "cohort": "2023届",
+                        "counselor": null,
+                        "mentor": null,
+                        "major": "公共管理",
+                        "training_mode": "非全日制",
+                        "industry": "党政机关",
+                        "work_unit": "某某单位",
+                        "position": "科长",
+                        "mailing_address": null,
+                        "gender": null,
+                        "mobile": "13800000000",
+                        "status": "active",
+                        "created_at": "2026-04-29T03:52:23Z",
+                        "updated_at": "2026-04-29T03:55:40Z"
+                      }
+                    }
+                  },
+                  "2": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "id": 1,
+                        "name": "张三",
+                        "grade": "2020级",
+                        "class_name": "2020级MPA周末班",
+                        "cohort": "2023届",
+                        "counselor": null,
+                        "mentor": null,
+                        "major": "公共管理",
+                        "training_mode": "非全日制",
+                        "industry": "党政机关",
+                        "work_unit": "某某单位",
+                        "position": "科长",
+                        "mailing_address": null,
+                        "gender": null,
+                        "mobile": "13800000000",
+                        "status": "active",
+                        "created_at": "2026-04-29T03:52:23Z",
+                        "updated_at": "2026-04-29T03:55:40Z"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/alumni/me": {
+      "get": {
+        "summary": "我的校友信息",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grade": {
+                          "type": "string"
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "string"
+                        },
+                        "counselor": {
+                          "type": "string"
+                        },
+                        "mentor": {
+                          "type": "string"
+                        },
+                        "major": {
+                          "type": "string"
+                        },
+                        "training_mode": {
+                          "type": "string"
+                        },
+                        "industry": {
+                          "type": "string"
+                        },
+                        "work_unit": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        },
+                        "mailing_address": {
+                          "type": "string"
+                        },
+                        "gender": {
+                          "type": "string"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grade",
+                        "class_name",
+                        "cohort",
+                        "counselor",
+                        "mentor",
+                        "major",
+                        "training_mode",
+                        "industry",
+                        "work_unit",
+                        "position",
+                        "mailing_address",
+                        "gender",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "id": 900001,
+                    "name": "测试校友",
+                    "grade": "2020级",
+                    "class_name": "2020级MPA周末班",
+                    "cohort": "2020",
+                    "counselor": "李老师",
+                    "mentor": "王老师",
+                    "major": "公共管理",
+                    "training_mode": "非全日制",
+                    "industry": "教育科研",
+                    "work_unit": "山东大学",
+                    "position": "办公室主任",
+                    "mailing_address": "山东省济南市山大南路27号",
+                    "gender": "男",
+                    "mobile": "13900000002",
+                    "status": "active",
+                    "created_at": "2026-04-29T08:16:33Z",
+                    "updated_at": "2026-04-29T08:16:33Z"
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "修改我的信息",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "work_unit": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  },
+                  "mailing_address": {
+                    "type": "string"
+                  },
+                  "mobile": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "work_unit",
+                  "position",
+                  "mailing_address",
+                  "mobile"
+                ]
+              },
+              "example": {
+                "work_unit": "山东大学政治学与公共管理学院",
+                "position": "教务",
+                "mailing_address": "山东省青岛市即墨区山大路61号",
+                "mobile": "13800000000"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grade": {
+                          "type": "string"
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "string"
+                        },
+                        "counselor": {
+                          "type": "string"
+                        },
+                        "mentor": {
+                          "type": "string"
+                        },
+                        "major": {
+                          "type": "string"
+                        },
+                        "training_mode": {
+                          "type": "string"
+                        },
+                        "industry": {
+                          "type": "string"
+                        },
+                        "work_unit": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        },
+                        "mailing_address": {
+                          "type": "string"
+                        },
+                        "gender": {
+                          "type": "string"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grade",
+                        "class_name",
+                        "cohort",
+                        "counselor",
+                        "mentor",
+                        "major",
+                        "training_mode",
+                        "industry",
+                        "work_unit",
+                        "position",
+                        "mailing_address",
+                        "gender",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "id": 900001,
+                    "name": "测试校友",
+                    "grade": "2020级",
+                    "class_name": "2020级MPA周末班",
+                    "cohort": "2020",
+                    "counselor": "李老师",
+                    "mentor": "王老师",
+                    "major": "公共管理",
+                    "training_mode": "非全日制",
+                    "industry": "教育科研",
+                    "work_unit": "山东大学政治学与公共管理学院",
+                    "position": "教务",
+                    "mailing_address": "山东省青岛市即墨区山大路61号",
+                    "gender": "男",
+                    "mobile": "13800000000",
+                    "status": "active",
+                    "created_at": "2026-04-29T08:16:33Z",
+                    "updated_at": "2026-04-29T08:25:54Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/alumni": {
+      "post": {
+        "summary": "创建校友",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "grade": {
+                    "type": "string"
+                  },
+                  "class_name": {
+                    "type": "string"
+                  },
+                  "cohort": {
+                    "type": "string"
+                  },
+                  "counselor": {
+                    "type": "string"
+                  },
+                  "mentor": {
+                    "type": "string"
+                  },
+                  "major": {
+                    "type": "string"
+                  },
+                  "training_mode": {
+                    "type": "string"
+                  },
+                  "industry": {
+                    "type": "string"
+                  },
+                  "work_unit": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  },
+                  "mailing_address": {
+                    "type": "string"
+                  },
+                  "gender": {
+                    "type": "string"
+                  },
+                  "mobile": {
+                    "type": "string"
+                  },
+                  "remark": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "grade",
+                  "class_name",
+                  "cohort",
+                  "counselor",
+                  "mentor",
+                  "major",
+                  "training_mode",
+                  "industry",
+                  "work_unit",
+                  "position",
+                  "mailing_address",
+                  "gender",
+                  "mobile",
+                  "remark"
+                ]
+              },
+              "example": {
+                "name": "毒蜂",
+                "grade": "2021级",
+                "class_name": "2021级MPA周末班",
+                "cohort": "2021",
+                "counselor": "李老师",
+                "mentor": "王老师",
+                "major": "公共管理",
+                "training_mode": "非全日制",
+                "industry": "体育",
+                "work_unit": "广东宏远",
+                "position": "主教练",
+                "mailing_address": "广东省东莞市寮步篮球中心",
+                "gender": "男",
+                "mobile": "13800000001",
+                "remark": "管理端备注"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grade": {
+                          "type": "string"
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "string"
+                        },
+                        "counselor": {
+                          "type": "string"
+                        },
+                        "mentor": {
+                          "type": "string"
+                        },
+                        "major": {
+                          "type": "string"
+                        },
+                        "training_mode": {
+                          "type": "string"
+                        },
+                        "industry": {
+                          "type": "string"
+                        },
+                        "work_unit": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        },
+                        "mailing_address": {
+                          "type": "string"
+                        },
+                        "gender": {
+                          "type": "string"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grade",
+                        "class_name",
+                        "cohort",
+                        "counselor",
+                        "mentor",
+                        "major",
+                        "training_mode",
+                        "industry",
+                        "work_unit",
+                        "position",
+                        "mailing_address",
+                        "gender",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "id": 900002,
+                    "name": "毒蜂",
+                    "grade": "2021级",
+                    "class_name": "2021级MPA周末班",
+                    "cohort": "2021",
+                    "counselor": "李老师",
+                    "mentor": "王老师",
+                    "major": "公共管理",
+                    "training_mode": "非全日制",
+                    "industry": "体育",
+                    "work_unit": "广东宏远",
+                    "position": "主教练",
+                    "mailing_address": "广东省东莞市寮步篮球中心",
+                    "gender": "男",
+                    "mobile": "13800000001",
+                    "status": "active",
+                    "created_at": "0001-01-01T00:00:00Z",
+                    "updated_at": "0001-01-01T00:00:00Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/alumni/{id}": {
+      "put": {
+        "summary": "修改校友信息",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": "900002",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "grade": {
+                    "type": "string"
+                  },
+                  "class_name": {
+                    "type": "string"
+                  },
+                  "cohort": {
+                    "type": "string"
+                  },
+                  "counselor": {
+                    "type": "string"
+                  },
+                  "mentor": {
+                    "type": "string"
+                  },
+                  "major": {
+                    "type": "string"
+                  },
+                  "training_mode": {
+                    "type": "string"
+                  },
+                  "industry": {
+                    "type": "string"
+                  },
+                  "work_unit": {
+                    "type": "string"
+                  },
+                  "position": {
+                    "type": "string"
+                  },
+                  "mailing_address": {
+                    "type": "string"
+                  },
+                  "gender": {
+                    "type": "string"
+                  },
+                  "mobile": {
+                    "type": "string"
+                  },
+                  "remark": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "grade",
+                  "class_name",
+                  "cohort",
+                  "counselor",
+                  "mentor",
+                  "major",
+                  "training_mode",
+                  "industry",
+                  "work_unit",
+                  "position",
+                  "mailing_address",
+                  "gender",
+                  "mobile",
+                  "remark"
+                ]
+              },
+              "example": {
+                "name": "毒蜂",
+                "grade": "2019级",
+                "class_name": "2019级MPA周末班",
+                "cohort": "2021",
+                "counselor": "李老师",
+                "mentor": "王老师",
+                "major": "公共管理",
+                "training_mode": "非全日制",
+                "industry": "体育",
+                "work_unit": "广东宏远",
+                "position": "主教练",
+                "mailing_address": "广东省东莞市寮步篮球中心",
+                "gender": "男",
+                "mobile": "13800000002",
+                "remark": "管理端不备注"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "grade": {
+                          "type": "string"
+                        },
+                        "class_name": {
+                          "type": "string"
+                        },
+                        "cohort": {
+                          "type": "string"
+                        },
+                        "counselor": {
+                          "type": "string"
+                        },
+                        "mentor": {
+                          "type": "string"
+                        },
+                        "major": {
+                          "type": "string"
+                        },
+                        "training_mode": {
+                          "type": "string"
+                        },
+                        "industry": {
+                          "type": "string"
+                        },
+                        "work_unit": {
+                          "type": "string"
+                        },
+                        "position": {
+                          "type": "string"
+                        },
+                        "mailing_address": {
+                          "type": "string"
+                        },
+                        "gender": {
+                          "type": "string"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name",
+                        "grade",
+                        "class_name",
+                        "cohort",
+                        "counselor",
+                        "mentor",
+                        "major",
+                        "training_mode",
+                        "industry",
+                        "work_unit",
+                        "position",
+                        "mailing_address",
+                        "gender",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "id": 900002,
+                    "name": "毒蜂",
+                    "grade": "2019级",
+                    "class_name": "2019级MPA周末班",
+                    "cohort": "2021",
+                    "counselor": "李老师",
+                    "mentor": "王老师",
+                    "major": "公共管理",
+                    "training_mode": "非全日制",
+                    "industry": "体育",
+                    "work_unit": "广东宏远",
+                    "position": "主教练",
+                    "mailing_address": "广东省东莞市寮步篮球中心",
+                    "gender": "男",
+                    "mobile": "13800000002",
+                    "status": "active",
+                    "created_at": "2026-04-29T09:05:12Z",
+                    "updated_at": "2026-04-29T09:32:41Z"
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除校友信息",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": "900002",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "deleted": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/super-admin/admins": {
+      "get": {
+        "summary": "管理员列表",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 1,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "example": 20,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "integer"
+                              },
+                              "account": {
+                                "type": "string"
+                              },
+                              "role": {
+                                "type": "string"
+                              },
+                              "real_name": {
+                                "type": "string"
+                              },
+                              "mobile": {
+                                "type": "string"
+                              },
+                              "status": {
+                                "type": "string"
+                              },
+                              "last_login_at": {
+                                "type": "string"
+                              },
+                              "created_at": {
+                                "type": "string"
+                              }
+                            }
+                          }
+                        },
+                        "page": {
+                          "type": "integer"
+                        },
+                        "page_size": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "items",
+                        "page",
+                        "page_size",
+                        "total"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "examples": {
+                  "1": {
+                    "summary": "成功示例",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "items": [
+                          {
+                            "id": 1,
+                            "account": "admin",
+                            "role": "super_admin",
+                            "real_name": "系统管理员",
+                            "mobile": "13800000000",
+                            "status": "active",
+                            "last_login_at": "2026-04-29T10:00:00Z",
+                            "created_at": "2026-04-01T08:00:00Z"
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 20,
+                        "total": 1
+                      }
+                    }
+                  },
+                  "2": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "items": [
+                          {
+                            "id": 2,
+                            "account": "test_admin",
+                            "role": "admin",
+                            "real_name": "测试管理员",
+                            "mobile": "13900000001",
+                            "status": "active",
+                            "last_login_at": "2026-04-29T09:02:25Z",
+                            "created_at": "2026-04-29T08:16:33Z"
+                          },
+                          {
+                            "id": 1,
+                            "account": "admin",
+                            "role": "super_admin",
+                            "real_name": "系统管理员",
+                            "mobile": null,
+                            "status": "active",
+                            "last_login_at": "2026-04-29T11:18:25Z",
+                            "created_at": "2026-04-28T11:42:35Z"
+                          }
+                        ],
+                        "page": 1,
+                        "page_size": 20,
+                        "total": 2
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "post": {
+        "summary": "创建管理员",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "account": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "real_name": {
+                    "type": "string"
+                  },
+                  "mobile": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "account",
+                  "password",
+                  "real_name",
+                  "mobile"
+                ]
+              },
+              "example": {
+                "account": "manager01",
+                "password": "InitPass123",
+                "real_name": "管理员01",
+                "mobile": "13800000000"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "integer"
+                        },
+                        "account": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "real_name": {
+                          "type": "string"
+                        },
+                        "mobile": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "type": "string"
+                        },
+                        "created_at": {
+                          "type": "string"
+                        },
+                        "updated_at": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "account",
+                        "role",
+                        "real_name",
+                        "mobile",
+                        "status",
+                        "created_at",
+                        "updated_at"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "examples": {
+                  "1": {
+                    "summary": "成功示例",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "id": 4,
+                        "account": "manager01",
+                        "role": "admin",
+                        "real_name": "管理员01",
+                        "mobile": "13800000000",
+                        "status": "active",
+                        "created_at": "0001-01-01T00:00:00Z",
+                        "updated_at": "0001-01-01T00:00:00Z"
+                      }
+                    }
+                  },
+                  "2": {
+                    "summary": "请求有误",
+                    "value": {
+                      "code": 40000,
+                      "message": "账号已存在"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/super-admin/admins/{id}": {
+      "delete": {
+        "summary": "删除管理员",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": "4",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "examples": {
+                  "1": {
+                    "summary": "成功示例",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "deleted": true
+                      }
+                    }
+                  },
+                  "2": {
+                    "summary": "成功",
+                    "value": {
+                      "code": 0,
+                      "message": "success",
+                      "data": {
+                        "deleted": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/dashboard/overview": {
+      "get": {
+        "summary": "数据大屏总览",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "total_alumni": {
+                          "type": "integer"
+                        },
+                        "total_accounts": {
+                          "type": "integer"
+                        },
+                        "mobile_complete_rate": {
+                          "type": "integer"
+                        },
+                        "work_unit_complete_rate": {
+                          "type": "integer"
+                        },
+                        "mentor_complete_rate": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "total_alumni",
+                        "total_accounts",
+                        "mobile_complete_rate",
+                        "work_unit_complete_rate",
+                        "mentor_complete_rate"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": {
+                    "total_alumni": 3,
+                    "total_accounts": 1,
+                    "mobile_complete_rate": 1,
+                    "work_unit_complete_rate": 1,
+                    "mentor_complete_rate": 0.6666666666666666
+                  }
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/admin/dashboard/distribution": {
+      "get": {
+        "summary": "数据大屏分布统计",
+        "deprecated": false,
+        "description": "",
+        "tags": [],
+        "parameters": [
+          {
+            "name": "dimension",
+            "in": "query",
+            "description": "参数值：grade、class_name、cohort、gender、major、training_mode、industry",
+            "required": false,
+            "example": "grade",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "value": {
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "name",
+                          "value"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "message",
+                    "data"
+                  ]
+                },
+                "example": {
+                  "code": 0,
+                  "message": "success",
+                  "data": [
+                    {
+                      "name": "2020级",
+                      "value": 2
+                    },
+                    {
+                      "name": "2023级",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {},
+    "responses": {},
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": [],
+  "security": []
+}
