@@ -55,6 +55,10 @@ func New(deps Dependencies) *gin.Engine {
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)
 	adminHandler := handler.NewAdminHandler(adminService)
+	// 数据大屏服务和处理器
+	dashboardRepository := repository.NewDashboardRepository(deps.DB)
+	dashboardService := service.NewDashboardService(dashboardRepository)
+	dashboardHandler := handler.NewDashboardHandler(dashboardService)
 
 	// 白名单路径
 	whiteList := []string{
@@ -89,6 +93,9 @@ func New(deps Dependencies) *gin.Engine {
 			admin.POST("/alumni", alumniHandler.Create)
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
+
+			// 数据大屏
+			admin.GET("/dashboard/overview", dashboardHandler.Overview)
 		}
 
 		// 超级管理员专用接口
