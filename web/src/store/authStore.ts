@@ -34,8 +34,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   async ensureCurrentUser() {
     const { user, sessionChecked } = get();
 
-    // 如果内存中已有用户信息，直接返回
+    // 如果内存中已有用户信息，仅在 token 仍然存在时才直接返回
     if (user) {
+      const token = readAccessToken();
+      if (!token) {
+        set({ user: null, sessionChecked: true });
+        return null;
+      }
       return user;
     }
 
