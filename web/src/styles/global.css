@@ -1294,38 +1294,25 @@ button {
 
 .industry-tags {
   display: flex;
-  min-height: 44px;
+  min-height: 60px;
   align-items: center;
   justify-content: center;
-  gap: 8px 12px;
+  gap: 6px 14px;
   flex-wrap: wrap;
-  padding: 8px;
+  padding: 10px 6px;
+  line-height: 1.4;
 }
 
 .industry-tag {
   font-weight: 900;
-  line-height: 1;
-  text-shadow: 0 0 18px currentColor;
+  line-height: 1.2;
+  text-shadow: 0 0 20px currentColor;
+  transition: transform 0.2s ease, opacity 0.2s ease;
 }
 
-.industry-tag-1 {
-  color: #36d7ff;
-}
-
-.industry-tag-2 {
-  color: #ffcf67;
-}
-
-.industry-tag-3 {
-  color: #31d98b;
-}
-
-.industry-tag-4 {
-  color: #ff645d;
-}
-
-.industry-tag-5 {
-  color: #9d8cff;
+.industry-tag:hover {
+  transform: scale(1.15);
+  opacity: 1 !important;
 }
 
 .alumni-feed {
@@ -1593,12 +1580,9 @@ button {
   }
 
   .industry-tags {
-    min-height: 42px;
-    gap: 5px;
-  }
-
-  .industry-tag {
-    font-size: 11px !important;
+    min-height: 48px;
+    gap: 4px 10px;
+    padding: 8px 4px;
   }
 
   .data-screen-expanded-body .dashboard-chart,

@@ -39,7 +39,18 @@ const emptyOverview: DashboardOverview = {
 
 const axisColor = 'rgba(195, 224, 255, 0.68)';
 const splitLineColor = 'rgba(62, 153, 255, 0.16)';
-const chartPalette = ['#36d7ff', '#ffcf67', '#ff645d', '#31d98b', '#9d8cff', '#ff9f45'];
+const chartPalette = [
+  '#36d7ff', // 青色
+  '#ffcf67', // 金黄
+  '#ff645d', // 珊瑚红
+  '#31d98b', // 翠绿
+  '#9d8cff', // 紫罗兰
+  '#ff9f45', // 橙色
+  '#5ef5f5', // 亮青
+  '#ff85c0', // 粉红
+  '#a8e06e', // 黄绿
+  '#7eb8ff', // 天蓝
+];
 
 interface DataScreenPanelProps {
   title: string;
@@ -567,15 +578,26 @@ export function DashboardPage() {
                   <IndustryRankList items={industryDistribution} />
                 )}
                 <div className="industry-tags">
-                  {industryDistribution.slice(0, expanded ? 16 : 10).map((item, index) => (
-                    <span
-                      key={item.name}
-                      className={`industry-tag industry-tag-${(index % 5) + 1}`}
-                      style={{ fontSize: `${Math.max(13, 22 - index)}px` }}
-                    >
-                      {item.name}
-                    </span>
-                  ))}
+                  {industryDistribution.slice(0, expanded ? 20 : 12).map((item, index) => {
+                    const maxValue = industryDistribution[0]?.value || 1;
+                    const weight = item.value / maxValue;
+                    const fontSize = Math.round(14 + weight * 18);
+                    const colorIndex = index % chartPalette.length;
+
+                    return (
+                      <span
+                        key={item.name}
+                        className="industry-tag"
+                        style={{
+                          fontSize: `${fontSize}px`,
+                          color: chartPalette[colorIndex],
+                          opacity: 0.6 + weight * 0.4,
+                        }}
+                      >
+                        {item.name}
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
