@@ -232,6 +232,8 @@ func TestAlumniServiceUpdatePreservesEmptyOptionalFields(t *testing.T) {
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	workUnit := "山东大学"
 	position := "主任"
+	mentor := "王老师"
+	gender := "女"
 	updatedAt := time.Date(2026, 4, 29, 9, 0, 0, 0, time.UTC)
 	store := &fakeAlumniStore{
 		items: []*model.AlumniProfile{
@@ -239,8 +241,10 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 				ID:        9,
 				Name:      "张三",
 				Grade:     "2020级",
+				Mentor:    &mentor,
 				WorkUnit:  &workUnit,
 				Position:  &position,
+				Gender:    &gender,
 				UpdatedAt: updatedAt,
 			},
 		},
@@ -270,6 +274,9 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	}
 	if pager.Items[0].ID != 9 || pager.Items[0].Name != "张三" || pager.Items[0].WorkUnit == nil || *pager.Items[0].WorkUnit != workUnit {
 		t.Fatalf("unexpected alumni item: %+v", pager.Items[0])
+	}
+	if pager.Items[0].Mentor == nil || *pager.Items[0].Mentor != mentor || pager.Items[0].Gender == nil || *pager.Items[0].Gender != gender {
+		t.Fatalf("expected mentor and gender to be mapped, got %+v", pager.Items[0])
 	}
 }
 

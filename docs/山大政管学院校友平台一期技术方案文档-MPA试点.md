@@ -674,11 +674,14 @@ GET /api/v1/alumni?page=1&page_size=20&keyword=&grade=&class_name=&cohort=&major
       "grade": "2020级",
       "class_name": "2020级MPA周末班",
       "cohort": "2023届",
+      "counselor": "李老师",
+      "mentor": "王老师",
       "major": "公共管理",
       "training_mode": "非全日制",
       "industry": "党政机关",
       "work_unit": "某某单位",
       "position": "科长",
+      "gender": "男",
       "mobile": "13800000000",
       "updated_at": "2026-04-29T09:00:00+08:00"
     }

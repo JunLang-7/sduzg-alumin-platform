@@ -143,11 +143,14 @@ type AlumniListItem struct {
 	Grade        string    `json:"grade"`
 	ClassName    *string   `json:"class_name"`
 	Cohort       *string   `json:"cohort"`
+	Counselor    *string   `json:"counselor"`
+	Mentor       *string   `json:"mentor"`
 	Major        *string   `json:"major"`
 	TrainingMode *string   `json:"training_mode"`
 	Industry     *string   `json:"industry"`
 	WorkUnit     *string   `json:"work_unit"`
 	Position     *string   `json:"position"`
+	Gender       *string   `json:"gender"`
 	Mobile       *string   `json:"mobile"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
