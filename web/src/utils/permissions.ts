@@ -16,7 +16,7 @@ export function hasRole(user: CurrentUser | null, role: UserRole) {
 
 export function getDefaultPath(role?: UserRole) {
   if (role === 'admin' || role === 'super_admin') {
-    return '/admin/dashboard';
+    return '/admin/alumni';
   }
 
   return '/alumni';

@@ -259,6 +259,8 @@ export function DashboardPage() {
   );
   const isCompactChart = viewportWidth <= 1500;
 
+  const showLineChart = dimension === 'grade' || dimension === 'cohort';
+
   const mainChartOption = useMemo(
     () => ({
       color: chartPalette,
@@ -316,18 +318,22 @@ export function DashboardPage() {
             },
           },
         },
-        {
-          name: '趋势',
-          type: 'line',
-          data: mainDistribution.map((item) => item.value),
-          smooth: true,
-          symbolSize: isCompactChart ? 6 : 8,
-          lineStyle: { width: isCompactChart ? 2 : 3, color: '#ffcf67' },
-          itemStyle: { color: '#ffcf67' },
-        },
+        ...(showLineChart
+          ? [
+              {
+                name: '趋势',
+                type: 'line' as const,
+                data: mainDistribution.map((item) => item.value),
+                smooth: true,
+                symbolSize: isCompactChart ? 6 : 8,
+                lineStyle: { width: isCompactChart ? 2 : 3, color: '#ffcf67' },
+                itemStyle: { color: '#ffcf67' },
+              },
+            ]
+          : []),
       ],
     }),
-    [isCompactChart, mainDistribution],
+    [isCompactChart, mainDistribution, showLineChart],
   );
 
   const mainPieOption = useMemo(
