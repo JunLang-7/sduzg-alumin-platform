@@ -2,11 +2,8 @@ package service
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +14,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -219,131 +217,55 @@ func (s *AuthService) ChangePassword(ctx context.Context, userID uint64, oldPass
 	return nil
 }
 
-// issueAccessToken 生成 JWT 访问令牌
+type customClaims struct {
+	jwt.RegisteredClaims
+	UID     uint64 `json:"uid"`
+	Account string `json:"account"`
+	Role    string `json:"role"`
+}
+
 func (s *AuthService) issueAccessToken(user *model.User, issuedAt time.Time, expiresAt time.Time) (string, error) {
-	header := map[string]string{
-		"alg": "HS256",
-		"typ": "JWT",
-	}
-	payload := map[string]any{
-		"sub":     strconv.FormatUint(user.ID, 10),
-		"uid":     user.ID,
-		"account": user.Account,
-		"role":    user.Role,
-		"iss":     s.issuer,
-		"iat":     issuedAt.Unix(),
-		"exp":     expiresAt.Unix(),
+	claims := customClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    s.issuer,
+			Subject:   strconv.FormatUint(user.ID, 10),
+			IssuedAt:  jwt.NewNumericDate(issuedAt),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+		},
+		UID:     user.ID,
+		Account: user.Account,
+		Role:    user.Role,
 	}
 
-	headerJSON, err := json.Marshal(header)
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
 	if err != nil {
-		logger.Error("failed to marshal JWT header", zap.Uint64("user_id", user.ID), zap.Error(err))
-		return "", err
-	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		logger.Error("failed to marshal JWT payload", zap.Uint64("user_id", user.ID), zap.Error(err))
-		return "", err
-	}
-
-	// 使用 base64 URL 编码生成 JWT
-	encoder := base64.RawURLEncoding
-	unsigned := encoder.EncodeToString(headerJSON) + "." + encoder.EncodeToString(payloadJSON)
-
-	// 使用 HMAC-SHA256 签名 JWT
-	mac := hmac.New(sha256.New, s.jwtSecret)
-	if _, err := mac.Write([]byte(unsigned)); err != nil {
 		logger.Error("failed to sign JWT", zap.Uint64("user_id", user.ID), zap.Error(err))
 		return "", err
 	}
-
-	return unsigned + "." + encoder.EncodeToString(mac.Sum(nil)), nil
+	return token, nil
 }
 
-// ParseAccessToken 验证并解析简单的 HS256 JWT，返回 uid 字段（用户 ID）
-func (s *AuthService) ParseAccessToken(token string) (uint64, error) {
-	if token == "" {
+// ParseAccessToken 验证并解析 JWT，返回 uid 字段（用户 ID）
+func (s *AuthService) ParseAccessToken(tokenString string) (uint64, error) {
+	if tokenString == "" {
 		return 0, errors.New("empty token")
 	}
 
-	parts := strings.Split(token, ".")
-	if len(parts) != 3 {
-		return 0, errors.New("invalid token format")
+	claims := &customClaims{}
+	opts := []jwt.ParserOption{}
+	if s.now != nil {
+		opts = append(opts, jwt.WithTimeFunc(s.now))
 	}
 
-	encoder := base64.RawURLEncoding
-	unsigned := parts[0] + "." + parts[1]
-	sig, err := encoder.DecodeString(parts[2])
+	_, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return s.jwtSecret, nil
+	}, opts...)
 	if err != nil {
-		return 0, errors.New("invalid token signature encoding")
-	}
-
-	mac := hmac.New(sha256.New, s.jwtSecret)
-	if _, err := mac.Write([]byte(unsigned)); err != nil {
 		return 0, err
 	}
-	expected := mac.Sum(nil)
-	if !hmac.Equal(expected, sig) {
-		return 0, errors.New("invalid token signature")
-	}
 
-	// decode payload
-	payloadJSON, err := encoder.DecodeString(parts[1])
-	if err != nil {
-		return 0, errors.New("invalid token payload encoding")
-	}
-
-	var payload map[string]any
-	if err := json.Unmarshal(payloadJSON, &payload); err != nil {
-		return 0, errors.New("invalid token payload")
-	}
-
-	// extract uid
-	uidAny, ok := payload["uid"]
-	if !ok {
-		return 0, errors.New("uid not found in token")
-	}
-	expAny, ok := payload["exp"]
-	if !ok {
-		return 0, errors.New("exp not found in token")
-	}
-	expiresAt, err := parseUnixTime(expAny)
-	if err != nil {
-		return 0, errors.New("invalid exp value")
-	}
-	now := time.Now
-	if s.now != nil {
-		now = s.now
-	}
-	if !now().Before(expiresAt) {
-		return 0, errors.New("token expired")
-	}
-
-	switch v := uidAny.(type) {
-	case float64:
-		return uint64(v), nil
-	case string:
-		i, err := strconv.ParseUint(v, 10, 64)
-		if err != nil {
-			return 0, errors.New("invalid uid value")
-		}
-		return i, nil
-	default:
-		return 0, errors.New("invalid uid type")
-	}
-}
-
-func parseUnixTime(value any) (time.Time, error) {
-	switch v := value.(type) {
-	case float64:
-		return time.Unix(int64(v), 0), nil
-	case string:
-		i, err := strconv.ParseInt(v, 10, 64)
-		if err != nil {
-			return time.Time{}, err
-		}
-		return time.Unix(i, 0), nil
-	default:
-		return time.Time{}, errors.New("invalid unix time type")
-	}
+	return claims.UID, nil
 }

@@ -8,6 +8,7 @@ import (
 
 func TestLoadUsesDefaults(t *testing.T) {
 	clearConfigEnv(t)
+	t.Setenv("AUTH_JWT_SECRET", "test-secret")
 
 	cfg := Load()
 
@@ -23,13 +24,14 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.Redis.Enabled {
 		t.Fatal("expected redis to be disabled by default")
 	}
-	if cfg.Auth.JWTSecret == "" {
-		t.Fatal("expected auth jwt secret default")
+	if cfg.Auth.JWTSecret != "test-secret" {
+		t.Fatalf("expected auth jwt secret override, got %q", cfg.Auth.JWTSecret)
 	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	clearConfigEnv(t)
+	t.Setenv("AUTH_JWT_SECRET", "test-secret")
 	t.Setenv("APP_NAME", "override-api")
 	t.Setenv("SERVER_PORT", "9090")
 	t.Setenv("DB_ENABLED", "true")
@@ -65,7 +67,7 @@ func TestLoadReadsEnvFile(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Chdir(tempDir)
 
-	content := []byte("APP_NAME=file-api\nSERVER_PORT=7070\nREDIS_ENABLED=true\n")
+	content := []byte("APP_NAME=file-api\nSERVER_PORT=7070\nREDIS_ENABLED=true\nAUTH_JWT_SECRET=file-secret\n")
 	if err := os.WriteFile(".env", content, 0o600); err != nil {
 		t.Fatalf("failed to write env file: %v", err)
 	}

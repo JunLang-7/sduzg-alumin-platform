@@ -1,10 +1,6 @@
 package router
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +9,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 )
 
@@ -799,27 +796,14 @@ func TestSuperAdminAdminsDeleteRouteWithoutDatabase(t *testing.T) {
 func testAccessToken(t *testing.T, secret string, expiresAt time.Time) string {
 	t.Helper()
 
-	encoder := base64.RawURLEncoding
-	header, err := json.Marshal(map[string]string{
-		"alg": "HS256",
-		"typ": "JWT",
-	})
-	if err != nil {
-		t.Fatalf("failed to marshal token header: %v", err)
-	}
-	payload, err := json.Marshal(map[string]any{
-		"uid": 1,
-		"exp": expiresAt.Unix(),
-	})
-	if err != nil {
-		t.Fatalf("failed to marshal token payload: %v", err)
+	claims := jwt.MapClaims{
+		"uid": float64(1),
+		"exp": jwt.NewNumericDate(expiresAt),
 	}
 
-	unsigned := encoder.EncodeToString(header) + "." + encoder.EncodeToString(payload)
-	mac := hmac.New(sha256.New, []byte(secret))
-	if _, err := mac.Write([]byte(unsigned)); err != nil {
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+	if err != nil {
 		t.Fatalf("failed to sign token: %v", err)
 	}
-
-	return unsigned + "." + encoder.EncodeToString(mac.Sum(nil))
+	return token
 }

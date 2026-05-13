@@ -97,7 +97,7 @@ func Load() Config {
 		}
 	}
 
-	return Config{
+	cfg := Config{
 		App: AppConfig{
 			Name: v.GetString("APP_NAME"),
 			Env:  v.GetString("APP_ENV"),
@@ -136,6 +136,12 @@ func Load() Config {
 			AccessTokenTTL: v.GetDuration("AUTH_ACCESS_TOKEN_TTL"),
 		},
 	}
+
+	if cfg.Auth.JWTSecret == "dev-only-change-me" {
+		panic("AUTH_JWT_SECRET is still the default value 'dev-only-change-me' — refusing to start. Set AUTH_JWT_SECRET in your environment or .env file.")
+	}
+
+	return cfg
 }
 
 func setDefaults(v *viper.Viper) {
