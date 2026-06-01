@@ -14,6 +14,7 @@ import (
 
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
+	ListAll(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
 	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error
@@ -103,6 +104,72 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 	}
 
 	return items, total, nil
+}
+
+// ListAll 根据查询条件获取所有校友记录（不分页），用于导出。
+func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	listQuery = listQuery.Normalize()
+	qs := query.Use(r.db).AlumniProfile
+	db := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.DeletedAt.IsNull()).
+		Where(qs.Status.Eq(common.AlumniStatusActive))
+
+	if listQuery.Keyword != "" {
+		like := "%" + listQuery.Keyword + "%"
+		db = db.Where(field.Or(
+			qs.Name.Like(like),
+			qs.WorkUnit.Like(like),
+			qs.Position.Like(like),
+			qs.Mentor.Like(like),
+			qs.Counselor.Like(like),
+			qs.Mobile.Like(like),
+		))
+	}
+	if listQuery.Grade != "" {
+		db = db.Where(qs.Grade.Eq(listQuery.Grade))
+	}
+	if listQuery.ClassName != "" {
+		db = db.Where(qs.ClassName.Eq(listQuery.ClassName))
+	}
+	if listQuery.Cohort != "" {
+		db = db.Where(qs.Cohort.Eq(listQuery.Cohort))
+	}
+	if listQuery.Counselor != "" {
+		db = db.Where(qs.Counselor.Eq(listQuery.Counselor))
+	}
+	if listQuery.Mentor != "" {
+		db = db.Where(qs.Mentor.Eq(listQuery.Mentor))
+	}
+	if listQuery.Major != "" {
+		db = db.Where(qs.Major.Eq(listQuery.Major))
+	}
+	if listQuery.TrainingMode != "" {
+		db = db.Where(qs.TrainingMode.Eq(listQuery.TrainingMode))
+	}
+	if listQuery.Industry != "" {
+		db = db.Where(qs.Industry.Eq(listQuery.Industry))
+	}
+	if listQuery.WorkUnit != "" {
+		db = db.Where(qs.WorkUnit.Like("%" + listQuery.WorkUnit + "%"))
+	}
+	if listQuery.Position != "" {
+		db = db.Where(qs.Position.Like("%" + listQuery.Position + "%"))
+	}
+	if listQuery.Mobile != "" {
+		db = db.Where(qs.Mobile.Eq(listQuery.Mobile))
+	}
+
+	var items []*model.AlumniProfile
+	if err := db.Order(qs.ID.Desc()).Find(&items).Error; err != nil {
+		return nil, err
+	}
+
+	return items, nil
 }
 
 // GetByID 根据 ID 获取校友详情
