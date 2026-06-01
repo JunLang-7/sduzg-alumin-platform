@@ -72,7 +72,7 @@ func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore)
 }
 
 // List 根据查询条件分页获取校友列表
-func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (common.Pager[dto.AlumniListItem], error) {
+func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, viewerID uint64) (common.Pager[dto.AlumniListItem], error) {
 	query := req.ToQuery().Normalize()
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
@@ -88,11 +88,30 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (co
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), err
 	}
 
-	return common.NewPager(mapAlumniListItems(items), query.Page, total), nil
+	mapped := mapAlumniListItems(items)
+	s.maskListItems(ctx, mapped, viewerID)
+	return common.NewPager(mapped, query.Page, total), nil
 }
 
-// GetByID 根据 ID 获取校友详情
-func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDetail, error) {
+// maskListItems 当查看者为普通校友时，屏蔽列表中所有校友的敏感字段。
+func (s *AlumniService) maskListItems(ctx context.Context, items []dto.AlumniListItem, viewerID uint64) {
+	if s.users == nil {
+		return
+	}
+
+	viewer, err := s.users.FindByID(ctx, viewerID)
+	if err != nil || viewer.Role != common.RoleAlumni {
+		return
+	}
+
+	for i := range items {
+		items[i].Mobile = nil
+		items[i].Position = nil
+	}
+}
+
+// GetByID 根据 ID 获取校友详情。viewerID 为查看者用户 ID，用于基于角色的字段屏蔽。
+func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewerID uint64) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
@@ -112,7 +131,34 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDeta
 		return nil, err
 	}
 
-	return mapAlumniDetail(item), nil
+	detail := mapAlumniDetail(item)
+	s.maskSensitiveFields(ctx, detail, id, viewerID)
+	return detail, nil
+}
+
+// maskSensitiveFields 当查看者为普通校友且查看的不是本人资料时，屏蔽敏感字段。
+func (s *AlumniService) maskSensitiveFields(ctx context.Context, detail *dto.AlumniDetail, alumniID uint64, viewerID uint64) {
+	if detail == nil || s.users == nil {
+		return
+	}
+
+	viewer, err := s.users.FindByID(ctx, viewerID)
+	if err != nil {
+		return
+	}
+
+	if viewer.Role != common.RoleAlumni {
+		return
+	}
+
+	// 校友查看本人资料时不屏蔽
+	if viewer.AlumniID != nil && *viewer.AlumniID == alumniID {
+		return
+	}
+
+	detail.Mobile = nil
+	detail.Position = nil
+	detail.MailingAddress = nil
 }
 
 // Create 由管理员新增校友档案。
@@ -171,7 +217,7 @@ func (s *AlumniService) Update(ctx context.Context, operatorID uint64, id uint64
 		return nil, err
 	}
 
-	updated, err := s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id, operatorID)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +354,7 @@ func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDe
 		return nil, err
 	}
 
-	return s.GetByID(ctx, alumniID)
+	return s.GetByID(ctx, alumniID, userID)
 }
 
 // UpdateMe 更新当前登录校友本人允许维护的字段，并返回更新后的资料。
@@ -339,7 +385,7 @@ func (s *AlumniService) UpdateMe(ctx context.Context, userID uint64, req dto.Alu
 		}
 	}
 
-	return s.GetByID(ctx, alumniID)
+	return s.GetByID(ctx, alumniID, userID)
 }
 
 // currentAlumniID 获取当前用户绑定的校友 ID。如果用户不存在、不是校友、或未绑定校友资料，返回相应错误。

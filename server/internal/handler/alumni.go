@@ -29,7 +29,13 @@ func (h *AlumniHandler) List(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.List(c.Request.Context(), req)
+	viewerID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.alumni.List(c.Request.Context(), req, viewerID)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -50,7 +56,13 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.GetByID(c.Request.Context(), id)
+	viewerID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.alumni.GetByID(c.Request.Context(), id, viewerID)
 	if err == nil {
 		response.Success(c, result)
 		return
