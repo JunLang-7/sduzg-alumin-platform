@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -194,6 +195,23 @@ export function AlumniManagementPage() {
     }));
   };
 
+  const handleExport = async () => {
+    try {
+      const filters = searchForm.getFieldsValue();
+      const blob = await alumniApi.exportData(filters);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'alumni_export.xlsx';
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success('导出成功');
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '导出失败');
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -232,6 +250,9 @@ export function AlumniManagementPage() {
             </Button>
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
+            </Button>
+            <Button icon={<DownloadOutlined />} onClick={handleExport}>
+              导出
             </Button>
           </Space>
         </Form>
