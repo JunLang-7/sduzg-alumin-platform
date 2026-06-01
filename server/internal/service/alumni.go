@@ -26,20 +26,20 @@ var exportHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员"
 
 func exportRow(item *model.AlumniProfile) []string {
 	return []string{
-		item.Name,
-		item.Grade,
-		stringOrEmpty(item.ClassName),
-		stringOrEmpty(item.Cohort),
-		stringOrEmpty(item.Counselor),
-		stringOrEmpty(item.Mentor),
-		stringOrEmpty(item.Major),
-		stringOrEmpty(item.TrainingMode),
-		stringOrEmpty(item.Industry),
-		stringOrEmpty(item.WorkUnit),
-		stringOrEmpty(item.Position),
-		stringOrEmpty(item.MailingAddress),
-		stringOrEmpty(item.Gender),
-		stringOrEmpty(item.Mobile),
+		sanitizeExportValue(item.Name),
+		sanitizeExportValue(item.Grade),
+		sanitizeExportValue(stringOrEmpty(item.ClassName)),
+		sanitizeExportValue(stringOrEmpty(item.Cohort)),
+		sanitizeExportValue(stringOrEmpty(item.Counselor)),
+		sanitizeExportValue(stringOrEmpty(item.Mentor)),
+		sanitizeExportValue(stringOrEmpty(item.Major)),
+		sanitizeExportValue(stringOrEmpty(item.TrainingMode)),
+		sanitizeExportValue(stringOrEmpty(item.Industry)),
+		sanitizeExportValue(stringOrEmpty(item.WorkUnit)),
+		sanitizeExportValue(stringOrEmpty(item.Position)),
+		sanitizeExportValue(stringOrEmpty(item.MailingAddress)),
+		sanitizeExportValue(stringOrEmpty(item.Gender)),
+		sanitizeExportValue(stringOrEmpty(item.Mobile)),
 	}
 }
 
@@ -48,6 +48,18 @@ func stringOrEmpty(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// sanitizeExportValue 防止电子表格公式注入。
+// 当值以 =、+、-、@ 开头时，前加单引号使其被解释为纯文本。
+func sanitizeExportValue(v string) string {
+	if v == "" {
+		return v
+	}
+	if v[0] == '=' || v[0] == '+' || v[0] == '-' || v[0] == '@' {
+		return "'" + v
+	}
+	return v
 }
 
 type AlumniService struct {

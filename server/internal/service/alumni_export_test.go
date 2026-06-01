@@ -167,4 +167,82 @@ func TestExportFilterPropagation(t *testing.T) {
 	}
 }
 
+func TestExportSanitizesFormulaInjection(t *testing.T) {
+	formulaWorkUnit := "=HYPERLINK(\"http://evil.com\")"
+	plusValue := "+SUM(A1:A10)"
+	minusValue := "-SUM(A1:A10)"
+	atValue := "@SUM(A1:A10)"
+	store := &fakeAlumniStore{
+		items: []*model.AlumniProfile{
+			{
+				ID:       1,
+				Name:     "=cmd|'/C calc'!A0",
+				Grade:    "2020级",
+				WorkUnit: &formulaWorkUnit,
+				Position: &plusValue,
+				Mentor:   &minusValue,
+				Major:    &atValue,
+				Status:   "active",
+			},
+		},
+	}
+	svc := NewAlumniService(store, nil)
+
+	// Test CSV format
+	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"})
+	if err != nil {
+		t.Fatalf("expected csv export success, got %v", err)
+	}
+	r := csv.NewReader(bytes.NewReader(result.Data[3:]))
+	records, err := r.ReadAll()
+	if err != nil {
+		t.Fatalf("failed to read csv: %v", err)
+	}
+	nameVal := records[1][0]
+	workUnitVal := records[1][9]
+	positionVal := records[1][10]
+	mentorVal := records[1][5]
+	majorVal := records[1][6]
+
+	if nameVal != "'=cmd|'/C calc'!A0" {
+		t.Fatalf("expected name to be escaped, got %q", nameVal)
+	}
+	if workUnitVal != "'=HYPERLINK(\"http://evil.com\")" {
+		t.Fatalf("expected work unit to be escaped, got %q", workUnitVal)
+	}
+	if positionVal != "'+SUM(A1:A10)" {
+		t.Fatalf("expected position + prefix to be escaped, got %q", positionVal)
+	}
+	if mentorVal != "'-SUM(A1:A10)" {
+		t.Fatalf("expected mentor - prefix to be escaped, got %q", mentorVal)
+	}
+	if majorVal != "'@SUM(A1:A10)" {
+		t.Fatalf("expected major @ prefix to be escaped, got %q", majorVal)
+	}
+
+	// Test XLSX format
+	result, err = svc.Export(context.Background(), dto.AlumniExportRequest{Format: "xlsx"})
+	if err != nil {
+		t.Fatalf("expected xlsx export success, got %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(result.Data))
+	if err != nil {
+		t.Fatalf("failed to open xlsx: %v", err)
+	}
+	defer f.Close()
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		t.Fatalf("failed to get rows: %v", err)
+	}
+	if len(rows) < 2 {
+		t.Fatal("expected header + data row")
+	}
+	if rows[1][0] != "'=cmd|'/C calc'!A0" {
+		t.Fatalf("expected xlsx name to be escaped, got %q", rows[1][0])
+	}
+	if rows[1][9] != "'=HYPERLINK(\"http://evil.com\")" {
+		t.Fatalf("expected xlsx work unit to be escaped, got %q", rows[1][9])
+	}
+}
+
 func stringPtr(s string) *string { return &s }
