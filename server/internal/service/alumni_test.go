@@ -38,6 +38,11 @@ func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*
 	return s.items, s.total, s.err
 }
 
+func (s *fakeAlumniStore) ListAll(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	s.query = query
+	return s.items, s.err
+}
+
 func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64) (*model.AlumniProfile, error) {
 	s.detailID = id
 	return s.detail, s.detailErr

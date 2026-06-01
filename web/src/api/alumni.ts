@@ -60,4 +60,13 @@ export const alumniApi = {
       url: `/admin/alumni/${id}`,
     });
   },
+
+  exportData(params: AlumniQuery & { format?: string }) {
+    return request<Blob>({
+      method: 'GET',
+      url: '/admin/alumni/export',
+      params,
+      responseType: 'blob',
+    });
+  },
 };

@@ -24,6 +24,50 @@ type AlumniListRequest struct {
 	Mobile       string `form:"mobile"`
 }
 
+type AlumniExportRequest struct {
+	Format       string `form:"format"`
+	Keyword      string `form:"keyword"`
+	Grade        string `form:"grade"`
+	ClassName    string `form:"class_name"`
+	Cohort       string `form:"cohort"`
+	Counselor    string `form:"counselor"`
+	Mentor       string `form:"mentor"`
+	Major        string `form:"major"`
+	TrainingMode string `form:"training_mode"`
+	Industry     string `form:"industry"`
+	WorkUnit     string `form:"work_unit"`
+	Position     string `form:"position"`
+	Mobile       string `form:"mobile"`
+}
+
+func (r AlumniExportRequest) FormatOrDefault() string {
+	if r.Format == "csv" {
+		return "csv"
+	}
+	return "xlsx"
+}
+
+func (r AlumniExportRequest) ToQuery() do.AlumniListQuery {
+	return do.AlumniListQuery{
+		Page: common.PageQuery{
+			Page:     1,
+			PageSize: 0,
+		},
+		Keyword:      r.Keyword,
+		Grade:        r.Grade,
+		ClassName:    r.ClassName,
+		Cohort:       r.Cohort,
+		Counselor:    r.Counselor,
+		Mentor:       r.Mentor,
+		Major:        r.Major,
+		TrainingMode: r.TrainingMode,
+		Industry:     r.Industry,
+		WorkUnit:     r.WorkUnit,
+		Position:     r.Position,
+		Mobile:       r.Mobile,
+	}
+}
+
 func (r AlumniListRequest) ToQuery() do.AlumniListQuery {
 	return do.AlumniListQuery{
 		Page: common.PageQuery{

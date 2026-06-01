@@ -1,16 +1,66 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
+	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
 )
+
+type ExportResult struct {
+	Data        []byte
+	ContentType string
+	Filename    string
+}
+
+var exportHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
+
+func exportRow(item *model.AlumniProfile) []string {
+	return []string{
+		sanitizeExportValue(item.Name),
+		sanitizeExportValue(item.Grade),
+		sanitizeExportValue(stringOrEmpty(item.ClassName)),
+		sanitizeExportValue(stringOrEmpty(item.Cohort)),
+		sanitizeExportValue(stringOrEmpty(item.Counselor)),
+		sanitizeExportValue(stringOrEmpty(item.Mentor)),
+		sanitizeExportValue(stringOrEmpty(item.Major)),
+		sanitizeExportValue(stringOrEmpty(item.TrainingMode)),
+		sanitizeExportValue(stringOrEmpty(item.Industry)),
+		sanitizeExportValue(stringOrEmpty(item.WorkUnit)),
+		sanitizeExportValue(stringOrEmpty(item.Position)),
+		sanitizeExportValue(stringOrEmpty(item.MailingAddress)),
+		sanitizeExportValue(stringOrEmpty(item.Gender)),
+		sanitizeExportValue(stringOrEmpty(item.Mobile)),
+	}
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// sanitizeExportValue 防止电子表格公式注入。
+// 当值以 =、+、-、@ 开头时，前加单引号使其被解释为纯文本。
+func sanitizeExportValue(v string) string {
+	if v == "" {
+		return v
+	}
+	if v[0] == '=' || v[0] == '+' || v[0] == '-' || v[0] == '@' {
+		return "'" + v
+	}
+	return v
+}
 
 type AlumniService struct {
 	alumni repository.AlumniStore
@@ -150,6 +200,105 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 	}
 
 	return nil
+}
+
+// Export 导出校友数据为 xlsx 或 csv 格式。
+func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest) (*ExportResult, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	query := req.ToQuery().Normalize()
+	items, err := s.alumni.ListAll(ctx, query)
+	if err != nil {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Error(err))
+			return nil, common.ErrDatabaseUnavailable
+		}
+		logger.Error("failed to list alumni for export", zap.Error(err))
+		return nil, err
+	}
+
+	format := req.FormatOrDefault()
+	switch format {
+	case "csv":
+		return buildCSV(items)
+	default:
+		return buildXLSX(items)
+	}
+}
+
+func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sw, err := f.NewStreamWriter("Sheet1")
+	if err != nil {
+		return nil, fmt.Errorf("create stream writer: %w", err)
+	}
+
+	headerRow := make([]interface{}, len(exportHeaders))
+	for i, h := range exportHeaders {
+		headerRow[i] = h
+	}
+	if err := sw.SetRow("A1", headerRow); err != nil {
+		return nil, fmt.Errorf("write header: %w", err)
+	}
+
+	for i, item := range items {
+		row := exportRow(item)
+		vals := make([]interface{}, len(row))
+		for j, v := range row {
+			vals[j] = v
+		}
+		cell, _ := excelize.CoordinatesToCellName(1, i+2)
+		if err := sw.SetRow(cell, vals); err != nil {
+			return nil, fmt.Errorf("write row %d: %w", i+2, err)
+		}
+	}
+
+	if err := sw.Flush(); err != nil {
+		return nil, fmt.Errorf("flush stream: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, fmt.Errorf("write xlsx: %w", err)
+	}
+
+	return &ExportResult{
+		Data:        buf.Bytes(),
+		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		Filename:    "alumni_export.xlsx",
+	}, nil
+}
+
+func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
+	var buf bytes.Buffer
+
+	// UTF-8 BOM
+	buf.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	w := csv.NewWriter(&buf)
+	if err := w.Write(exportHeaders); err != nil {
+		return nil, fmt.Errorf("write csv header: %w", err)
+	}
+	for _, item := range items {
+		if err := w.Write(exportRow(item)); err != nil {
+			return nil, fmt.Errorf("write csv row: %w", err)
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, fmt.Errorf("flush csv: %w", err)
+	}
+
+	return &ExportResult{
+		Data:        buf.Bytes(),
+		ContentType: "text/csv; charset=utf-8",
+		Filename:    "alumni_export.csv",
+	}, nil
 }
 
 // GetMe 获取当前登录校友绑定的本人资料。
