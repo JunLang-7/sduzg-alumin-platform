@@ -45,6 +45,8 @@ services:
       dockerfile: Dockerfile
     container_name: sdu-alumni-api
     restart: unless-stopped
+    env_file:
+      - ./server/.env
     environment:
       APP_ENV: production
       GIN_MODE: release
