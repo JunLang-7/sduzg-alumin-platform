@@ -46,7 +46,8 @@ services:
     container_name: sdu-alumni-api
     restart: unless-stopped
     env_file:
-      - ./server/.env
+      - path: ./server/.env
+        required: false
     environment:
       APP_ENV: production
       GIN_MODE: release
