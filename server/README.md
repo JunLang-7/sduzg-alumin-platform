@@ -49,6 +49,13 @@ role: super_admin
 
 ## Docker Compose
 
+If you want the API container to pick up local secrets and database settings, create `server/.env` first:
+
+```bash
+cd server
+cp .env.example .env
+```
+
 ```bash
 docker compose up --build
 ```
