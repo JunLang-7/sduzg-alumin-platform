@@ -19,10 +19,11 @@ type LogoutResult struct {
 }
 
 type UserDTO struct {
-	ID       uint64  `json:"id"`
-	Account  string  `json:"account"`
-	Role     string  `json:"role"`
-	RealName *string `json:"real_name,omitempty"`
+	ID        uint64  `json:"id"`
+	Account   string  `json:"account"`
+	Role      string  `json:"role"`
+	RealName  *string `json:"real_name,omitempty"`
+	AlumniID  *uint64 `json:"alumni_id,omitempty"`
 }
 
 type ChangePasswordRequest struct {

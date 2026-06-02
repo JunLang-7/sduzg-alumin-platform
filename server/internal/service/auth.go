@@ -122,6 +122,7 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 			Account:  user.Account,
 			Role:     user.Role,
 			RealName: user.RealName,
+			AlumniID: user.AlumniID,
 		},
 	}, nil
 }

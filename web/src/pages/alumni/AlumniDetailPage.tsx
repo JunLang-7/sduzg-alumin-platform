@@ -4,13 +4,22 @@ import { Button, Card, Descriptions, Empty, Spin, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
+import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile } from '../../types/alumni';
+
+function isHidden(value: unknown, isRestrictedViewer: boolean): boolean {
+  return isRestrictedViewer && value == null;
+}
 
 export function AlumniDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<AlumniProfile | null>(null);
+
+  const isRestrictedViewer =
+    user?.role === 'alumni' && user.alumni_id !== undefined && String(user.alumni_id) !== id;
 
   useEffect(() => {
     if (!id) {
@@ -41,7 +50,7 @@ export function AlumniDetailPage() {
             <Descriptions bordered column={{ xs: 1, md: 2, xl: 3 }}>
               <Descriptions.Item label="姓名">{profile.name}</Descriptions.Item>
               <Descriptions.Item label="性别">{profile.gender || '-'}</Descriptions.Item>
-              <Descriptions.Item label="手机号">{profile.mobile || '-'}</Descriptions.Item>
+              <Descriptions.Item label="手机号">{isHidden(profile.mobile, isRestrictedViewer) ? '***' : (profile.mobile || '-')}</Descriptions.Item>
               <Descriptions.Item label="年级">{profile.grade}</Descriptions.Item>
               <Descriptions.Item label="班级">{profile.class_name || '-'}</Descriptions.Item>
               <Descriptions.Item label="届数">{profile.cohort || '-'}</Descriptions.Item>
@@ -51,9 +60,9 @@ export function AlumniDetailPage() {
               <Descriptions.Item label="导师">{profile.mentor || '-'}</Descriptions.Item>
               <Descriptions.Item label="行业">{profile.industry || '-'}</Descriptions.Item>
               <Descriptions.Item label="工作单位">{profile.work_unit || '-'}</Descriptions.Item>
-              <Descriptions.Item label="职务">{profile.position || '-'}</Descriptions.Item>
+              <Descriptions.Item label="职务">{isHidden(profile.position, isRestrictedViewer) ? '***' : (profile.position || '-')}</Descriptions.Item>
               <Descriptions.Item label="通讯地址" span={3}>
-                {profile.mailing_address || '-'}
+                {isHidden(profile.mailing_address, isRestrictedViewer) ? '***' : (profile.mailing_address || '-')}
               </Descriptions.Item>
             </Descriptions>
           ) : (
