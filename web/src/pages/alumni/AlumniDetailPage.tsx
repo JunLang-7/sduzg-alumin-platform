@@ -8,7 +8,7 @@ import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile } from '../../types/alumni';
 
 function isHidden(value: unknown, isRestrictedViewer: boolean): boolean {
-  return isRestrictedViewer && value === null;
+  return isRestrictedViewer && value == null;
 }
 
 export function AlumniDetailPage() {
