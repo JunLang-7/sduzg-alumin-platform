@@ -1,6 +1,7 @@
 import { request } from './http';
 import type { PageResult } from '../types/common';
 import type {
+  AlumniImportResult,
   AlumniFileItem,
   AlumniFileListResponse,
   AlumniProfile,
@@ -63,6 +64,16 @@ export const alumniApi = {
     });
   },
 
+  importData(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return request<AlumniImportResult>({
+      method: 'POST',
+      url: '/admin/alumni/import',
+    });
+  },
+  
   listFiles(id: number) {
     return request<AlumniFileListResponse>({
       method: 'GET',
@@ -86,6 +97,9 @@ export const alumniApi = {
     return request<void>({
       method: 'DELETE',
       url: `/admin/alumni/${alumniId}/files/${fileId}`,
+    });
+  },
+   
   exportData(params: AlumniQuery & { format?: string }) {
     return request<Blob>({
       method: 'GET',

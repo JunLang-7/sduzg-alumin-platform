@@ -150,6 +150,17 @@ func trimStringPointer(value *string) *string {
 	return &trimmed
 }
 
+type AlumniDedupKey struct {
+	Name      string
+	Grade     string
+	ClassName string
+	Cohort    string
+}
+
+func (k AlumniDedupKey) Key() string {
+	return k.Name + "|" + k.Grade + "|" + k.ClassName + "|" + k.Cohort
+}
+
 func trimEmptyStringPointer(value *string) *string {
 	value = trimStringPointer(value)
 	if value == nil || *value == "" {

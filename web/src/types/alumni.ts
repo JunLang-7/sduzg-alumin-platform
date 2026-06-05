@@ -34,6 +34,18 @@ export interface AlumniQuery {
   industry?: string;
 }
 
+export interface AlumniImportRowError {
+  row: number;
+  name: string;
+  message: string;
+}
+
+export interface AlumniImportResult {
+  total: number;
+  success: number;
+  errors: AlumniImportRowError[];
+}
+
 export type AlumniProfilePayload = Omit<AlumniProfile, 'id' | 'created_at' | 'updated_at'>;
 
 export type MyProfilePayload = Pick<

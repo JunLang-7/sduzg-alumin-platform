@@ -92,6 +92,14 @@ func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, upd
 	return s.updateErr
 }
 
+func (s *fakeAlumniStore) BatchCreate(_ context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
+	return nil
+}
+
+func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
+	return make(map[string]bool), nil
+}
+
 func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64) error {
 	s.deleteID = id
 	s.deleteUserID = updaterID

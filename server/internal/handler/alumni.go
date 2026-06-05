@@ -195,6 +195,48 @@ func (h *AlumniHandler) Export(c *gin.Context) {
 	}
 }
 
+func (h *AlumniHandler) Import(c *gin.Context) {
+	userID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	fileHeader, err := c.FormFile("file")
+	if err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "请选择要上传的 Excel 文件")
+		return
+	}
+
+	const maxSize = 20 << 20 // 20 MB
+	if fileHeader.Size > maxSize {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件过大，请上传小于 20MB 的文件")
+		return
+	}
+
+	file, err := fileHeader.Open()
+	if err != nil {
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "无法打开上传文件")
+		return
+	}
+	defer file.Close()
+
+	result, err := h.alumni.Import(c.Request.Context(), userID, file)
+	if err == nil {
+		response.Success(c, result)
+		return
+	}
+
+	switch {
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	case errors.Is(err, common.ErrInvalidRequest):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
+	}
+}
+
 func (h *AlumniHandler) Me(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
