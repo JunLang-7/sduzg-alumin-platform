@@ -3,6 +3,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Button, Card, Descriptions, Empty, Spin, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
+import { AlumniFilesCard } from '../../components/AlumniFilesCard';
 import { PageHeader } from '../../components/PageHeader';
 import type { AlumniProfile } from '../../types/alumni';
 
@@ -61,6 +62,10 @@ export function AlumniDetailPage() {
           )}
         </Spin>
       </Card>
+
+      {profile && (
+        <AlumniFilesCard alumniId={profile.id} />
+      )}
     </>
   );
 }

@@ -12,13 +12,19 @@ import (
 	"go.uber.org/zap"
 )
 
-type AlumniService struct {
-	alumni repository.AlumniStore
-	users  repository.UserStore
+// AlumniFileCleaner 校友删除时级联清理文件的接口。
+type AlumniFileCleaner interface {
+	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
 }
 
-func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore) *AlumniService {
-	return &AlumniService{alumni: alumni, users: users}
+type AlumniService struct {
+	alumni  repository.AlumniStore
+	users   repository.UserStore
+	files   AlumniFileCleaner
+}
+
+func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore, files AlumniFileCleaner) *AlumniService {
+	return &AlumniService{alumni: alumni, users: users, files: files}
 }
 
 // List 根据查询条件分页获取校友列表
@@ -147,6 +153,16 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 		}
 		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return err
+	}
+
+	// 级联清理关联的档案文件（best-effort）
+	if s.files != nil {
+		if err := s.files.CascadeSoftDelete(ctx, id); err != nil {
+			logger.Warn("failed to cascade delete alumni files",
+				zap.Uint64("alumni_id", id),
+				zap.Error(err),
+			)
+		}
 	}
 
 	return nil

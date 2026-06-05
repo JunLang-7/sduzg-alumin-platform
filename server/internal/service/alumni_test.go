@@ -98,7 +98,7 @@ func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {
 	emptyMentor := " "
 	workUnit := " 山东大学 "
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	detail, err := svc.Create(context.Background(), 7, dto.AdminAlumniCreateRequest{
 		Name:      " 张三 ",
@@ -140,7 +140,7 @@ func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {
 }
 
 func TestAlumniServiceCreateRejectsMissingRequiredFields(t *testing.T) {
-	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+	svc := NewAlumniService(&fakeAlumniStore{}, nil, nil)
 
 	_, err := svc.Create(context.Background(), 7, dto.AdminAlumniCreateRequest{
 		Name:  " ",
@@ -168,7 +168,7 @@ func TestAlumniServiceUpdateNormalizesAndMapsDetail(t *testing.T) {
 			UpdatedAt: updatedAt,
 		},
 	}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	detail, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
 		Name:      " 张三 ",
@@ -210,7 +210,7 @@ func TestAlumniServiceUpdatePreservesEmptyOptionalFields(t *testing.T) {
 			Status: common.AlumniStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	_, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
 		Name:      "张三",
@@ -250,7 +250,7 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 		},
 		total: 12,
 	}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	pager, err := svc.List(context.Background(), dto.AlumniListRequest{
 		Page:     0,
@@ -299,7 +299,7 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 			UpdatedAt:      updatedAt,
 		},
 	}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	detail, err := svc.GetByID(context.Background(), 9)
 	if err != nil {
@@ -334,7 +334,7 @@ func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 			Status:   common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, users)
+	svc := NewAlumniService(store, users, nil)
 
 	detail, err := svc.GetMe(context.Background(), 3)
 	if err != nil {
@@ -356,7 +356,7 @@ func TestAlumniServiceGetMeRejectsNonAlumniUser(t *testing.T) {
 			Status: common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(&fakeAlumniStore{}, users)
+	svc := NewAlumniService(&fakeAlumniStore{}, users, nil)
 
 	_, err := svc.GetMe(context.Background(), 3)
 	if err != common.ErrPermissionDenied {
@@ -374,7 +374,7 @@ func TestAlumniServiceGetMeRejectsDisabledUser(t *testing.T) {
 			Status:   "disabled",
 		},
 	}
-	svc := NewAlumniService(&fakeAlumniStore{}, users)
+	svc := NewAlumniService(&fakeAlumniStore{}, users, nil)
 
 	_, err := svc.GetMe(context.Background(), 3)
 	if err != common.ErrAccountDisabled {
@@ -403,7 +403,7 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 			Status:   common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, users)
+	svc := NewAlumniService(store, users, nil)
 
 	_, err := svc.UpdateMe(context.Background(), 3, dto.AlumniProfileUpdateRequest{
 		WorkUnit: &workUnit,
@@ -432,7 +432,7 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 
 func TestAlumniServiceDeleteSuccess(t *testing.T) {
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	err := svc.Delete(context.Background(), 7, 9)
 	if err != nil {
@@ -445,7 +445,7 @@ func TestAlumniServiceDeleteSuccess(t *testing.T) {
 
 func TestAlumniServiceDeleteReturnsNotFound(t *testing.T) {
 	store := &fakeAlumniStore{deleteErr: common.ErrAlumniNotFound}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, nil)
 
 	err := svc.Delete(context.Background(), 7, 9)
 	if err != common.ErrAlumniNotFound {

@@ -54,12 +54,21 @@ services:
       DB_NAME: sdu_alumni_db
       DB_USER: sdu_alumni
       DB_PASSWORD: sdu_alumni_password
+      DB_PARAMS: "charset=utf8mb4&parseTime=true&loc=Local"
       REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
+      STORAGE_ENABLED: "true"
+      STORAGE_ENDPOINT: minio:9000
+      STORAGE_ACCESS_KEY: minioadmin
+      STORAGE_SECRET_KEY: minioadmin123
+      STORAGE_BUCKET: sdu-alumni-files
+      STORAGE_USE_SSL: "false"
     depends_on:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     ports:
       - "8080:8080"
@@ -75,6 +84,26 @@ services:
     ports:
       - "80:80"
 
+  minio:
+    image: minio/minio:latest
+    container_name: sdu-alumni-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   mysql_data:
   redis_data:
+  minio_data:

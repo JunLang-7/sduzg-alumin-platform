@@ -6,6 +6,7 @@ database:
     - users
     - alumni_profiles
     - operation_logs
+    - alumni_files
   # 是否只生成 model，不生成 query
   onlyModel: false
   # 指定生成的查询代码文件的输出目录

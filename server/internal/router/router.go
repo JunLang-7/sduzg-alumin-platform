@@ -10,6 +10,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -17,10 +18,11 @@ import (
 )
 
 type Dependencies struct {
-	Config      config.Config
-	Logger      *zap.Logger
-	DB          *gorm.DB
-	RedisClient *redis.Client
+	Config        config.Config
+	Logger        *zap.Logger
+	DB            *gorm.DB
+	RedisClient   *redis.Client
+	StorageClient *storage.Client
 }
 
 func New(deps Dependencies) *gin.Engine {
@@ -49,8 +51,14 @@ func New(deps Dependencies) *gin.Engine {
 	// 认证服务和处理器
 	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
-	// 校友服务和处理器
-	alumniService := service.NewAlumniService(alumniRepository, userRepository)
+	// 操作日志写入器
+	opLogger := service.NewOperationLogger(deps.DB)
+	// 校友文件仓库、服务和处理器（在校友服务之前创建，用于级联删除注入）
+	alumniFileRepository := repository.NewAlumniFileRepository(deps.DB)
+	alumniFileService := service.NewAlumniFileService(alumniFileRepository, alumniRepository, deps.StorageClient, opLogger)
+	alumniFileHandler := handler.NewAlumniFileHandler(alumniFileService, userRepository)
+	// 校友服务和处理器（注入文件服务以支持级联删除）
+	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileService)
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)
@@ -59,7 +67,6 @@ func New(deps Dependencies) *gin.Engine {
 	dashboardRepository := repository.NewDashboardRepository(deps.DB)
 	dashboardService := service.NewDashboardService(dashboardRepository)
 	dashboardHandler := handler.NewDashboardHandler(dashboardService)
-
 	// 白名单路径
 	whiteList := []string{
 		"/api/v1/health/live",
@@ -85,6 +92,10 @@ func New(deps Dependencies) *gin.Engine {
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.GET("/alumni/:id", alumniHandler.Detail)
 
+		// 校友档案文件
+		api.GET("/alumni/:id/files", alumniFileHandler.ListFiles)
+		api.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.Download)
+
 		// 管理员专用接口
 		admin := api.Group("/admin")
 		admin.Use(middleware.RequireRoles(userRepository, common.RoleAdmin, common.RoleSuperAdmin))
@@ -93,6 +104,10 @@ func New(deps Dependencies) *gin.Engine {
 			admin.POST("/alumni", alumniHandler.Create)
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
+
+			// 管理校友文件
+			admin.POST("/alumni/:id/files", alumniFileHandler.Upload)
+			admin.DELETE("/alumni/:id/files/:fileId", alumniFileHandler.Delete)
 
 			// 数据大屏
 			admin.GET("/dashboard/overview", dashboardHandler.Overview)

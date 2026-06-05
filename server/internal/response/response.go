@@ -15,6 +15,10 @@ const (
 	CodeTooManyRequests    = 42900
 	CodeInternalError      = 50000
 	CodeServiceUnavailable = 50300
+
+	CodeFileNotFound       = 40401
+	CodeFileTooLarge       = 41300
+	CodeFileTypeNotAllowed = 41500
 )
 
 type Body struct {
