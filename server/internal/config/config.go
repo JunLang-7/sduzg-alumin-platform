@@ -90,7 +90,7 @@ func (c DatabaseConfig) DSN() string {
 	)
 }
 
-func Load() Config {
+func Load() (Config, error) {
 	v := viper.New()
 	setDefaults(v)
 
@@ -103,7 +103,7 @@ func Load() Config {
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
-			panic(fmt.Errorf("failed to read config: %w", err))
+			return Config{}, fmt.Errorf("failed to read config: %w", err)
 		}
 	}
 
@@ -155,7 +155,7 @@ func Load() Config {
 		},
 	}
 
-	return cfg
+	return cfg, nil
 }
 
 func setDefaults(v *viper.Viper) {

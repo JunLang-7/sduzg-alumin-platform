@@ -20,7 +20,10 @@ import (
 
 func main() {
 	// 加载配置
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		panic(err)
+	}
 
 	// 初始化日志
 	log, err := logger.New(cfg.App.Env)

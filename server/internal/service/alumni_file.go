@@ -53,13 +53,18 @@ func NewAlumniFileService(
 
 // Upload 上传文件：校验 → 替换旧文件 → 上传 MinIO → 写入 DB 元数据 → 记录日志。
 func (s *AlumniFileService) Upload(ctx context.Context, operatorID uint64, alumniID uint64, fileType string, fileHeader *multipart.FileHeader) (*dto.AlumniFileUploadResponse, error) {
-	// 1. 校验文件类型
+	// 1. 校验 file_type 参数
+	if fileType != common.FileTypeDegreeArchive && fileType != common.FileTypeAcademicRecord {
+		return nil, common.ErrFileTypeNotAllowed
+	}
+
+	// 2. 校验文件 MIME 类型
 	mimeType := fileHeader.Header.Get("Content-Type")
 	if _, allowed := allowedMimeTypes[mimeType]; !allowed {
 		return nil, common.ErrFileTypeNotAllowed
 	}
 
-	// 2. 校验文件大小
+	// 3. 校验文件大小
 	if fileHeader.Size > maxFileSize {
 		return nil, common.ErrFileTooLarge
 	}

@@ -10,7 +10,7 @@ func TestLoadUsesDefaults(t *testing.T) {
 	clearConfigEnv(t)
 	t.Setenv("AUTH_JWT_SECRET", "test-secret")
 
-	cfg := Load()
+	cfg, _ := Load()
 
 	if cfg.App.Name != "sdu-alumni-platform" {
 		t.Fatalf("expected default app name, got %q", cfg.App.Name)
@@ -39,7 +39,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("REDIS_READ_TIMEOUT", "1500ms")
 	t.Setenv("AUTH_ACCESS_TOKEN_TTL", "2h")
 
-	cfg := Load()
+	cfg, _ := Load()
 
 	if cfg.App.Name != "override-api" {
 		t.Fatalf("expected app name override, got %q", cfg.App.Name)
@@ -72,7 +72,7 @@ func TestLoadReadsEnvFile(t *testing.T) {
 		t.Fatalf("failed to write env file: %v", err)
 	}
 
-	cfg := Load()
+	cfg, _ := Load()
 
 	if cfg.App.Name != "file-api" {
 		t.Fatalf("expected app name from env file, got %q", cfg.App.Name)
