@@ -78,7 +78,6 @@ export const alumniApi = {
     return request<AlumniFileItem>({
       method: 'POST',
       url: `/admin/alumni/${id}/files`,
-      headers: { 'Content-Type': 'multipart/form-data' },
       data: formData,
     });
   },
