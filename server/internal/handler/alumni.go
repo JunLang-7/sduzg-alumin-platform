@@ -236,6 +236,8 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	case errors.Is(err, common.ErrInvalidRequest):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
 	default:
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件导入失败，请检查文件格式是否正确")
 	}

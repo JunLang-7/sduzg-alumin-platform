@@ -389,9 +389,13 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		return nil, fmt.Errorf("read uploaded file: %w", err)
 	}
 
+	if len(data) < 4 || data[0] != 0x50 || data[1] != 0x4B || data[2] != 0x03 || data[3] != 0x04 {
+		return nil, common.ErrInvalidRequest
+	}
+
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
-		return nil, fmt.Errorf("parse xlsx: %w", err)
+		return nil, common.ErrInvalidRequest
 	}
 	defer f.Close()
 
@@ -400,8 +404,13 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		return nil, fmt.Errorf("read sheet rows: %w", err)
 	}
 
+	const maxRows = 5001 // 表头 + 最多 5000 行数据
+	if len(rows) > maxRows {
+		return nil, fmt.Errorf("单次最多导入 5000 条数据，当前文件 %d 行", len(rows)-1)
+	}
+
 	if len(rows) < 2 {
-		return nil, fmt.Errorf("文件无数据行，请参照模板填写后上传")
+		return nil, common.ErrInvalidRequest
 	}
 
 	header := rows[0]
