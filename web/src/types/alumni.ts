@@ -52,3 +52,18 @@ export type MyProfilePayload = Pick<
   AlumniProfile,
   'work_unit' | 'position' | 'mailing_address' | 'mobile'
 >;
+
+export interface AlumniFileItem {
+  id: number;
+  file_type: 'degree_archive' | 'academic_record';
+  original_name: string;
+  file_size: number;
+  mime_type: string;
+  created_at: string;
+}
+
+export interface AlumniFileListResponse {
+  alumni_id: number;
+  degree_archive: AlumniFileItem[];
+  academic_record: AlumniFileItem[];
+}

@@ -21,6 +21,7 @@ type Config struct {
 	Database DatabaseConfig
 	Redis    RedisConfig
 	Auth     AuthConfig
+	Storage  StorageConfig
 }
 
 type AppConfig struct {
@@ -69,6 +70,15 @@ type AuthConfig struct {
 	AccessTokenTTL time.Duration
 }
 
+type StorageConfig struct {
+	Enabled   bool
+	Endpoint  string
+	AccessKey string
+	SecretKey string
+	Bucket    string
+	UseSSL    bool
+}
+
 func (c DatabaseConfig) DSN() string {
 	return fmt.Sprintf(
 		"%s:%s@tcp(%s)/%s?%s",
@@ -80,7 +90,7 @@ func (c DatabaseConfig) DSN() string {
 	)
 }
 
-func Load() Config {
+func Load() (Config, error) {
 	v := viper.New()
 	setDefaults(v)
 
@@ -93,7 +103,7 @@ func Load() Config {
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
-			panic(fmt.Errorf("failed to read config: %w", err))
+			return Config{}, fmt.Errorf("failed to read config: %w", err)
 		}
 	}
 
@@ -135,13 +145,17 @@ func Load() Config {
 			JWTSecret:      v.GetString("AUTH_JWT_SECRET"),
 			AccessTokenTTL: v.GetDuration("AUTH_ACCESS_TOKEN_TTL"),
 		},
+		Storage: StorageConfig{
+			Enabled:   v.GetBool("STORAGE_ENABLED"),
+			Endpoint:  v.GetString("STORAGE_ENDPOINT"),
+			AccessKey: v.GetString("STORAGE_ACCESS_KEY"),
+			SecretKey: v.GetString("STORAGE_SECRET_KEY"),
+			Bucket:    v.GetString("STORAGE_BUCKET"),
+			UseSSL:    v.GetBool("STORAGE_USE_SSL"),
+		},
 	}
 
-	if cfg.Auth.JWTSecret == "dev-only-change-me" {
-		panic("AUTH_JWT_SECRET is still the default value 'dev-only-change-me' — refusing to start. Set AUTH_JWT_SECRET in your environment or .env file.")
-	}
-
-	return cfg
+	return cfg, nil
 }
 
 func setDefaults(v *viper.Viper) {
@@ -172,4 +186,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("REDIS_WRITE_TIMEOUT", 3*time.Second)
 	v.SetDefault("AUTH_JWT_SECRET", "dev-only-change-me")
 	v.SetDefault("AUTH_ACCESS_TOKEN_TTL", 24*time.Hour)
+	v.SetDefault("STORAGE_ENABLED", false)
+	v.SetDefault("STORAGE_ENDPOINT", "127.0.0.1:9000")
+	v.SetDefault("STORAGE_ACCESS_KEY", "minioadmin")
+	v.SetDefault("STORAGE_SECRET_KEY", "minioadmin123")
+	v.SetDefault("STORAGE_BUCKET", "sdu-alumni-files")
+	v.SetDefault("STORAGE_USE_SSL", false)
 }

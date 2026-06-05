@@ -10,4 +10,10 @@ const (
 
 	AlumniStatusActive  = "active"
 	AlumniStatusDeleted = "deleted"
+
+	FileTypeDegreeArchive  = "degree_archive"
+	FileTypeAcademicRecord = "academic_record"
+
+	FileStatusActive  = "active"
+	FileStatusDeleted = "deleted"
 )
