@@ -1,20 +1,68 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"errors"
+	"fmt"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
+	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
 )
 
 // AlumniFileCleaner 校友删除时级联清理文件的接口。
 type AlumniFileCleaner interface {
 	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
+type ExportResult struct {
+	Data        []byte
+	ContentType string
+	Filename    string
+}
+
+var exportHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
+
+func exportRow(item *model.AlumniProfile) []string {
+	return []string{
+		sanitizeExportValue(item.Name),
+		sanitizeExportValue(item.Grade),
+		sanitizeExportValue(stringOrEmpty(item.ClassName)),
+		sanitizeExportValue(stringOrEmpty(item.Cohort)),
+		sanitizeExportValue(stringOrEmpty(item.Counselor)),
+		sanitizeExportValue(stringOrEmpty(item.Mentor)),
+		sanitizeExportValue(stringOrEmpty(item.Major)),
+		sanitizeExportValue(stringOrEmpty(item.TrainingMode)),
+		sanitizeExportValue(stringOrEmpty(item.Industry)),
+		sanitizeExportValue(stringOrEmpty(item.WorkUnit)),
+		sanitizeExportValue(stringOrEmpty(item.Position)),
+		sanitizeExportValue(stringOrEmpty(item.MailingAddress)),
+		sanitizeExportValue(stringOrEmpty(item.Gender)),
+		sanitizeExportValue(stringOrEmpty(item.Mobile)),
+	}
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// sanitizeExportValue 防止电子表格公式注入。
+// 当值以 =、+、-、@ 开头时，前加单引号使其被解释为纯文本。
+func sanitizeExportValue(v string) string {
+	if v == "" {
+		return v
+	}
+	if v[0] == '=' || v[0] == '+' || v[0] == '-' || v[0] == '@' {
+		return "'" + v
+	}
+	return v
 }
 
 type AlumniService struct {
@@ -28,7 +76,7 @@ func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore,
 }
 
 // List 根据查询条件分页获取校友列表
-func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (common.Pager[dto.AlumniListItem], error) {
+func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, viewerID uint64) (common.Pager[dto.AlumniListItem], error) {
 	query := req.ToQuery().Normalize()
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
@@ -44,11 +92,43 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest) (co
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), err
 	}
 
-	return common.NewPager(mapAlumniListItems(items), query.Page, total), nil
+	mapped := mapAlumniListItems(items)
+	s.maskListItems(ctx, mapped, viewerID)
+	return common.NewPager(mapped, query.Page, total), nil
 }
 
-// GetByID 根据 ID 获取校友详情
-func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDetail, error) {
+// maskListItems 默认屏蔽列表中的敏感字段，仅当确认查看者为管理员时才放行。
+func (s *AlumniService) maskListItems(ctx context.Context, items []dto.AlumniListItem, viewerID uint64) {
+	mask := func() {
+		for i := range items {
+			items[i].Mobile = nil
+			items[i].Position = nil
+		}
+	}
+
+	if s.users == nil {
+		logger.Error("user repository is not initialized, masking list sensitive fields by default")
+		mask()
+		return
+	}
+
+	viewer, err := s.users.FindByID(ctx, viewerID)
+	if err != nil {
+		logger.Error("failed to find viewer for list, masking by default", zap.Uint64("viewer_id", viewerID), zap.Error(err))
+		mask()
+		return
+	}
+
+	// 仅管理员和超级管理员可查看完整信息
+	if viewer.Role == common.RoleAdmin || viewer.Role == common.RoleSuperAdmin {
+		return
+	}
+
+	mask()
+}
+
+// GetByID 根据 ID 获取校友详情。viewerID 为查看者用户 ID，用于基于角色的字段屏蔽。
+func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewerID uint64) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
@@ -68,7 +148,48 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64) (*dto.AlumniDeta
 		return nil, err
 	}
 
-	return mapAlumniDetail(item), nil
+	detail := mapAlumniDetail(item)
+	s.maskSensitiveFields(ctx, detail, id, viewerID)
+	return detail, nil
+}
+
+// maskSensitiveFields 当查看者为普通校友且查看的不是本人资料时，屏蔽敏感字段。
+// maskSensitiveFields 默认屏蔽详情中的敏感字段，仅当确认查看者有权限时才放行。
+func (s *AlumniService) maskSensitiveFields(ctx context.Context, detail *dto.AlumniDetail, alumniID uint64, viewerID uint64) {
+	if detail == nil {
+		return
+	}
+
+	mask := func() {
+		detail.Mobile = nil
+		detail.Position = nil
+		detail.MailingAddress = nil
+	}
+
+	if s.users == nil {
+		logger.Error("user repository is not initialized, masking detail sensitive fields by default")
+		mask()
+		return
+	}
+
+	viewer, err := s.users.FindByID(ctx, viewerID)
+	if err != nil {
+		logger.Error("failed to find viewer for detail, masking by default", zap.Uint64("viewer_id", viewerID), zap.Error(err))
+		mask()
+		return
+	}
+
+	// 管理员和超级管理员可查看完整信息
+	if viewer.Role == common.RoleAdmin || viewer.Role == common.RoleSuperAdmin {
+		return
+	}
+
+	// 校友查看本人资料时不屏蔽
+	if viewer.AlumniID != nil && *viewer.AlumniID == alumniID {
+		return
+	}
+
+	mask()
 }
 
 // Create 由管理员新增校友档案。
@@ -127,7 +248,7 @@ func (s *AlumniService) Update(ctx context.Context, operatorID uint64, id uint64
 		return nil, err
 	}
 
-	updated, err := s.GetByID(ctx, id)
+	updated, err := s.GetByID(ctx, id, operatorID)
 	if err != nil {
 		return nil, err
 	}
@@ -168,6 +289,105 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 	return nil
 }
 
+// Export 导出校友数据为 xlsx 或 csv 格式。
+func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest) (*ExportResult, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	query := req.ToQuery().Normalize()
+	items, err := s.alumni.ListAll(ctx, query)
+	if err != nil {
+		if errors.Is(err, common.ErrDatabaseUnavailable) {
+			logger.Error("database is unavailable", zap.Error(err))
+			return nil, common.ErrDatabaseUnavailable
+		}
+		logger.Error("failed to list alumni for export", zap.Error(err))
+		return nil, err
+	}
+
+	format := req.FormatOrDefault()
+	switch format {
+	case "csv":
+		return buildCSV(items)
+	default:
+		return buildXLSX(items)
+	}
+}
+
+func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sw, err := f.NewStreamWriter("Sheet1")
+	if err != nil {
+		return nil, fmt.Errorf("create stream writer: %w", err)
+	}
+
+	headerRow := make([]interface{}, len(exportHeaders))
+	for i, h := range exportHeaders {
+		headerRow[i] = h
+	}
+	if err := sw.SetRow("A1", headerRow); err != nil {
+		return nil, fmt.Errorf("write header: %w", err)
+	}
+
+	for i, item := range items {
+		row := exportRow(item)
+		vals := make([]interface{}, len(row))
+		for j, v := range row {
+			vals[j] = v
+		}
+		cell, _ := excelize.CoordinatesToCellName(1, i+2)
+		if err := sw.SetRow(cell, vals); err != nil {
+			return nil, fmt.Errorf("write row %d: %w", i+2, err)
+		}
+	}
+
+	if err := sw.Flush(); err != nil {
+		return nil, fmt.Errorf("flush stream: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		return nil, fmt.Errorf("write xlsx: %w", err)
+	}
+
+	return &ExportResult{
+		Data:        buf.Bytes(),
+		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		Filename:    "alumni_export.xlsx",
+	}, nil
+}
+
+func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
+	var buf bytes.Buffer
+
+	// UTF-8 BOM
+	buf.Write([]byte{0xEF, 0xBB, 0xBF})
+
+	w := csv.NewWriter(&buf)
+	if err := w.Write(exportHeaders); err != nil {
+		return nil, fmt.Errorf("write csv header: %w", err)
+	}
+	for _, item := range items {
+		if err := w.Write(exportRow(item)); err != nil {
+			return nil, fmt.Errorf("write csv row: %w", err)
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, fmt.Errorf("flush csv: %w", err)
+	}
+
+	return &ExportResult{
+		Data:        buf.Bytes(),
+		ContentType: "text/csv; charset=utf-8",
+		Filename:    "alumni_export.csv",
+	}, nil
+}
+
 // GetMe 获取当前登录校友绑定的本人资料。
 func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDetail, error) {
 	alumniID, err := s.currentAlumniID(ctx, userID)
@@ -175,7 +395,7 @@ func (s *AlumniService) GetMe(ctx context.Context, userID uint64) (*dto.AlumniDe
 		return nil, err
 	}
 
-	return s.GetByID(ctx, alumniID)
+	return s.GetByID(ctx, alumniID, userID)
 }
 
 // UpdateMe 更新当前登录校友本人允许维护的字段，并返回更新后的资料。
@@ -206,7 +426,7 @@ func (s *AlumniService) UpdateMe(ctx context.Context, userID uint64, req dto.Alu
 		}
 	}
 
-	return s.GetByID(ctx, alumniID)
+	return s.GetByID(ctx, alumniID, userID)
 }
 
 // currentAlumniID 获取当前用户绑定的校友 ID。如果用户不存在、不是校友、或未绑定校友资料，返回相应错误。

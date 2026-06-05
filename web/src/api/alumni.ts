@@ -87,6 +87,12 @@ export const alumniApi = {
     return request<void>({
       method: 'DELETE',
       url: `/admin/alumni/${alumniId}/files/${fileId}`,
+  exportData(params: AlumniQuery & { format?: string }) {
+    return request<Blob>({
+      method: 'GET',
+      url: '/admin/alumni/export',
+      params,
+      responseType: 'blob',
     });
   },
 };

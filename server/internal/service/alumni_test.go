@@ -38,6 +38,11 @@ func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*
 	return s.items, s.total, s.err
 }
 
+func (s *fakeAlumniStore) ListAll(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	s.query = query
+	return s.items, s.err
+}
+
 func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64) (*model.AlumniProfile, error) {
 	s.detailID = id
 	return s.detail, s.detailErr
@@ -256,7 +261,7 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 		Page:     0,
 		PageSize: 1000,
 		Keyword:  " 张三 ",
-	})
+	}, 3)
 	if err != nil {
 		t.Fatalf("expected list success, got %v", err)
 	}
@@ -286,9 +291,10 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	mailingAddress := "济南市"
 	createdAt := time.Date(2026, 4, 28, 9, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, 4, 29, 9, 0, 0, 0, time.UTC)
+	alumniID := uint64(9)
 	store := &fakeAlumniStore{
 		detail: &model.AlumniProfile{
-			ID:             9,
+			ID:             alumniID,
 			Name:           "张三",
 			Grade:          "2020级",
 			Counselor:      &counselor,
@@ -301,18 +307,141 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil, nil)
 
-	detail, err := svc.GetByID(context.Background(), 9)
+	detail, err := svc.GetByID(context.Background(), alumniID, 3)
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}
-	if store.detailID != 9 {
-		t.Fatalf("expected detail id 9, got %d", store.detailID)
+	if store.detailID != alumniID {
+		t.Fatalf("expected detail id %d, got %d", alumniID, store.detailID)
 	}
-	if detail.ID != 9 || detail.Name != "张三" || detail.Counselor == nil || *detail.Counselor != counselor {
+	if detail.ID != alumniID || detail.Name != "张三" || detail.Counselor == nil || *detail.Counselor != counselor {
 		t.Fatalf("unexpected alumni detail: %+v", detail)
 	}
 	if !detail.CreatedAt.Equal(createdAt) || !detail.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected detail times: %+v", detail)
+	}
+}
+
+func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testing.T) {
+	mobile := "13800000000"
+	position := "主任"
+	mailingAddress := "济南市"
+	alumniID := uint64(9)
+	viewerAlumniID := uint64(5)
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:             alumniID,
+			Name:           "张三",
+			Grade:          "2020级",
+			Mobile:         &mobile,
+			Position:       &position,
+			MailingAddress: &mailingAddress,
+			Status:         "active",
+		},
+	}
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:       3,
+			Role:     common.RoleAlumni,
+			AlumniID: &viewerAlumniID,
+			Status:   common.UserStatusActive,
+		},
+	}
+	svc := NewAlumniService(store, users)
+
+	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	if err != nil {
+		t.Fatalf("expected detail success, got %v", err)
+	}
+	if detail.Mobile != nil {
+		t.Fatalf("expected mobile to be nil, got %v", *detail.Mobile)
+	}
+	if detail.Position != nil {
+		t.Fatalf("expected position to be nil, got %v", *detail.Position)
+	}
+	if detail.MailingAddress != nil {
+		t.Fatalf("expected mailing_address to be nil, got %v", *detail.MailingAddress)
+	}
+}
+
+func TestAlumniServiceGetByIDShowsAllFieldsForAlumniViewingSelf(t *testing.T) {
+	mobile := "13800000000"
+	position := "主任"
+	mailingAddress := "济南市"
+	alumniID := uint64(9)
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:             alumniID,
+			Name:           "张三",
+			Grade:          "2020级",
+			Mobile:         &mobile,
+			Position:       &position,
+			MailingAddress: &mailingAddress,
+			Status:         "active",
+		},
+	}
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:       3,
+			Role:     common.RoleAlumni,
+			AlumniID: &alumniID,
+			Status:   common.UserStatusActive,
+		},
+	}
+	svc := NewAlumniService(store, users)
+
+	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	if err != nil {
+		t.Fatalf("expected detail success, got %v", err)
+	}
+	if detail.Mobile == nil || *detail.Mobile != mobile {
+		t.Fatalf("expected mobile %q, got %v", mobile, detail.Mobile)
+	}
+	if detail.Position == nil || *detail.Position != position {
+		t.Fatalf("expected position %q, got %v", position, detail.Position)
+	}
+	if detail.MailingAddress == nil || *detail.MailingAddress != mailingAddress {
+		t.Fatalf("expected mailing_address %q, got %v", mailingAddress, detail.MailingAddress)
+	}
+}
+
+func TestAlumniServiceGetByIDShowsAllFieldsForAdmin(t *testing.T) {
+	mobile := "13800000000"
+	position := "主任"
+	mailingAddress := "济南市"
+	alumniID := uint64(9)
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{
+			ID:             alumniID,
+			Name:           "张三",
+			Grade:          "2020级",
+			Mobile:         &mobile,
+			Position:       &position,
+			MailingAddress: &mailingAddress,
+			Status:         "active",
+		},
+	}
+	users := &fakeUserStore{
+		user: &model.User{
+			ID:     3,
+			Role:   common.RoleAdmin,
+			Status: common.UserStatusActive,
+		},
+	}
+	svc := NewAlumniService(store, users)
+
+	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	if err != nil {
+		t.Fatalf("expected detail success, got %v", err)
+	}
+	if detail.Mobile == nil || *detail.Mobile != mobile {
+		t.Fatalf("expected mobile %q, got %v", mobile, detail.Mobile)
+	}
+	if detail.Position == nil || *detail.Position != position {
+		t.Fatalf("expected position %q, got %v", position, detail.Position)
+	}
+	if detail.MailingAddress == nil || *detail.MailingAddress != mailingAddress {
+		t.Fatalf("expected mailing_address %q, got %v", mailingAddress, detail.MailingAddress)
 	}
 }
 

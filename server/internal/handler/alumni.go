@@ -2,6 +2,7 @@ package handler
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -28,7 +29,13 @@ func (h *AlumniHandler) List(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.List(c.Request.Context(), req)
+	viewerID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.alumni.List(c.Request.Context(), req, viewerID)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -49,7 +56,13 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.GetByID(c.Request.Context(), id)
+	viewerID, ok := middleware.CurrentUserID(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.alumni.GetByID(c.Request.Context(), id, viewerID)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -153,6 +166,28 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	}
+}
+
+func (h *AlumniHandler) Export(c *gin.Context) {
+	var req dto.AlumniExportRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+
+	result, err := h.alumni.Export(c.Request.Context(), req)
+	if err == nil {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", result.Filename))
+		c.Data(http.StatusOK, result.ContentType, result.Data)
+		return
+	}
+
+	switch {
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:

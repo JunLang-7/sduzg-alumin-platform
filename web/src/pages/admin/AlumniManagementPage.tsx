@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -9,6 +10,7 @@ import {
 import {
   Button,
   Card,
+  Dropdown,
   Form,
   Input,
   Modal,
@@ -18,6 +20,7 @@ import {
   Table,
   message,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
@@ -194,6 +197,29 @@ export function AlumniManagementPage() {
     }));
   };
 
+  const handleExport = async (format?: string) => {
+    try {
+      const filters = searchForm.getFieldsValue();
+      const blob = await alumniApi.exportData({ ...filters, format });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const ext = format === 'csv' ? 'csv' : 'xlsx';
+      link.href = url;
+      link.download = `alumni_export.${ext}`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success('导出成功');
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '导出失败');
+    }
+  };
+
+  const exportMenuItems: MenuProps['items'] = [
+    { key: 'xlsx', label: '为 Excel (.xlsx)' },
+    { key: 'csv', label: '为 CSV (.csv)' },
+  ];
+
   return (
     <>
       <PageHeader
@@ -233,6 +259,16 @@ export function AlumniManagementPage() {
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
             </Button>
+            <Dropdown
+              menu={{
+                items: exportMenuItems,
+                onClick: ({ key }) => handleExport(key),
+              }}
+            >
+              <Button icon={<DownloadOutlined />}>
+                导出
+              </Button>
+            </Dropdown>
           </Space>
         </Form>
       </Card>
