@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
-	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -19,20 +17,11 @@ import (
 // AlumniFileHandler 校友档案文件处理器。
 type AlumniFileHandler struct {
 	fileService *service.AlumniFileService
-	userRepo    UserRoleLookup
-}
-
-// UserRoleLookup 查询用户角色和绑定的校友 ID（用于权限控制）。
-type UserRoleLookup interface {
-	FindByID(ctx context.Context, userID uint64) (*model.User, error)
 }
 
 // NewAlumniFileHandler 创建文件处理器实例。
-func NewAlumniFileHandler(fileService *service.AlumniFileService, userRepo UserRoleLookup) *AlumniFileHandler {
-	return &AlumniFileHandler{
-		fileService: fileService,
-		userRepo:    userRepo,
-	}
+func NewAlumniFileHandler(fileService *service.AlumniFileService) *AlumniFileHandler {
+	return &AlumniFileHandler{fileService: fileService}
 }
 
 // Upload 上传文件 POST /admin/alumni/:id/files
@@ -50,8 +39,8 @@ func (h *AlumniFileHandler) Upload(c *gin.Context) {
 	}
 
 	fileType := c.PostForm("file_type")
-	if fileType != common.FileTypeDegreeArchive && fileType != common.FileTypeAcademicRecord {
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "file_type 必须为 degree_archive 或 academic_record")
+	if fileType == "" {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "file_type 不能为空")
 		return
 	}
 
@@ -70,23 +59,11 @@ func (h *AlumniFileHandler) Upload(c *gin.Context) {
 	h.writeUploadError(c, err)
 }
 
-// ListFiles 查看文件列表 GET /alumni/:id/files
-// 校友只能查看自己的文件，管理员可查看所有人。
+// ListFiles 查看文件列表 GET /admin/alumni/:id/files（管理员专用）
 func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
-	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
-		return
-	}
-
 	alumniID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || alumniID == 0 {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid alumni id")
-		return
-	}
-
-	// 权限控制：校友只能查看自己的文件
-	if allowed := h.checkAlumniAccess(c, userID, alumniID); !allowed {
 		return
 	}
 
@@ -98,14 +75,8 @@ func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
 	response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "获取文件列表失败")
 }
 
-// Download 下载文件 GET /alumni/:id/files/:fileId/download
+// Download 下载文件 GET /admin/alumni/:id/files/:fileId/download（管理员专用）
 func (h *AlumniFileHandler) Download(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
-	if !ok {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
-		return
-	}
-
 	alumniID, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || alumniID == 0 {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid alumni id")
@@ -115,11 +86,6 @@ func (h *AlumniFileHandler) Download(c *gin.Context) {
 	fileID, err := strconv.ParseUint(c.Param("fileId"), 10, 64)
 	if err != nil || fileID == 0 {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid file id")
-		return
-	}
-
-	// 权限控制
-	if allowed := h.checkAlumniAccess(c, userID, alumniID); !allowed {
 		return
 	}
 
@@ -182,33 +148,6 @@ func (h *AlumniFileHandler) Delete(c *gin.Context) {
 	default:
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "删除失败")
 	}
-}
-
-// checkAlumniAccess 权限控制：校友只能访问自己绑定的档案文件，管理员可访问所有人。
-func (h *AlumniFileHandler) checkAlumniAccess(c *gin.Context, userID uint64, alumniID uint64) bool {
-	if h.userRepo == nil {
-		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
-		return false
-	}
-
-	user, err := h.userRepo.FindByID(c.Request.Context(), userID)
-	if err != nil || user == nil {
-		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
-		return false
-	}
-
-	// 管理员可以查看/下载所有人的文件
-	if user.Role == common.RoleAdmin || user.Role == common.RoleSuperAdmin {
-		return true
-	}
-
-	// 校友只能访问自己绑定的档案
-	if user.Role == common.RoleAlumni && user.AlumniID != nil && *user.AlumniID == alumniID {
-		return true
-	}
-
-	response.Fail(c, http.StatusForbidden, response.CodeForbidden, "只能访问本人的档案文件")
-	return false
 }
 
 func (h *AlumniFileHandler) writeUploadError(c *gin.Context, err error) {

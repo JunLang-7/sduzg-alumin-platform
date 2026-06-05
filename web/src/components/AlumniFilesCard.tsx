@@ -95,7 +95,7 @@ export function AlumniFilesCard({ alumniId }: Props) {
   };
 
   const downloadUrl = (fileId: number) =>
-    `/api/v1/alumni/${alumniId}/files/${fileId}/download`;
+    `/api/v1/admin/alumni/${alumniId}/files/${fileId}/download`;
 
   const renderFileSection = (
     fileType: 'degree_archive' | 'academic_record',

@@ -66,7 +66,7 @@ export const alumniApi = {
   listFiles(id: number) {
     return request<AlumniFileListResponse>({
       method: 'GET',
-      url: `/alumni/${id}/files`,
+      url: `/admin/alumni/${id}/files`,
     });
   },
 

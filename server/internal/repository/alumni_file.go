@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
@@ -91,7 +92,7 @@ func (r *AlumniFileRepository) SoftDelete(ctx context.Context, id uint64) error 
 		Where("id = ? AND status = ? AND deleted_at IS NULL", id, common.FileStatusActive).
 		Updates(map[string]any{
 			"status":     common.FileStatusDeleted,
-			"deleted_at": gorm.Expr("NOW()"),
+			"deleted_at": time.Now(),
 		})
 	if result.Error != nil {
 		return result.Error
@@ -114,7 +115,7 @@ func (r *AlumniFileRepository) SoftDeleteByAlumniIDAndType(ctx context.Context, 
 			alumniID, fileType, common.FileStatusActive).
 		Updates(map[string]any{
 			"status":     common.FileStatusDeleted,
-			"deleted_at": gorm.Expr("NOW()"),
+			"deleted_at": time.Now(),
 		}).Error
 }
 
@@ -130,6 +131,6 @@ func (r *AlumniFileRepository) SoftDeleteByAlumniID(ctx context.Context, alumniI
 			alumniID, common.FileStatusActive).
 		Updates(map[string]any{
 			"status":     common.FileStatusDeleted,
-			"deleted_at": gorm.Expr("NOW()"),
+			"deleted_at": time.Now(),
 		}).Error
 }

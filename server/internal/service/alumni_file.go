@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
+	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
@@ -310,6 +311,19 @@ func (s *AlumniFileService) writeOpLog(ctx context.Context, operatorID uint64, a
 
 // buildObjectKey 构建 MinIO 对象路径：alumni/{id}_{name}/{type}/{uuid}_{filename}
 // 路径中包含校友名和原始文件名，在 MinIO Console 中可直接辨识，无需依赖 metadata。
+// alumniName 和 originalName 中的不安全字符会被替换为下划线，防止路径穿越。
 func buildObjectKey(alumniID uint64, alumniName string, fileType string, originalName string) string {
-	return fmt.Sprintf("alumni/%d_%s/%s/%s_%s", alumniID, alumniName, fileType, uuid.NewString(), originalName)
+	safeName := sanitizePathSegment(alumniName)
+	safeFile := sanitizePathSegment(originalName)
+	return fmt.Sprintf("alumni/%d_%s/%s/%s_%s", alumniID, safeName, fileType, uuid.NewString(), safeFile)
+}
+
+// sanitizePathSegment 移除可能用于路径穿越的字符（/、\、..），替换为下划线。
+func sanitizePathSegment(s string) string {
+	replacer := strings.NewReplacer(
+		"/", "_",
+		"\\", "_",
+		"..", "_",
+	)
+	return replacer.Replace(s)
 }

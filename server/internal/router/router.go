@@ -53,12 +53,17 @@ func New(deps Dependencies) *gin.Engine {
 	authHandler := handler.NewAuthHandler(authService)
 	// 操作日志写入器
 	opLogger := service.NewOperationLogger(deps.DB)
-	// 校友文件仓库、服务和处理器（在校友服务之前创建，用于级联删除注入）
-	alumniFileRepository := repository.NewAlumniFileRepository(deps.DB)
-	alumniFileService := service.NewAlumniFileService(alumniFileRepository, alumniRepository, deps.StorageClient, opLogger)
-	alumniFileHandler := handler.NewAlumniFileHandler(alumniFileService, userRepository)
+	// 校友文件仓库、服务和处理器（仅存储启用时注册）
+	var alumniFileHandler *handler.AlumniFileHandler
+	var alumniFileCleaner service.AlumniFileCleaner
+	if deps.StorageClient != nil {
+		alumniFileRepository := repository.NewAlumniFileRepository(deps.DB)
+		alumniFileService := service.NewAlumniFileService(alumniFileRepository, alumniRepository, deps.StorageClient, opLogger)
+		alumniFileHandler = handler.NewAlumniFileHandler(alumniFileService)
+		alumniFileCleaner = alumniFileService
+	}
 	// 校友服务和处理器（注入文件服务以支持级联删除）
-	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileService)
+	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner)
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)
@@ -92,10 +97,6 @@ func New(deps Dependencies) *gin.Engine {
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.GET("/alumni/:id", alumniHandler.Detail)
 
-		// 校友档案文件
-		api.GET("/alumni/:id/files", alumniFileHandler.ListFiles)
-		api.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.Download)
-
 		// 管理员专用接口
 		admin := api.Group("/admin")
 		admin.Use(middleware.RequireRoles(userRepository, common.RoleAdmin, common.RoleSuperAdmin))
@@ -105,9 +106,13 @@ func New(deps Dependencies) *gin.Engine {
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
 
-			// 管理校友文件
-			admin.POST("/alumni/:id/files", alumniFileHandler.Upload)
-			admin.DELETE("/alumni/:id/files/:fileId", alumniFileHandler.Delete)
+			// 管理校友文件（仅存储启用时注册）
+			if alumniFileHandler != nil {
+				admin.GET("/alumni/:id/files", alumniFileHandler.ListFiles)
+				admin.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.Download)
+				admin.POST("/alumni/:id/files", alumniFileHandler.Upload)
+				admin.DELETE("/alumni/:id/files/:fileId", alumniFileHandler.Delete)
+			}
 
 			// 数据大屏
 			admin.GET("/dashboard/overview", dashboardHandler.Overview)
