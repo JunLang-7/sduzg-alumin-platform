@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -6,6 +6,7 @@ import {
   PlusOutlined,
   SearchOutlined,
   UndoOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import {
   Button,
@@ -25,7 +26,7 @@ import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
-import type { AlumniProfile, AlumniProfilePayload, AlumniQuery } from '../../types/alumni';
+import type { AlumniImportResult, AlumniProfile, AlumniProfilePayload, AlumniQuery } from '../../types/alumni';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
@@ -40,6 +41,10 @@ export function AlumniManagementPage() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<AlumniProfile | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<AlumniImportResult | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async (nextQuery: AlumniQuery) => {
     setLoading(true);
@@ -215,6 +220,31 @@ export function AlumniManagementPage() {
     }
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const result = await alumniApi.importData(file);
+      setImportResult(result);
+      setImportModalOpen(true);
+      await loadData(query);
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '导入失败');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const exportMenuItems: MenuProps['items'] = [
     { key: 'xlsx', label: '为 Excel (.xlsx)' },
     { key: 'csv', label: '为 CSV (.csv)' },
@@ -259,6 +289,16 @@ export function AlumniManagementPage() {
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
             </Button>
+            <Button icon={<UploadOutlined />} loading={importing} onClick={handleImportClick}>
+              导入 Excel
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx"
+              style={{ display: 'none' }}
+              onChange={handleFileChange}
+            />
             <Dropdown
               menu={{
                 items: exportMenuItems,
@@ -362,6 +402,43 @@ export function AlumniManagementPage() {
             <Input.TextArea rows={3} />
           </Form.Item>
         </Form>
+      </Modal>
+      <Modal
+        title="导入结果"
+        open={importModalOpen}
+        onCancel={() => setImportModalOpen(false)}
+        footer={
+          <Button type="primary" onClick={() => setImportModalOpen(false)}>
+            确定
+          </Button>
+        }
+        destroyOnClose
+      >
+        {importResult && (
+          <div>
+            <p>
+              共解析 <strong>{importResult.total}</strong> 条记录，成功导入{' '}
+              <strong>{importResult.success}</strong> 条
+            </p>
+            {importResult.errors.length > 0 && (
+              <Table
+                dataSource={importResult.errors}
+                rowKey="row"
+                size="small"
+                pagination={false}
+                columns={[
+                  { title: '行号', dataIndex: 'row', width: 70 },
+                  { title: '姓名', dataIndex: 'name', width: 100 },
+                  { title: '错误原因', dataIndex: 'message' },
+                ]}
+                style={{ marginTop: 12 }}
+              />
+            )}
+            {importResult.errors.length === 0 && (
+              <p style={{ color: '#52c41a', marginTop: 8 }}>全部导入成功，无错误记录</p>
+            )}
+          </div>
+        )}
       </Modal>
     </>
   );

@@ -1,6 +1,7 @@
 import { request } from './http';
 import type { PageResult } from '../types/common';
 import type {
+  AlumniImportResult,
   AlumniProfile,
   AlumniProfilePayload,
   AlumniQuery,
@@ -58,6 +59,18 @@ export const alumniApi = {
     return request<void>({
       method: 'DELETE',
       url: `/admin/alumni/${id}`,
+    });
+  },
+
+  importData(file: File) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    return request<AlumniImportResult>({
+      method: 'POST',
+      url: '/admin/alumni/import',
+      data: formData,
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 

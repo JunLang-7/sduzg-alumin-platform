@@ -42,6 +42,14 @@ func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64) error {
 	return nil
 }
 
+func (s *fakeExportStore) BatchCreate(_ context.Context, _ []do.AlumniCreateProfile, _ uint64) error {
+	return nil
+}
+
+func (s *fakeExportStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
+	return nil, nil
+}
+
 func (s *fakeExportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
 	return nil
 }

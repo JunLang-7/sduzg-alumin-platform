@@ -199,6 +199,18 @@ type AlumniListItem struct {
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
+type AlumniImportResult struct {
+	Total   int              `json:"total"`
+	Success int              `json:"success"`
+	Errors  []AlumniRowError `json:"errors"`
+}
+
+type AlumniRowError struct {
+	Row     int    `json:"row"`
+	Name    string `json:"name"`
+	Message string `json:"message"`
+}
+
 type AlumniDetail struct {
 	ID             uint64    `json:"id"`
 	Name           string    `json:"name"`

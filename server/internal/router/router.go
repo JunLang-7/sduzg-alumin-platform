@@ -93,7 +93,8 @@ func New(deps Dependencies) *gin.Engine {
 			admin.POST("/alumni", alumniHandler.Create)
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
-			admin.GET("/alumni/export", alumniHandler.Export)
+			admin.POST("/alumni/import", alumniHandler.Import)
+				admin.GET("/alumni/export", alumniHandler.Export)
 
 			// 数据大屏
 			admin.GET("/dashboard/overview", dashboardHandler.Overview)

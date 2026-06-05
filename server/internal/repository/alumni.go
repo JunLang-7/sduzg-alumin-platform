@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
@@ -17,9 +18,11 @@ type AlumniStore interface {
 	ListAll(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
+	BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error
 	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error
 	Delete(ctx context.Context, id uint64, updaterID uint64) error
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
+	FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error)
 }
 
 type AlumniRepository struct {
@@ -229,6 +232,84 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 	}
 
 	return item, nil
+}
+
+// BatchCreate 批量新增校友档案。
+func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	if len(profiles) == 0 {
+		return nil
+	}
+
+	items := make([]*model.AlumniProfile, 0, len(profiles))
+	for i := range profiles {
+		p := profiles[i]
+		items = append(items, &model.AlumniProfile{
+			Name:           p.Name,
+			Grade:          p.Grade,
+			ClassName:      p.ClassName,
+			Cohort:         p.Cohort,
+			Counselor:      p.Counselor,
+			Mentor:         p.Mentor,
+			Major:          p.Major,
+			TrainingMode:   p.TrainingMode,
+			Industry:       p.Industry,
+			WorkUnit:       p.WorkUnit,
+			Position:       p.Position,
+			MailingAddress: p.MailingAddress,
+			Gender:         p.Gender,
+			Mobile:         p.Mobile,
+			Remark:         p.Remark,
+			Status:         p.Status,
+			CreatedBy:      &operatorID,
+			UpdatedBy:      &operatorID,
+		})
+	}
+
+	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
+}
+
+// FindExistingByDedupKey 批量查询已存在的 (姓名, 年级, 班级, 届数) 组合，返回 key 集合用于去重。
+func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error) {
+	result := make(map[string]bool, len(keys))
+	if r.db == nil || len(keys) == 0 {
+		return result, nil
+	}
+
+	qs := query.Use(r.db).AlumniProfile
+	db := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.DeletedAt.IsNull()).
+		Where(qs.Status.Eq(common.AlumniStatusActive))
+
+	cond := "(name = ? AND grade = ? AND COALESCE(class_name, '') = ? AND COALESCE(cohort, '') = ?)"
+	var parts []string
+	var args []interface{}
+	for _, k := range keys {
+		parts = append(parts, cond)
+		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort)
+	}
+	db = db.Where("("+strings.Join(parts, " OR ")+")", args...)
+
+	var existing []model.AlumniProfile
+	if err := db.Select("name, grade, class_name, cohort").Find(&existing).Error; err != nil {
+		return nil, err
+	}
+
+	for _, e := range existing {
+		cn := ""
+		if e.ClassName != nil {
+			cn = *e.ClassName
+		}
+		ch := ""
+		if e.Cohort != nil {
+			ch = *e.Cohort
+		}
+		result[do.AlumniDedupKey{Name: e.Name, Grade: e.Grade, ClassName: cn, Cohort: ch}.Key()] = true
+	}
+	return result, nil
 }
 
 // Update 编辑管理员可维护的校友档案字段。

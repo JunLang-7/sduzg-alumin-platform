@@ -6,8 +6,11 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
@@ -22,7 +25,7 @@ type ExportResult struct {
 	Filename    string
 }
 
-var exportHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
+var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
 
 func exportRow(item *model.AlumniProfile) []string {
 	return []string{
@@ -311,8 +314,8 @@ func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
 		return nil, fmt.Errorf("create stream writer: %w", err)
 	}
 
-	headerRow := make([]interface{}, len(exportHeaders))
-	for i, h := range exportHeaders {
+	headerRow := make([]interface{}, len(alumniColumnHeaders))
+	for i, h := range alumniColumnHeaders {
 		headerRow[i] = h
 	}
 	if err := sw.SetRow("A1", headerRow); err != nil {
@@ -354,7 +357,7 @@ func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
 	buf.Write([]byte{0xEF, 0xBB, 0xBF})
 
 	w := csv.NewWriter(&buf)
-	if err := w.Write(exportHeaders); err != nil {
+	if err := w.Write(alumniColumnHeaders); err != nil {
 		return nil, fmt.Errorf("write csv header: %w", err)
 	}
 	for _, item := range items {
@@ -372,6 +375,169 @@ func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
 		ContentType: "text/csv; charset=utf-8",
 		Filename:    "alumni_export.csv",
 	}, nil
+}
+
+// Import 从上传的 xlsx 文件批量导入校友档案。逐行校验，姓名和年级为必填。
+func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.Reader) (*dto.AlumniImportResult, error) {
+	if s.alumni == nil {
+		logger.Error("alumni repository is not initialized")
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("read uploaded file: %w", err)
+	}
+
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("parse xlsx: %w", err)
+	}
+	defer f.Close()
+
+	rows, err := f.GetRows(f.GetSheetName(0))
+	if err != nil {
+		return nil, fmt.Errorf("read sheet rows: %w", err)
+	}
+
+	if len(rows) < 2 {
+		return nil, fmt.Errorf("文件无数据行，请参照模板填写后上传")
+	}
+
+	header := rows[0]
+	if len(header) != len(alumniColumnHeaders) {
+		return nil, fmt.Errorf("表头列数不正确，期望 %d 列，实际 %d 列", len(alumniColumnHeaders), len(header))
+	}
+	for i, h := range header {
+		if strings.TrimSpace(h) != alumniColumnHeaders[i] {
+			return nil, fmt.Errorf("表头第 %d 列应为「%s」，实际为「%s」", i+1, alumniColumnHeaders[i], h)
+		}
+	}
+
+	type rowProfile struct {
+		rowNum  int
+		profile do.AlumniCreateProfile
+	}
+	var validRows []rowProfile
+	rowErrors := make([]dto.AlumniRowError, 0)
+
+	for i := 1; i < len(rows); i++ {
+		row := rows[i]
+		rowNum := i + 1
+
+		profile := parseRowToProfile(row)
+		profile = profile.Normalize()
+
+		if profile.Name == "" {
+			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "姓名为空"})
+			continue
+		}
+		if profile.Grade == "" {
+			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "年级为空"})
+			continue
+		}
+
+		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})
+	}
+
+	if len(validRows) > 0 {
+		dedupKeys := make([]do.AlumniDedupKey, 0, len(validRows))
+		for _, rp := range validRows {
+			cn := ""
+			if rp.profile.ClassName != nil {
+				cn = *rp.profile.ClassName
+			}
+			ch := ""
+			if rp.profile.Cohort != nil {
+				ch = *rp.profile.Cohort
+			}
+			dedupKeys = append(dedupKeys, do.AlumniDedupKey{
+				Name:      rp.profile.Name,
+				Grade:     rp.profile.Grade,
+				ClassName: cn,
+				Cohort:    ch,
+			})
+		}
+
+		existing, err := s.alumni.FindExistingByDedupKey(ctx, dedupKeys)
+		if err != nil {
+			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operatorID), zap.Error(err))
+			return nil, err
+		}
+
+		var dedupedProfiles []do.AlumniCreateProfile
+		for _, rp := range validRows {
+			cn := ""
+			if rp.profile.ClassName != nil {
+				cn = *rp.profile.ClassName
+			}
+			ch := ""
+			if rp.profile.Cohort != nil {
+				ch = *rp.profile.Cohort
+			}
+			if existing[do.AlumniDedupKey{Name: rp.profile.Name, Grade: rp.profile.Grade, ClassName: cn, Cohort: ch}.Key()] {
+				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rp.rowNum, Name: rp.profile.Name, Message: "已存在相同姓名、年级、班级和届数的记录"})
+			} else {
+				dedupedProfiles = append(dedupedProfiles, rp.profile)
+			}
+		}
+		validProfiles := dedupedProfiles
+
+		result := &dto.AlumniImportResult{
+			Total:  len(rows) - 1,
+			Errors: rowErrors,
+		}
+
+		if len(validProfiles) > 0 {
+			if err := s.alumni.BatchCreate(ctx, validProfiles, operatorID); err != nil {
+				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operatorID), zap.Error(err))
+				return nil, err
+			}
+			result.Success = len(validProfiles)
+		}
+
+		return result, nil
+	}
+
+	return &dto.AlumniImportResult{
+		Total:  len(rows) - 1,
+		Errors: rowErrors,
+	}, nil
+}
+
+func parseRowToProfile(row []string) do.AlumniCreateProfile {
+	p := do.AlumniCreateProfile{Status: common.AlumniStatusActive}
+
+	get := func(idx int) string {
+		if idx < len(row) {
+			return strings.TrimSpace(row[idx])
+		}
+		return ""
+	}
+	optionalStr := func(idx int) *string {
+		v := get(idx)
+		if v == "" {
+			return nil
+		}
+		return &v
+	}
+
+	p.Name = get(0)
+	p.Grade = get(1)
+	p.ClassName = optionalStr(2)
+	p.Cohort = optionalStr(3)
+	p.Counselor = optionalStr(4)
+	p.Mentor = optionalStr(5)
+	p.Major = optionalStr(6)
+	p.TrainingMode = optionalStr(7)
+	p.Industry = optionalStr(8)
+	p.WorkUnit = optionalStr(9)
+	p.Position = optionalStr(10)
+	p.MailingAddress = optionalStr(11)
+	p.Gender = optionalStr(12)
+	p.Mobile = optionalStr(13)
+
+	return p
 }
 
 // GetMe 获取当前登录校友绑定的本人资料。
