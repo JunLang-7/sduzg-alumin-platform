@@ -208,6 +208,18 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 		return
 	}
 
+	const maxSize = 20 << 20 // 20 MB
+	if fileHeader.Size > maxSize {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件过大，请上传小于 20MB 的文件")
+		return
+	}
+
+	contentType := fileHeader.Header.Get("Content-Type")
+	if contentType != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "仅支持 .xlsx 格式的 Excel 文件")
+		return
+	}
+
 	file, err := fileHeader.Open()
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "无法打开上传文件")
@@ -225,7 +237,7 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, err.Error())
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件导入失败，请检查文件格式是否正确")
 	}
 }
 

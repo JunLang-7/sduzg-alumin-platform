@@ -479,6 +479,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rp.rowNum, Name: rp.profile.Name, Message: "已存在相同姓名、年级、班级和届数的记录"})
 			} else {
 				dedupedProfiles = append(dedupedProfiles, rp.profile)
+				existing[do.AlumniDedupKey{Name: rp.profile.Name, Grade: rp.profile.Grade, ClassName: cn, Cohort: ch}.Key()] = true
 			}
 		}
 		validProfiles := dedupedProfiles

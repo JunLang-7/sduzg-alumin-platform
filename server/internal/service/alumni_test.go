@@ -97,7 +97,7 @@ func (s *fakeAlumniStore) BatchCreate(_ context.Context, profiles []do.AlumniCre
 }
 
 func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return nil, nil
+	return make(map[string]bool), nil
 }
 
 func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64) error {

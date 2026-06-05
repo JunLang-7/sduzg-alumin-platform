@@ -47,7 +47,7 @@ func (s *fakeExportStore) BatchCreate(_ context.Context, _ []do.AlumniCreateProf
 }
 
 func (s *fakeExportStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return nil, nil
+	return make(map[string]bool), nil
 }
 
 func (s *fakeExportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {

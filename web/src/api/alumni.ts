@@ -70,7 +70,6 @@ export const alumniApi = {
       method: 'POST',
       url: '/admin/alumni/import',
       data: formData,
-      headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
 

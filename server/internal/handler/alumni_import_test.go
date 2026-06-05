@@ -83,7 +83,7 @@ func (s *fakeImportStore) BatchCreate(_ context.Context, _ []do.AlumniCreateProf
 }
 
 func (s *fakeImportStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return nil, nil
+	return make(map[string]bool), nil
 }
 
 func (s *fakeImportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile) error {
