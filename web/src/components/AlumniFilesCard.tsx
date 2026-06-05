@@ -94,8 +94,20 @@ export function AlumniFilesCard({ alumniId }: Props) {
     }
   };
 
-  const downloadUrl = (fileId: number) =>
-    `/api/v1/admin/alumni/${alumniId}/files/${fileId}/download`;
+  const handleDownload = async (item: AlumniFileItem) => {
+    try {
+      const blob = await alumniApi.downloadFile(alumniId, item.id);
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = item.original_name;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '下载失败');
+    }
+  };
 
   const renderFileSection = (
     fileType: 'degree_archive' | 'academic_record',
@@ -153,16 +165,14 @@ export function AlumniFilesCard({ alumniId }: Props) {
             renderItem={(item) => (
               <List.Item
                 actions={[
-                  <a
+                  <Button
                     key="download"
-                    href={downloadUrl(item.id)}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="link"
+                    icon={<DownloadOutlined />}
+                    onClick={() => handleDownload(item)}
                   >
-                    <Button type="link" icon={<DownloadOutlined />}>
-                      下载
-                    </Button>
-                  </a>,
+                    下载
+                  </Button>,
                   ...(isAdmin
                     ? [
                         <Popconfirm

@@ -71,6 +71,7 @@ export const alumniApi = {
     return request<AlumniImportResult>({
       method: 'POST',
       url: '/admin/alumni/import',
+      data: formData,
     });
   },
   
@@ -100,6 +101,14 @@ export const alumniApi = {
     });
   },
    
+  downloadFile(alumniId: number, fileId: number) {
+    return request<Blob>({
+      method: 'GET',
+      url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
+      responseType: 'blob',
+    });
+  },
+
   exportData(params: AlumniQuery & { format?: string }) {
     return request<Blob>({
       method: 'GET',

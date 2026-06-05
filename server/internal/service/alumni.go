@@ -22,6 +22,8 @@ import (
 // AlumniFileCleaner 校友删除时级联清理文件的接口。
 type AlumniFileCleaner interface {
 	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
+}
+
 type ExportResult struct {
 	Data        []byte
 	ContentType string

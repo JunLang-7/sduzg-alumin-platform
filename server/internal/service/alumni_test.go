@@ -355,7 +355,7 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 			Status:   common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, users)
+	svc := NewAlumniService(store, users, nil)
 
 	detail, err := svc.GetByID(context.Background(), alumniID, 3)
 	if err != nil {
@@ -396,7 +396,7 @@ func TestAlumniServiceGetByIDShowsAllFieldsForAlumniViewingSelf(t *testing.T) {
 			Status:   common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, users)
+	svc := NewAlumniService(store, users, nil)
 
 	detail, err := svc.GetByID(context.Background(), alumniID, 3)
 	if err != nil {
@@ -436,7 +436,7 @@ func TestAlumniServiceGetByIDShowsAllFieldsForAdmin(t *testing.T) {
 			Status: common.UserStatusActive,
 		},
 	}
-	svc := NewAlumniService(store, users)
+	svc := NewAlumniService(store, users, nil)
 
 	detail, err := svc.GetByID(context.Background(), alumniID, 3)
 	if err != nil {

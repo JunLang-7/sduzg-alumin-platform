@@ -129,7 +129,7 @@ func TestImportHandlerSuccess(t *testing.T) {
 
 	store := &fakeImportStore{}
 	users := &fakeImportUserStore{}
-	svc := service.NewAlumniService(store, users)
+	svc := service.NewAlumniService(store, users, nil)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()
@@ -162,7 +162,7 @@ func TestImportHandlerUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	store := &fakeImportStore{}
-	svc := service.NewAlumniService(store, nil)
+	svc := service.NewAlumniService(store, nil, nil)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()
@@ -192,7 +192,7 @@ func TestImportHandlerBadFile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	store := &fakeImportStore{}
-	svc := service.NewAlumniService(store, nil)
+	svc := service.NewAlumniService(store, nil, nil)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()

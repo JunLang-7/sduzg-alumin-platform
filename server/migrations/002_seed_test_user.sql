@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 USE sdu_alumni_db;
 
 INSERT INTO alumni_profiles (name, grade, class_name, cohort, counselor, mentor, major, training_mode, industry, work_unit, position, mobile, gender)

@@ -1,3 +1,5 @@
+SET NAMES utf8mb4;
+
 USE sdu_alumni_db;
 
 CREATE TABLE IF NOT EXISTS alumni_files (
