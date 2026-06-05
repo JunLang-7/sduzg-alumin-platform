@@ -13,13 +13,17 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/database"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/router"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/storage"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
 
 func main() {
 	// 加载配置
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		panic(err)
+	}
 
 	// 初始化日志
 	log, err := logger.New(cfg.App.Env)
@@ -56,12 +60,19 @@ func main() {
 		}
 	}()
 
+	// 初始化对象存储客户端
+	storageClient, err := storage.New(cfg.Storage, log)
+	if err != nil {
+		log.Fatal("failed to initialize storage client", zap.Error(err))
+	}
+
 	// 初始化路由
 	engine := router.New(router.Dependencies{
-		Config:      cfg,
-		Logger:      log,
-		DB:          db,
-		RedisClient: redisClient,
+		Config:        cfg,
+		Logger:        log,
+		DB:            db,
+		RedisClient:   redisClient,
+		StorageClient: storageClient,
 	})
 
 	// 初始化服务器

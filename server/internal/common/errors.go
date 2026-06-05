@@ -18,4 +18,9 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAccountDisabled    = errors.New("account disabled")
 	ErrAccountLocked      = errors.New("account temporarily locked")
+
+	ErrFileNotFound       = errors.New("file not found")
+	ErrFileTooLarge       = errors.New("file too large")
+	ErrFileTypeNotAllowed = errors.New("file type not allowed")
+	ErrStorageUnavailable = errors.New("storage unavailable")
 )
