@@ -214,12 +214,6 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 		return
 	}
 
-	contentType := fileHeader.Header.Get("Content-Type")
-	if contentType != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" {
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "仅支持 .xlsx 格式的 Excel 文件")
-		return
-	}
-
 	file, err := fileHeader.Open()
 	if err != nil {
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "无法打开上传文件")
@@ -239,7 +233,7 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
 	default:
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件导入失败，请检查文件格式是否正确")
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}
 }
 
