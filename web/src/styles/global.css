@@ -2149,6 +2149,7 @@ button {
   display: grid;
   align-content: start;
   gap: 3px;
+  height: 100%;
   min-height: 0;
   max-height: 100%;
   overflow-y: auto;
@@ -2239,6 +2240,13 @@ button {
 
 .data-screen-expanded-body:has(.region-industry-expanded) {
   height: min(68vh, 680px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.data-screen-expanded-body:has(.region-industry-expanded) > .ant-spin-nested-loading,
+.data-screen-expanded-body:has(.region-industry-expanded) > .ant-spin-nested-loading > .ant-spin-container {
+  height: 100%;
   min-height: 0;
   overflow: hidden;
 }
