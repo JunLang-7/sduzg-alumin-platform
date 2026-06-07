@@ -7,6 +7,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
 )
 
@@ -48,12 +49,11 @@ func (r *AlumniFileRepository) ListByAlumniID(ctx context.Context, alumniID uint
 		return nil, common.ErrDatabaseUnavailable
 	}
 
+	qs := query.Use(r.db).AlumniFile
 	var items []*model.AlumniFile
 	if err := r.db.WithContext(ctx).
-		Where("alumni_id = ?", alumniID).
-		Where("status = ?", common.FileStatusActive).
-		Where("deleted_at IS NULL").
-		Order("created_at DESC").
+		Where(qs.AlumniID.Eq(alumniID), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
+		Order(qs.CreatedAt.Desc()).
 		Find(&items).Error; err != nil {
 		return nil, err
 	}
@@ -66,11 +66,10 @@ func (r *AlumniFileRepository) GetByID(ctx context.Context, id uint64) (*model.A
 		return nil, common.ErrDatabaseUnavailable
 	}
 
+	qs := query.Use(r.db).AlumniFile
 	var item model.AlumniFile
 	err := r.db.WithContext(ctx).
-		Where("id = ?", id).
-		Where("status = ?", common.FileStatusActive).
-		Where("deleted_at IS NULL").
+		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
 		First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, common.ErrFileNotFound
@@ -87,12 +86,13 @@ func (r *AlumniFileRepository) SoftDelete(ctx context.Context, id uint64) error 
 		return common.ErrDatabaseUnavailable
 	}
 
+	qs := query.Use(r.db).AlumniFile
 	result := r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where("id = ? AND status = ? AND deleted_at IS NULL", id, common.FileStatusActive).
+		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
 		Updates(map[string]any{
-			"status":     common.FileStatusDeleted,
-			"deleted_at": time.Now(),
+			qs.Status.ColumnName().String():    common.FileStatusDeleted,
+			qs.DeletedAt.ColumnName().String(): time.Now(),
 		})
 	if result.Error != nil {
 		return result.Error
@@ -109,13 +109,13 @@ func (r *AlumniFileRepository) SoftDeleteByAlumniIDAndType(ctx context.Context, 
 		return common.ErrDatabaseUnavailable
 	}
 
+	qs := query.Use(r.db).AlumniFile
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where("alumni_id = ? AND file_type = ? AND status = ? AND deleted_at IS NULL",
-			alumniID, fileType, common.FileStatusActive).
+		Where(qs.AlumniID.Eq(alumniID), qs.FileType.Eq(fileType), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
 		Updates(map[string]any{
-			"status":     common.FileStatusDeleted,
-			"deleted_at": time.Now(),
+			qs.Status.ColumnName().String():    common.FileStatusDeleted,
+			qs.DeletedAt.ColumnName().String(): time.Now(),
 		}).Error
 }
 
@@ -125,12 +125,12 @@ func (r *AlumniFileRepository) SoftDeleteByAlumniID(ctx context.Context, alumniI
 		return common.ErrDatabaseUnavailable
 	}
 
+	qs := query.Use(r.db).AlumniFile
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where("alumni_id = ? AND status = ? AND deleted_at IS NULL",
-			alumniID, common.FileStatusActive).
+		Where(qs.AlumniID.Eq(alumniID), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
 		Updates(map[string]any{
-			"status":     common.FileStatusDeleted,
-			"deleted_at": time.Now(),
+			qs.Status.ColumnName().String():    common.FileStatusDeleted,
+			qs.DeletedAt.ColumnName().String(): time.Now(),
 		}).Error
 }

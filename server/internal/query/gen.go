@@ -18,6 +18,7 @@ import (
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:            db,
+		AlumniFile:    newAlumniFile(db, opts...),
 		AlumniProfile: newAlumniProfile(db, opts...),
 		OperationLog:  newOperationLog(db, opts...),
 		User:          newUser(db, opts...),
@@ -27,6 +28,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	AlumniFile    alumniFile
 	AlumniProfile alumniProfile
 	OperationLog  operationLog
 	User          user
@@ -37,6 +39,7 @@ func (q *Query) Available() bool { return q.db != nil }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:            db,
+		AlumniFile:    q.AlumniFile.clone(db),
 		AlumniProfile: q.AlumniProfile.clone(db),
 		OperationLog:  q.OperationLog.clone(db),
 		User:          q.User.clone(db),
@@ -54,6 +57,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:            db,
+		AlumniFile:    q.AlumniFile.replaceDB(db),
 		AlumniProfile: q.AlumniProfile.replaceDB(db),
 		OperationLog:  q.OperationLog.replaceDB(db),
 		User:          q.User.replaceDB(db),
@@ -61,6 +65,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	AlumniFile    *alumniFileDo
 	AlumniProfile *alumniProfileDo
 	OperationLog  *operationLogDo
 	User          *userDo
@@ -68,6 +73,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		AlumniFile:    q.AlumniFile.WithContext(ctx),
 		AlumniProfile: q.AlumniProfile.WithContext(ctx),
 		OperationLog:  q.OperationLog.WithContext(ctx),
 		User:          q.User.WithContext(ctx),
