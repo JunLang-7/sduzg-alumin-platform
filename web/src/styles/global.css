@@ -2152,7 +2152,28 @@ button {
   min-height: 0;
   max-height: 100%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding-right: 3px;
+  scrollbar-color: rgba(18, 64, 112, 0.9) rgba(7, 28, 63, 0.96);
+  scrollbar-width: thin;
+}
+
+.region-person-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.region-person-list::-webkit-scrollbar-track {
+  background: rgba(7, 28, 63, 0.96);
+}
+
+.region-person-list::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(7, 28, 63, 0.96);
+  border-radius: 8px;
+  background: rgba(18, 64, 112, 0.9);
+}
+
+.region-person-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(24, 82, 139, 0.96);
 }
 
 .region-person-list button {
@@ -2212,6 +2233,14 @@ button {
   grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.data-screen-expanded-body:has(.region-industry-expanded) {
+  height: min(68vh, 680px);
+  min-height: 0;
+  overflow: hidden;
 }
 
 .region-industry-expanded .region-industry-controls {
