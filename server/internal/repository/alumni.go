@@ -16,6 +16,8 @@ import (
 type AlumniStore interface {
 	List(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error)
 	ListAll(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
+	CountActive(ctx context.Context) (int64, error)
+	FindOnly(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
 	BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error
@@ -33,18 +35,9 @@ func NewAlumniRepository(db *gorm.DB) *AlumniRepository {
 	return &AlumniRepository{db: db}
 }
 
-// List 根据查询条件分页获取校友列表
-func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
-	if r.db == nil {
-		return nil, 0, common.ErrDatabaseUnavailable
-	}
-
-	listQuery = listQuery.Normalize()
-	qs := query.Use(r.db).AlumniProfile
-	db := r.db.WithContext(ctx).
-		Model(&model.AlumniProfile{}).
-		Where(qs.DeletedAt.IsNull()).
-		Where(qs.Status.Eq(common.AlumniStatusActive))
+// applyFilters 构建带过滤条件的查询，供 List / ListAll / FindOnly 复用。
+func applyFilters(db *gorm.DB, listQuery do.AlumniListQuery) *gorm.DB {
+	qs := query.Use(db).AlumniProfile
 
 	if listQuery.Keyword != "" {
 		like := "%" + listQuery.Keyword + "%"
@@ -90,6 +83,63 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 	if listQuery.Mobile != "" {
 		db = db.Where(qs.Mobile.Eq(listQuery.Mobile))
 	}
+	return db
+}
+
+// CountActive 统计当前活跃校友总数（不含过滤条件）。
+func (r *AlumniRepository) CountActive(ctx context.Context) (int64, error) {
+	if r.db == nil {
+		return 0, common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).AlumniProfile
+	var count int64
+	if err := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.Status.Eq(common.AlumniStatusActive)).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
+// FindOnly 仅查询数据行（不统计总数），用于已有缓存计数的场景。
+func (r *AlumniRepository) FindOnly(ctx context.Context, listQuery do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	listQuery = listQuery.Normalize()
+	qs := query.Use(r.db).AlumniProfile
+	db := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.Status.Eq(common.AlumniStatusActive))
+	db = applyFilters(db, listQuery)
+
+	var items []*model.AlumniProfile
+	if err := db.
+		Order(qs.ID.Desc()).
+		Offset(listQuery.Page.Offset()).
+		Limit(listQuery.Page.PageSize).
+		Find(&items).
+		Error; err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+// List 根据查询条件分页获取校友列表
+func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
+	if r.db == nil {
+		return nil, 0, common.ErrDatabaseUnavailable
+	}
+
+	listQuery = listQuery.Normalize()
+	qs := query.Use(r.db).AlumniProfile
+	db := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.Status.Eq(common.AlumniStatusActive))
+	db = applyFilters(db, listQuery)
 
 	var total int64
 	if err := db.Count(&total).Error; err != nil {
@@ -119,53 +169,8 @@ func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQ
 	qs := query.Use(r.db).AlumniProfile
 	db := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
-		Where(qs.DeletedAt.IsNull()).
 		Where(qs.Status.Eq(common.AlumniStatusActive))
-
-	if listQuery.Keyword != "" {
-		like := "%" + listQuery.Keyword + "%"
-		db = db.Where(field.Or(
-			qs.Name.Like(like),
-			qs.WorkUnit.Like(like),
-			qs.Position.Like(like),
-			qs.Mentor.Like(like),
-			qs.Counselor.Like(like),
-			qs.Mobile.Like(like),
-		))
-	}
-	if listQuery.Grade != "" {
-		db = db.Where(qs.Grade.Eq(listQuery.Grade))
-	}
-	if listQuery.ClassName != "" {
-		db = db.Where(qs.ClassName.Eq(listQuery.ClassName))
-	}
-	if listQuery.Cohort != "" {
-		db = db.Where(qs.Cohort.Eq(listQuery.Cohort))
-	}
-	if listQuery.Counselor != "" {
-		db = db.Where(qs.Counselor.Eq(listQuery.Counselor))
-	}
-	if listQuery.Mentor != "" {
-		db = db.Where(qs.Mentor.Eq(listQuery.Mentor))
-	}
-	if listQuery.Major != "" {
-		db = db.Where(qs.Major.Eq(listQuery.Major))
-	}
-	if listQuery.TrainingMode != "" {
-		db = db.Where(qs.TrainingMode.Eq(listQuery.TrainingMode))
-	}
-	if listQuery.Industry != "" {
-		db = db.Where(qs.Industry.Eq(listQuery.Industry))
-	}
-	if listQuery.WorkUnit != "" {
-		db = db.Where(qs.WorkUnit.Like("%" + listQuery.WorkUnit + "%"))
-	}
-	if listQuery.Position != "" {
-		db = db.Where(qs.Position.Like("%" + listQuery.Position + "%"))
-	}
-	if listQuery.Mobile != "" {
-		db = db.Where(qs.Mobile.Eq(listQuery.Mobile))
-	}
+	db = applyFilters(db, listQuery)
 
 	var items []*model.AlumniProfile
 	if err := db.Order(qs.ID.Desc()).Find(&items).Error; err != nil {

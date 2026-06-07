@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/handler"
@@ -63,7 +64,8 @@ func New(deps Dependencies) *gin.Engine {
 		alumniFileCleaner = alumniFileService
 	}
 	// 校友服务和处理器（注入文件服务以支持级联删除）
-	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner)
+	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner).
+		WithCountCache(cache.NewCountCache(deps.RedisClient))
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)

@@ -96,6 +96,15 @@ func (s *fakeAlumniStore) BatchCreate(_ context.Context, profiles []do.AlumniCre
 	return nil
 }
 
+func (s *fakeAlumniStore) CountActive(_ context.Context) (int64, error) {
+	return int64(len(s.items)), s.err
+}
+
+func (s *fakeAlumniStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	s.query = query
+	return s.items, s.err
+}
+
 func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
 	return make(map[string]bool), nil
 }

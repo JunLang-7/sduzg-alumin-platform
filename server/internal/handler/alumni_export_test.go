@@ -50,6 +50,14 @@ func (s *fakeExportStore) FindExistingByDedupKey(_ context.Context, _ []do.Alumn
 	return make(map[string]bool), nil
 }
 
+func (s *fakeExportStore) CountActive(_ context.Context) (int64, error) {
+	return int64(len(s.items)), s.err
+}
+
+func (s *fakeExportStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	return s.items, s.err
+}
+
 func (s *fakeExportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
@@ -71,20 +72,45 @@ func sanitizeExportValue(v string) string {
 }
 
 type AlumniService struct {
-	alumni  repository.AlumniStore
-	users   repository.UserStore
-	files   AlumniFileCleaner
+	alumni     repository.AlumniStore
+	users      repository.UserStore
+	files      AlumniFileCleaner
+	countCache *cache.CountCache
 }
 
 func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore, files AlumniFileCleaner) *AlumniService {
 	return &AlumniService{alumni: alumni, users: users, files: files}
 }
 
-// List 根据查询条件分页获取校友列表
+// WithCountCache 注入主动缓存计数器，用于优化无过滤条件时的 COUNT 查询。
+func (s *AlumniService) WithCountCache(c *cache.CountCache) *AlumniService {
+	s.countCache = c
+	return s
+}
+
+// List 根据查询条件分页获取校友列表。
 func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, viewerID uint64) (common.Pager[dto.AlumniListItem], error) {
 	query := req.ToQuery().Normalize()
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
+	}
+
+	// 无过滤条件时优先用缓存计数，跳过 DB COUNT(*)
+	if query.IsUnfiltered() && s.countCache != nil {
+		total, hit, _ := s.countCache.Get(ctx)
+		if !hit {
+			if n, err := s.alumni.CountActive(ctx); err == nil {
+				total = n
+				_ = s.countCache.Set(ctx, n)
+			}
+		}
+		items, err := s.alumni.FindOnly(ctx, query)
+		if err != nil {
+			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), err
+		}
+		mapped := mapAlumniListItems(items)
+		s.maskListItems(ctx, mapped, viewerID)
+		return common.NewPager(mapped, query.Page, total), nil
 	}
 
 	items, total, err := s.alumni.List(ctx, query)
@@ -225,6 +251,9 @@ func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.A
 		return nil, err
 	}
 
+	if s.countCache != nil {
+		_ = s.countCache.IncrBy(ctx, 1)
+	}
 	return mapAlumniDetail(created), nil
 }
 
@@ -279,6 +308,10 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 		}
 		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return err
+	}
+
+	if s.countCache != nil {
+		_ = s.countCache.IncrBy(ctx, -1)
 	}
 
 	// 级联清理关联的档案文件（best-effort）
@@ -520,6 +553,9 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 				return nil, err
 			}
 			result.Success = len(validProfiles)
+			if s.countCache != nil {
+				_ = s.countCache.IncrBy(ctx, int64(len(validProfiles)))
+			}
 		}
 
 		return result, nil

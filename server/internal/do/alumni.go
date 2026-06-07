@@ -141,6 +141,13 @@ func (q AlumniListQuery) Normalize() AlumniListQuery {
 	return q
 }
 
+// IsUnfiltered 无过滤条件时返回 true，此时可安全使用缓存计数。
+func (q AlumniListQuery) IsUnfiltered() bool {
+	return q.Keyword == "" && q.Grade == "" && q.ClassName == "" && q.Cohort == "" &&
+		q.Counselor == "" && q.Mentor == "" && q.Major == "" && q.TrainingMode == "" &&
+		q.Industry == "" && q.WorkUnit == "" && q.Position == "" && q.Mobile == ""
+}
+
 func trimStringPointer(value *string) *string {
 	if value == nil {
 		return nil

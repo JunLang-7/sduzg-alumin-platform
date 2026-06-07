@@ -96,6 +96,12 @@ func (s *fakeImportStore) UpdateEditableFields(_ context.Context, _ uint64, _ ui
 	return nil
 }
 
+func (s *fakeImportStore) CountActive(_ context.Context) (int64, error) { return 0, nil }
+
+func (s *fakeImportStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+	return nil, nil
+}
+
 type fakeImportUserStore struct{}
 
 func (s *fakeImportUserStore) FindByAccount(_ context.Context, _ string) (*model.User, error) {
