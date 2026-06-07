@@ -32,6 +32,9 @@ export interface AlumniQuery {
   major?: string;
   training_mode?: string;
   industry?: string;
+  work_unit?: string;
+  position?: string;
+  mobile?: string;
 }
 
 export interface AlumniImportRowError {
