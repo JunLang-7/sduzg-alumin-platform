@@ -43,7 +43,11 @@ func New(cfg config.StorageConfig, log *zap.Logger) (*Client, error) {
 		driver = driverMinIO
 	}
 	if driver == driverLocal {
-		root, err := filepath.Abs(cfg.LocalPath)
+		localPath := strings.TrimSpace(cfg.LocalPath)
+		if localPath == "" {
+			localPath = "./data/alumni-files"
+		}
+		root, err := filepath.Abs(localPath)
 		if err != nil {
 			return nil, fmt.Errorf("resolve local storage path: %w", err)
 		}
@@ -104,20 +108,38 @@ func (c *Client) UploadFile(ctx context.Context, objectKey string, fileHeader *m
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return nil, fmt.Errorf("create local storage directory: %w", err)
 		}
-		destination, err := os.Create(target)
+		destination, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+".*.tmp")
 		if err != nil {
-			return nil, fmt.Errorf("create local storage file: %w", err)
+			return nil, fmt.Errorf("create local storage temp file: %w", err)
+		}
+		tempPath := destination.Name()
+		cleanupTemp := true
+		defer func() {
+			if cleanupTemp {
+				_ = os.Remove(tempPath)
+			}
+		}()
+
+		if err := destination.Chmod(0o644); err != nil {
+			destination.Close()
+			return nil, fmt.Errorf("set local storage file permissions: %w", err)
 		}
 		size, copyErr := io.Copy(destination, source)
-		closeErr := destination.Close()
 		if copyErr != nil {
-			_ = os.Remove(target)
+			destination.Close()
 			return nil, fmt.Errorf("write local storage file: %w", copyErr)
 		}
-		if closeErr != nil {
-			_ = os.Remove(target)
-			return nil, fmt.Errorf("close local storage file: %w", closeErr)
+		if err := destination.Sync(); err != nil {
+			destination.Close()
+			return nil, fmt.Errorf("sync local storage file: %w", err)
 		}
+		if err := destination.Close(); err != nil {
+			return nil, fmt.Errorf("close local storage file: %w", err)
+		}
+		if err := os.Rename(tempPath, target); err != nil {
+			return nil, fmt.Errorf("commit local storage file: %w", err)
+		}
+		cleanupTemp = false
 		return &UploadInfo{Size: size}, nil
 	}
 	if c.mc == nil {
@@ -264,6 +286,9 @@ func (c *Client) DeleteByPrefix(ctx context.Context, prefix string) error {
 }
 
 func (c *Client) localFilePath(objectKey string) (string, error) {
+	if strings.HasPrefix(objectKey, "/") || strings.HasPrefix(objectKey, "\\") {
+		return "", fmt.Errorf("invalid storage object key")
+	}
 	cleanKey := filepath.Clean(filepath.FromSlash(objectKey))
 	if cleanKey == "." || filepath.IsAbs(cleanKey) || cleanKey == ".." ||
 		strings.HasPrefix(cleanKey, ".."+string(filepath.Separator)) {
