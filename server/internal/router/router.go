@@ -65,7 +65,8 @@ func New(deps Dependencies) *gin.Engine {
 	}
 	// 校友服务和处理器（注入文件服务以支持级联删除）
 	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner).
-		WithCountCache(cache.NewCountCache(deps.RedisClient))
+		WithCountCache(cache.NewCountCache(deps.RedisClient)).
+		WithExportCache(cache.NewExportCache(deps.RedisClient))
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -72,10 +73,11 @@ func sanitizeExportValue(v string) string {
 }
 
 type AlumniService struct {
-	alumni     repository.AlumniStore
-	users      repository.UserStore
-	files      AlumniFileCleaner
-	countCache *cache.CountCache
+	alumni      repository.AlumniStore
+	users       repository.UserStore
+	files       AlumniFileCleaner
+	countCache  *cache.CountCache
+	exportCache *cache.ExportCache
 }
 
 func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore, files AlumniFileCleaner) *AlumniService {
@@ -85,6 +87,12 @@ func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore,
 // WithCountCache 注入主动缓存计数器，用于优化无过滤条件时的 COUNT 查询。
 func (s *AlumniService) WithCountCache(c *cache.CountCache) *AlumniService {
 	s.countCache = c
+	return s
+}
+
+// WithExportCache 注入导出结果缓存，避免每次导出都全表扫描。
+func (s *AlumniService) WithExportCache(c *cache.ExportCache) *AlumniService {
+	s.exportCache = c
 	return s
 }
 
@@ -254,6 +262,9 @@ func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.A
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, 1)
 	}
+	if s.exportCache != nil {
+		_ = s.exportCache.Invalidate(ctx)
+	}
 	return mapAlumniDetail(created), nil
 }
 
@@ -313,6 +324,9 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, -1)
 	}
+	if s.exportCache != nil {
+		_ = s.exportCache.Invalidate(ctx)
+	}
 
 	// 级联清理关联的档案文件（best-effort）
 	if s.files != nil {
@@ -335,6 +349,23 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 	}
 
 	query := req.ToQuery().Normalize()
+	format := req.FormatOrDefault()
+
+	// 优先读缓存，避免全表扫描
+	if s.exportCache != nil {
+		if cached, err := s.exportCache.Get(ctx, query); err == nil {
+			var items []*model.AlumniProfile
+			if json.Unmarshal(cached, &items) == nil {
+				switch format {
+				case "csv":
+					return buildCSV(items)
+				default:
+					return buildXLSX(items)
+				}
+			}
+		}
+	}
+
 	items, err := s.alumni.ListAll(ctx, query)
 	if err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
@@ -345,7 +376,13 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 		return nil, err
 	}
 
-	format := req.FormatOrDefault()
+	// 缓存查询结果（best-effort）
+	if s.exportCache != nil {
+		if data, err := json.Marshal(items); err == nil {
+			_ = s.exportCache.Set(ctx, query, data)
+		}
+	}
+
 	switch format {
 	case "csv":
 		return buildCSV(items)
@@ -555,6 +592,9 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 			result.Success = len(validProfiles)
 			if s.countCache != nil {
 				_ = s.countCache.IncrBy(ctx, int64(len(validProfiles)))
+			}
+			if s.exportCache != nil {
+				_ = s.exportCache.Invalidate(ctx)
 			}
 		}
 
