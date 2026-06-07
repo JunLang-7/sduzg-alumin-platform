@@ -59,6 +59,14 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function getMimeType(item: AlumniFileItem) {
+  return (item.mime_type || '').toLowerCase();
+}
+
 export function AlumniDetailModal({
   profile,
   loading,
@@ -102,14 +110,14 @@ export function AlumniDetailModal({
       .then((result) => {
         if (active) setFiles(result);
       })
-      .catch((error: Error) => {
+      .catch((error: unknown) => {
         if (active) {
           setFiles({
             alumni_id: profile.id,
             degree_archive: [],
             academic_record: [],
           });
-          message.warning(error.message || '档案接口不可用，请检查文件存储服务');
+          message.warning(getErrorMessage(error, '档案接口不可用，请检查文件存储服务'));
         }
       })
       .finally(() => {
@@ -139,13 +147,13 @@ export function AlumniDetailModal({
       link.click();
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      message.error((error as Error).message || '档案下载失败');
+      message.error(getErrorMessage(error, '档案下载失败'));
     }
   };
 
   const previewFile = async (item: AlumniFileItem) => {
     if (!profile) return;
-    const mimeType = item.mime_type.toLowerCase();
+    const mimeType = getMimeType(item);
     if (!mimeType.startsWith('image/') && mimeType !== 'application/pdf') {
       message.info('Word 文件暂不支持浏览器内预览，已为你下载');
       await downloadFile(item);
@@ -160,7 +168,7 @@ export function AlumniDetailModal({
       setPreviewUrl(window.URL.createObjectURL(blob));
     } catch (error) {
       setPreviewItem(null);
-      message.error((error as Error).message || '档案预览加载失败');
+      message.error(getErrorMessage(error, '档案预览加载失败'));
     } finally {
       setPreviewLoading(false);
     }
@@ -171,12 +179,20 @@ export function AlumniDetailModal({
     setUploadingArchive(fileType);
     try {
       await alumniApi.uploadFile(profile.id, fileType, file);
-      await loadFiles(profile.id);
       message.success(`${fileType === 'academic_record' ? '学籍档案' : '学位档案'}上传成功`);
     } catch (error) {
       message.error(
-        (error as Error).message ||
-          '上传失败，请确认文件存储可用且文件不超过 50MB',
+        getErrorMessage(error, '上传失败，请确认文件存储可用且文件不超过 50MB'),
+      );
+      setUploadingArchive(null);
+      return;
+    }
+
+    try {
+      await loadFiles(profile.id);
+    } catch (error) {
+      message.warning(
+        `档案上传成功，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`,
       );
     } finally {
       setUploadingArchive(null);
@@ -191,10 +207,19 @@ export function AlumniDetailModal({
       if (previewItem?.id === item.id) {
         closePreview();
       }
-      await loadFiles(profile.id);
       message.success('档案已删除');
     } catch (error) {
-      message.error((error as Error).message || '档案删除失败');
+      message.error(getErrorMessage(error, '档案删除失败'));
+      setDeletingFileId(null);
+      return;
+    }
+
+    try {
+      await loadFiles(profile.id);
+    } catch (error) {
+      message.warning(
+        `档案已删除，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`,
+      );
     } finally {
       setDeletingFileId(null);
     }
@@ -394,10 +419,10 @@ export function AlumniDetailModal({
       >
         <Spin spinning={previewLoading}>
           <div className="dashboard-file-preview">
-            {previewUrl && previewItem?.mime_type.startsWith('image/') ? (
+            {previewUrl && previewItem && getMimeType(previewItem).startsWith('image/') ? (
               <img src={previewUrl} alt={previewItem.original_name} />
             ) : null}
-            {previewUrl && previewItem?.mime_type === 'application/pdf' ? (
+            {previewUrl && previewItem && getMimeType(previewItem) === 'application/pdf' ? (
               <iframe src={previewUrl} title={previewItem.original_name} />
             ) : null}
           </div>
