@@ -72,6 +72,8 @@ type AuthConfig struct {
 
 type StorageConfig struct {
 	Enabled   bool
+	Driver    string
+	LocalPath string
 	Endpoint  string
 	AccessKey string
 	SecretKey string
@@ -147,6 +149,8 @@ func Load() (Config, error) {
 		},
 		Storage: StorageConfig{
 			Enabled:   v.GetBool("STORAGE_ENABLED"),
+			Driver:    v.GetString("STORAGE_DRIVER"),
+			LocalPath: v.GetString("STORAGE_LOCAL_PATH"),
 			Endpoint:  v.GetString("STORAGE_ENDPOINT"),
 			AccessKey: v.GetString("STORAGE_ACCESS_KEY"),
 			SecretKey: v.GetString("STORAGE_SECRET_KEY"),
@@ -187,6 +191,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("AUTH_JWT_SECRET", "dev-only-change-me")
 	v.SetDefault("AUTH_ACCESS_TOKEN_TTL", 24*time.Hour)
 	v.SetDefault("STORAGE_ENABLED", false)
+	v.SetDefault("STORAGE_DRIVER", "minio")
+	v.SetDefault("STORAGE_LOCAL_PATH", "./data/alumni-files")
 	v.SetDefault("STORAGE_ENDPOINT", "127.0.0.1:9000")
 	v.SetDefault("STORAGE_ACCESS_KEY", "minioadmin")
 	v.SetDefault("STORAGE_SECRET_KEY", "minioadmin123")
