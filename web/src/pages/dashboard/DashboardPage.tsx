@@ -13,6 +13,9 @@ import { alumniApi } from '../../api/alumni';
 import { dashboardApi } from '../../api/dashboard';
 import logoUrl from '../../assets/pspa-logo.png';
 import type { AlumniProfile } from '../../types/alumni';
+import { AlumniDetailModal } from './AlumniDetailModal';
+import { DistributionAlumniModal } from './DistributionAlumniModal';
+import { RegionIndustryExplorer } from './RegionIndustryExplorer';
 import type {
   DashboardDimension,
   DashboardOverview,
@@ -28,6 +31,18 @@ const dimensions: Array<{ label: string; value: DashboardDimension }> = [
   { label: '培养方式', value: 'training_mode' },
   { label: '行业', value: 'industry' },
 ];
+
+const FEED_WINDOW_SIZE = 20;
+
+const dimensionFields: Record<DashboardDimension, keyof AlumniProfile> = {
+  grade: 'grade',
+  class_name: 'class_name',
+  cohort: 'cohort',
+  gender: 'gender',
+  major: 'major',
+  training_mode: 'training_mode',
+  industry: 'industry',
+};
 
 const emptyOverview: DashboardOverview = {
   total_alumni: 0,
@@ -82,6 +97,21 @@ function sortByNumericName(items: DistributionItem[]) {
     }
     return leftNumber - rightNumber;
   });
+}
+
+async function loadAllAlumni() {
+  const firstPage = await alumniApi.list({ page: 1, page_size: 100 });
+  const pageCount = Math.ceil(firstPage.total / 100);
+  if (pageCount <= 1) {
+    return firstPage.items;
+  }
+
+  const remainingPages = await Promise.all(
+    Array.from({ length: pageCount - 1 }, (_, index) =>
+      alumniApi.list({ page: index + 2, page_size: 100 }),
+    ),
+  );
+  return [firstPage.items, ...remainingPages.map((page) => page.items)].flat();
 }
 
 function DataScreenPanel({
@@ -144,41 +174,30 @@ function EmptyData({ text = '暂无数据' }: { text?: string }) {
   return <div className="data-screen-empty">{text}</div>;
 }
 
-function IndustryRankList({ items }: { items: DistributionItem[] }) {
-  const maxValue = Math.max(...items.map((item) => item.value), 1);
-
-  return (
-    <div className="industry-rank-list">
-      {items.slice(0, 5).map((item) => (
-        <div className="industry-rank-row" key={item.name}>
-          <span>{item.name}</span>
-          <div className="industry-rank-track">
-            <i style={{ width: `${Math.max(8, (item.value / maxValue) * 100)}%` }} />
-          </div>
-          <strong>{item.value}</strong>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function DashboardPage() {
   const navigate = useNavigate();
   const [overview, setOverview] = useState<DashboardOverview>(emptyOverview);
   const [dimension, setDimension] = useState<DashboardDimension>('grade');
   const [mainDistribution, setMainDistribution] = useState<DistributionItem[]>([]);
-  const [industryDistribution, setIndustryDistribution] = useState<DistributionItem[]>([]);
   const [alumniFeed, setAlumniFeed] = useState<AlumniProfile[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<AlumniProfile[]>([]);
-  const [searchTotal, setSearchTotal] = useState(0);
   const [initialLoading, setInitialLoading] = useState(false);
   const [mainLoading, setMainLoading] = useState(false);
   const [feedLoading, setFeedLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedAlumni, setSelectedAlumni] = useState<AlumniProfile | null>(null);
+  const [distributionOpen, setDistributionOpen] = useState(false);
+  const [distributionLoading, setDistributionLoading] = useState(false);
+  const [distributionTitle, setDistributionTitle] = useState('');
+  const [distributionAlumni, setDistributionAlumni] = useState<AlumniProfile[]>([]);
+  const [allAlumniCache, setAllAlumniCache] = useState<AlumniProfile[] | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const [feedOffset, setFeedOffset] = useState(0);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
@@ -202,21 +221,14 @@ export function DashboardPage() {
     setFeedLoading(true);
     Promise.allSettled([
       dashboardApi.overview(),
-      dashboardApi.distribution('industry'),
       dashboardApi.distribution('grade'),
-      alumniApi.list({ page: 1, page_size: 18 }),
+      loadAllAlumni(),
     ])
-      .then(([overviewResult, industryResult, mainResult, feedResult]) => {
+      .then(([overviewResult, mainResult, feedResult]) => {
         if (overviewResult.status === 'fulfilled') {
           setOverview(overviewResult.value);
         } else {
           message.error(overviewResult.reason?.message || '概览数据加载失败');
-        }
-
-        if (industryResult.status === 'fulfilled') {
-          setIndustryDistribution(industryResult.value);
-        } else {
-          message.error(industryResult.reason?.message || '行业分布加载失败');
         }
 
         if (mainResult.status === 'fulfilled') {
@@ -226,9 +238,10 @@ export function DashboardPage() {
         }
 
         if (feedResult.status === 'fulfilled') {
-          setAlumniFeed(feedResult.value.items);
+          setAlumniFeed(feedResult.value);
+          setAllAlumniCache(feedResult.value);
         } else {
-          message.error(feedResult.reason?.message || '校友信息流加载失败');
+          message.error(feedResult.reason?.message || '校友信息加载失败');
         }
       })
       .finally(() => {
@@ -236,6 +249,17 @@ export function DashboardPage() {
         setFeedLoading(false);
       });
   }, []);
+
+  useEffect(() => {
+    if (searchKeyword.trim() || alumniFeed.length <= FEED_WINDOW_SIZE) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setFeedOffset((current) => (current + 1) % alumniFeed.length);
+    }, 1800);
+    return () => window.clearInterval(timer);
+  }, [alumniFeed.length, searchKeyword]);
 
   useEffect(() => {
     setMainLoading(true);
@@ -278,15 +302,16 @@ export function DashboardPage() {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
+        confine: true,
         backgroundColor: 'rgba(5, 20, 46, 0.92)',
         borderColor: '#2bcfff',
         textStyle: { color: '#e8f7ff' },
       },
       grid: {
-        top: isCompactChart ? 22 : 30,
-        right: isCompactChart ? 12 : 20,
-        bottom: mainDistribution.length > 8 ? (isCompactChart ? 58 : 72) : isCompactChart ? 30 : 40,
-        left: isCompactChart ? 38 : 48,
+        top: isCompactChart ? 20 : 26,
+        right: isCompactChart ? 6 : 10,
+        bottom: mainDistribution.length > 8 ? (isCompactChart ? 38 : 46) : isCompactChart ? 20 : 26,
+        left: isCompactChart ? 22 : 30,
         containLabel: true,
       },
       xAxis: {
@@ -312,7 +337,7 @@ export function DashboardPage() {
           name: '人数',
           type: 'bar',
           data: mainDistribution.map((item) => item.value),
-          barMaxWidth: isCompactChart ? 30 : 42,
+          barMaxWidth: isCompactChart ? 32 : 44,
           itemStyle: {
             borderRadius: [8, 8, 0, 0],
             color: {
@@ -352,94 +377,43 @@ export function DashboardPage() {
       color: chartPalette,
       tooltip: {
         trigger: 'item',
+        confine: true,
         backgroundColor: 'rgba(5, 20, 46, 0.92)',
         borderColor: '#2bcfff',
         textStyle: { color: '#e8f7ff' },
       },
       legend: {
-        type: 'scroll',
-        bottom: isCompactChart ? 0 : 4,
-        icon: 'circle',
-        textStyle: {
-          color: axisColor,
-          fontWeight: 700,
-          fontSize: isCompactChart ? 11 : 12,
-        },
-        pageIconColor: '#36d7ff',
-        pageIconInactiveColor: 'rgba(195, 224, 255, 0.28)',
-        pageTextStyle: { color: axisColor },
+        show: false,
       },
       series: [
         {
           name: '占比',
           type: 'pie',
-          radius: isCompactChart ? ['34%', '52%'] : ['42%', '64%'],
-          center: ['50%', isCompactChart ? '35%' : '40%'],
+          radius: isCompactChart ? ['26%', '44%'] : ['30%', '49%'],
+          center: ['50%', isCompactChart ? '42%' : '44%'],
           avoidLabelOverlap: true,
           label: {
             color: '#eaf7ff',
-            formatter: '{b}\n{d}%',
+            formatter: (params: { name: string; percent?: number }) =>
+              (params.percent || 0) >= 2 ? `${params.name}\n${params.percent}%` : '',
             fontWeight: 800,
-            fontSize: isCompactChart ? 11 : 12,
+            fontSize: isCompactChart ? 10 : 11,
+            distanceToLabelLine: 3,
           },
           labelLine: {
+            length: isCompactChart ? 7 : 10,
+            length2: isCompactChart ? 5 : 8,
             lineStyle: { color: 'rgba(195, 224, 255, 0.52)' },
+          },
+          labelLayout: {
+            hideOverlap: true,
+            moveOverlap: 'shiftY',
           },
           data: mainDistribution,
         },
       ],
     }),
     [isCompactChart, mainDistribution],
-  );
-
-  const industryChartOption = useMemo(
-    () => ({
-      color: ['#31d98b'],
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'shadow' },
-        backgroundColor: 'rgba(5, 20, 46, 0.92)',
-        borderColor: '#2bcfff',
-        textStyle: { color: '#e8f7ff' },
-      },
-      grid: { top: 12, right: 28, bottom: 24, left: 82 },
-      xAxis: {
-        type: 'value',
-        minInterval: 1,
-        splitLine: { lineStyle: { color: splitLineColor } },
-        axisLabel: { color: axisColor },
-      },
-      yAxis: {
-        type: 'category',
-        data: industryDistribution.slice(0, 8).map((item) => item.name).reverse(),
-        axisLine: { lineStyle: { color: axisColor } },
-        axisTick: { show: false },
-        axisLabel: { color: axisColor },
-      },
-      series: [
-        {
-          name: '人数',
-          type: 'bar',
-          data: industryDistribution.slice(0, 8).map((item) => item.value).reverse(),
-          barMaxWidth: 14,
-          itemStyle: {
-            borderRadius: 999,
-            color: {
-              type: 'linear',
-              x: 0,
-              y: 0,
-              x2: 1,
-              y2: 0,
-              colorStops: [
-                { offset: 0, color: '#1160ff' },
-                { offset: 1, color: '#2cf5a5' },
-              ],
-            },
-          },
-        },
-      ],
-    }),
-    [industryDistribution],
   );
 
   const kpis = [
@@ -452,20 +426,28 @@ export function DashboardPage() {
     { label: '导师完整率', value: toPercent(overview.mentor_complete_rate), suffix: '%' },
   ];
 
+  const visibleFeed = useMemo(() => {
+    if (alumniFeed.length <= FEED_WINDOW_SIZE) {
+      return alumniFeed;
+    }
+    return Array.from(
+      { length: FEED_WINDOW_SIZE },
+      (_, index) => alumniFeed[(feedOffset + index) % alumniFeed.length],
+    );
+  }, [alumniFeed, feedOffset]);
+
   const runSearch = (value = searchKeyword) => {
     const keyword = value.trim();
     if (!keyword) {
       setSearchResults([]);
-      setSearchTotal(0);
       return;
     }
 
     setSearchLoading(true);
     alumniApi
-      .list({ page: 1, page_size: 8, keyword })
+      .list({ page: 1, page_size: 100, keyword })
       .then((result) => {
         setSearchResults(result.items);
-        setSearchTotal(result.total);
       })
       .catch((error: Error) => message.error(error.message || '校友搜索失败'))
       .finally(() => setSearchLoading(false));
@@ -482,9 +464,63 @@ export function DashboardPage() {
     document.documentElement.requestFullscreen().catch(() => message.warning('进入全屏失败，请重试'));
   };
 
+  const openAlumniDetail = (item: AlumniProfile) => {
+    setSelectedAlumni(item);
+    setDetailOpen(true);
+    setDetailLoading(true);
+    alumniApi
+      .detail(item.id)
+      .then(setSelectedAlumni)
+      .catch((error: Error) => message.error(error.message || '校友完整信息加载失败'))
+      .finally(() => setDetailLoading(false));
+  };
+
+  const openDistributionAlumni = async (value: string) => {
+    const dimensionLabel =
+      dimensions.find((item) => item.value === dimension)?.label || '分布';
+    setDistributionTitle(`${dimensionLabel}：${value}`);
+    setDistributionOpen(true);
+    setDistributionLoading(true);
+
+    try {
+      const profiles = allAlumniCache || (await loadAllAlumni());
+      if (!allAlumniCache) {
+        setAllAlumniCache(profiles);
+      }
+      const field = dimensionFields[dimension];
+      setDistributionAlumni(
+        profiles.filter((profile) => formatText(String(profile[field] || '')) === value),
+      );
+    } catch (error) {
+      message.error((error as Error).message || '分布项校友信息加载失败');
+      setDistributionAlumni([]);
+    } finally {
+      setDistributionLoading(false);
+    }
+  };
+
+  const chartClickEvents = {
+    click: (params: { name?: string }) => {
+      if (params.name) {
+        void openDistributionAlumni(params.name);
+      }
+    },
+  };
+
   const renderAlumniRows = (items: AlumniProfile[]) =>
     items.map((item) => (
-      <tr key={item.id}>
+      <tr
+        key={item.id}
+        className="dashboard-clickable-row"
+        tabIndex={0}
+        onClick={() => openAlumniDetail(item)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openAlumniDetail(item);
+          }
+        }}
+      >
         <td>{item.name}</td>
         <td>{formatText(item.grade)}</td>
         <td>{formatText(item.industry)}</td>
@@ -530,6 +566,7 @@ export function DashboardPage() {
       <main className="dashboard-screen-grid">
         <DataScreenPanel
           title="多维分布主图"
+          subtitle="点击柱形、趋势点或环形分区查看对应校友"
           className="dashboard-main-panel"
           loading={mainLoading}
           extra={
@@ -548,12 +585,14 @@ export function DashboardPage() {
                   key={`main-bar-${expanded ? 'expanded' : 'normal'}-${dimension}`}
                   option={mainChartOption}
                   className="dashboard-chart dashboard-chart-main"
+                  onEvents={chartClickEvents}
                   notMerge
                 />
                 <ReactECharts
                   key={`main-pie-${expanded ? 'expanded' : 'normal'}-${dimension}`}
                   option={mainPieOption}
                   className="dashboard-chart dashboard-chart-pie"
+                  onEvents={chartClickEvents}
                   notMerge
                 />
               </div>
@@ -563,125 +602,94 @@ export function DashboardPage() {
           }
         </DataScreenPanel>
 
-        <DataScreenPanel title="行业分布" subtitle="就业与职业方向排行" loading={initialLoading}>
-          {(expanded) =>
-            industryDistribution.length ? (
-              <div className={`industry-layout ${expanded ? 'industry-layout-expanded' : ''}`}>
-                {expanded ? (
-                  <ReactECharts
-                    key="industry-expanded"
-                    option={industryChartOption}
-                    className="dashboard-chart"
-                    notMerge
-                  />
-                ) : (
-                  <IndustryRankList items={industryDistribution} />
-                )}
-                <div className="industry-tags">
-                  {industryDistribution.slice(0, expanded ? 20 : 12).map((item, index) => {
-                    const maxValue = industryDistribution[0]?.value || 1;
-                    const weight = item.value / maxValue;
-                    const fontSize = Math.round(14 + weight * 18);
-                    const colorIndex = index % chartPalette.length;
-
-                    return (
-                      <span
-                        key={item.name}
-                        className="industry-tag"
-                        style={{
-                          fontSize: `${fontSize}px`,
-                          color: chartPalette[colorIndex],
-                          opacity: 0.6 + weight * 0.4,
-                        }}
-                      >
-                        {item.name}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <EmptyData />
-            )
-          }
-        </DataScreenPanel>
-
         <DataScreenPanel
-          title="校友信息流"
+          title="校友信息检索"
+          subtitle="按姓名、单位、职务、导师等关键词检索，点击条目查看完整信息"
           loading={feedLoading}
           className="dashboard-feed-panel"
-        >
-          {() =>
-            alumniFeed.length ? (
-              <div className="alumni-feed">
-                <table className="dashboard-table">
-                  <thead>
-                    <tr>
-                      <th>姓名</th>
-                      <th>年级</th>
-                      <th>行业</th>
-                      <th>所在单位</th>
-                      <th>导师</th>
-                    </tr>
-                  </thead>
-                  <tbody>{renderAlumniRows(alumniFeed)}</tbody>
-                </table>
-              </div>
-            ) : (
-              <EmptyData />
-            )
-          }
-        </DataScreenPanel>
-
-        <DataScreenPanel
-          title="快速检索"
-          subtitle="按姓名、单位、职务、导师等关键词查询"
-          className="dashboard-search-panel"
-          loading={searchLoading}
           extra={<SearchOutlined />}
         >
           {() => (
-            <div className="dashboard-search">
-              <Input.Search
-                value={searchKeyword}
-                onChange={(event) => setSearchKeyword(event.target.value)}
-                onSearch={runSearch}
-                placeholder="输入校友姓名、单位、导师..."
-                enterButton="搜索"
-              />
-              {searchKeyword && searchTotal ? (
-                <p className="dashboard-search-count">共匹配 {searchTotal} 条，展示前 8 条</p>
-              ) : null}
-              {searchResults.length ? (
-                <table className="dashboard-table">
-                  <thead>
-                    <tr>
-                      <th>姓名</th>
-                      <th>性别</th>
-                      <th>年级</th>
-                      <th>导师</th>
-                      <th>联系电话</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {searchResults.map((item) => (
-                      <tr key={item.id}>
-                        <td>{item.name}</td>
-                        <td>{formatText(item.gender)}</td>
-                        <td>{formatText(item.grade)}</td>
-                        <td>{formatText(item.mentor)}</td>
-                        <td>{formatText(item.mobile)}</td>
+            <div className="dashboard-alumni-search">
+              <div className="dashboard-alumni-search-bar">
+                <Input.Search
+                  value={searchKeyword}
+                  loading={searchLoading}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSearchKeyword(value);
+                    if (!value.trim()) {
+                      setSearchResults([]);
+                      setFeedOffset(0);
+                    }
+                  }}
+                  onSearch={runSearch}
+                  placeholder="输入姓名、单位、职务、导师等关键词..."
+                  enterButton="搜索"
+                />
+              </div>
+              {(searchKeyword.trim() ? searchResults : visibleFeed).length ? (
+                <div className="alumni-feed dashboard-alumni-search-results">
+                  <table className="dashboard-table">
+                    <thead>
+                      <tr>
+                        <th>姓名</th>
+                        <th>年级</th>
+                        <th>行业</th>
+                        <th>所在单位</th>
+                        <th>导师</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody
+                      key={searchKeyword.trim() ? 'search-results' : `feed-${feedOffset}`}
+                      className={searchKeyword.trim() ? '' : 'dashboard-feed-playing'}
+                    >
+                      {renderAlumniRows(searchKeyword.trim() ? searchResults : visibleFeed)}
+                    </tbody>
+                  </table>
+                </div>
               ) : (
-                <EmptyData text={searchKeyword ? '暂无匹配结果' : '输入关键词后展示检索结果'} />
+                <EmptyData text={searchKeyword.trim() ? '暂无匹配结果' : '暂无校友信息'} />
               )}
             </div>
           )}
         </DataScreenPanel>
+
+        <DataScreenPanel
+          title="地域与行业分布"
+          subtitle="省内外、城市、区县与行业联动"
+          className="dashboard-industry-panel"
+          loading={initialLoading}
+        >
+          {(expanded) => (
+            <RegionIndustryExplorer
+              expanded={expanded}
+              onSelectAlumni={openAlumniDetail}
+            />
+          )}
+        </DataScreenPanel>
       </main>
+
+      <AlumniDetailModal
+        open={detailOpen}
+        loading={detailLoading}
+        profile={selectedAlumni}
+        onClose={() => {
+          setDetailOpen(false);
+          setSelectedAlumni(null);
+        }}
+      />
+      <DistributionAlumniModal
+        open={distributionOpen}
+        loading={distributionLoading}
+        title={distributionTitle}
+        items={distributionAlumni}
+        onClose={() => setDistributionOpen(false)}
+        onSelect={(profile) => {
+          setDistributionOpen(false);
+          openAlumniDetail(profile);
+        }}
+      />
     </div>
   );
 }
