@@ -62,17 +62,40 @@ function alumniKey(item: Pick<AlumniProfile, 'name' | 'grade' | 'work_unit' | 'm
 
 async function fetchAllAlumni() {
   const firstPage = await alumniApi.list({ page: 1, page_size: PAGE_SIZE });
-  const pageCount = Math.ceil(firstPage.total / PAGE_SIZE);
-  if (pageCount <= 1) {
-    return firstPage.items;
+  const allItems = [...firstPage.items];
+
+  // 首页不满一页，说明数据已全部拉取
+  if (firstPage.items.length < PAGE_SIZE) {
+    return allItems;
   }
 
-  const remainingPages = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
+  // 用 total 估算页数以并行拉取，但不盲信（缓存计数可能偏小）
+  const estimatedPages = Math.max(2, Math.ceil(firstPage.total / PAGE_SIZE));
+
+  const batchPages = await Promise.all(
+    Array.from({ length: estimatedPages - 1 }, (_, index) =>
       alumniApi.list({ page: index + 2, page_size: PAGE_SIZE }),
     ),
   );
-  return [firstPage.items, ...remainingPages.map((page) => page.items)].flat();
+
+  for (const page of batchPages) {
+    allItems.push(...page.items);
+  }
+
+  // 兜底：最后一批并行页仍然满载，说明 total 偏小，继续顺序拉取直到空页或不完整页
+  const lastBatch = batchPages[batchPages.length - 1];
+  if (lastBatch && lastBatch.items.length === PAGE_SIZE) {
+    let page = estimatedPages + 1;
+    while (true) {
+      const result = await alumniApi.list({ page, page_size: PAGE_SIZE });
+      if (result.items.length === 0) break;
+      allItems.push(...result.items);
+      if (result.items.length < PAGE_SIZE) break;
+      page++;
+    }
+  }
+
+  return allItems;
 }
 
 function cacheAlumni(items: AlumniProfile[], addressesEnriched: boolean) {
