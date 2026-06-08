@@ -114,8 +114,9 @@ func New(deps Dependencies) *gin.Engine {
 			// 管理校友文件（仅存储启用时注册）
 			if alumniFileHandler != nil {
 				admin.GET("/alumni/:id/files", alumniFileHandler.ListFiles)
-				admin.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.Download)
-				admin.POST("/alumni/:id/files", alumniFileHandler.Upload)
+				admin.POST("/alumni/:id/files/upload-url", alumniFileHandler.RequestUpload)
+				admin.POST("/alumni/:id/files/:fileId/confirm", alumniFileHandler.ConfirmUpload)
+				admin.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.DownloadURL)
 				admin.DELETE("/alumni/:id/files/:fileId", alumniFileHandler.Delete)
 			}
 

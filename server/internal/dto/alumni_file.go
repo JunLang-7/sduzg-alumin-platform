@@ -28,3 +28,18 @@ type AlumniFileListResponse struct {
 	DegreeArchive  []AlumniFileItem `json:"degree_archive"`
 	AcademicRecord []AlumniFileItem `json:"academic_record"`
 }
+
+// AlumniFileUploadURLResponse 预签名上传 URL 响应，客户端用该 URL 直传 MinIO。
+type AlumniFileUploadURLResponse struct {
+	FileID     uint64 `json:"file_id"`
+	UploadURL  string `json:"upload_url"`
+	ExpiresIn  int    `json:"expires_in"`
+	ObjectKey  string `json:"-"`
+}
+
+// AlumniFileDownloadURLResponse 预签名下载 URL 响应，客户端用该 URL 直连 MinIO 下载。
+type AlumniFileDownloadURLResponse struct {
+	DownloadURL  string `json:"download_url"`
+	ExpiresIn    int    `json:"expires_in"`
+	OriginalName string `json:"original_name"`
+}

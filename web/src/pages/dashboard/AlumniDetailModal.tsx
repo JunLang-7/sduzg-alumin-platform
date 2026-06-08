@@ -87,9 +87,6 @@ export function AlumniDetailModal({
   };
 
   const closePreview = () => {
-    if (previewUrl) {
-      window.URL.revokeObjectURL(previewUrl);
-    }
     setPreviewUrl('');
     setPreviewItem(null);
   };
@@ -129,23 +126,10 @@ export function AlumniDetailModal({
     };
   }, [open, profile?.id]);
 
-  useEffect(
-    () => () => {
-      if (previewUrl) window.URL.revokeObjectURL(previewUrl);
-    },
-    [previewUrl],
-  );
-
   const downloadFile = async (item: AlumniFileItem) => {
     if (!profile) return;
     try {
-      const blob = await alumniApi.downloadFile(profile.id, item.id);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = item.original_name;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      await alumniApi.downloadFile(profile.id, item.id);
     } catch (error) {
       message.error(getErrorMessage(error, '档案下载失败'));
     }
@@ -164,8 +148,8 @@ export function AlumniDetailModal({
     setPreviewItem(item);
     setPreviewLoading(true);
     try {
-      const blob = await alumniApi.downloadFile(profile.id, item.id);
-      setPreviewUrl(window.URL.createObjectURL(blob));
+      const downloadUrl = await alumniApi.getDownloadURL(profile.id, item.id);
+      setPreviewUrl(downloadUrl);
     } catch (error) {
       setPreviewItem(null);
       message.error(getErrorMessage(error, '档案预览加载失败'));

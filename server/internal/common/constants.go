@@ -15,5 +15,6 @@ const (
 	FileTypeAcademicRecord = "academic_record"
 
 	FileStatusActive  = "active"
+	FileStatusPending = "pending"
 	FileStatusDeleted = "deleted"
 )

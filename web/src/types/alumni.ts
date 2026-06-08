@@ -70,3 +70,15 @@ export interface AlumniFileListResponse {
   degree_archive: AlumniFileItem[];
   academic_record: AlumniFileItem[];
 }
+
+export interface AlumniFileUploadURLResponse {
+  file_id: number;
+  upload_url: string;
+  expires_in: number;
+}
+
+export interface AlumniFileDownloadURLResponse {
+  download_url: string;
+  expires_in: number;
+  original_name: string;
+}

@@ -3,8 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
-	"mime/multipart"
+	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
@@ -54,52 +53,42 @@ func New(cfg config.StorageConfig, log *zap.Logger) (*Client, error) {
 	return &Client{mc: mc, bucket: cfg.Bucket}, nil
 }
 
-// UploadFile 将 multipart.FileHeader 上传到 MinIO，tags 作为对象标签存储在 MinIO 上。
-func (c *Client) UploadFile(ctx context.Context, objectKey string, fileHeader *multipart.FileHeader, tags map[string]string) (*minio.UploadInfo, error) {
+// PresignedPutURL 生成预签名上传 URL，客户端可用该 URL 直传文件到 MinIO。
+// expiry 为签名有效期，建议 5-15 分钟。
+func (c *Client) PresignedPutURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
+	if c == nil || c.mc == nil {
+		return "", common.ErrStorageUnavailable
+	}
+	url, err := c.mc.PresignedPutObject(ctx, c.bucket, objectKey, expiry)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned put url: %w", err)
+	}
+	return url.String(), nil
+}
+
+// PresignedGetURL 生成预签名下载 URL，客户端可用该 URL 直连 MinIO 下载文件。
+// expiry 为签名有效期，建议 5-15 分钟。
+func (c *Client) PresignedGetURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
+	if c == nil || c.mc == nil {
+		return "", common.ErrStorageUnavailable
+	}
+	url, err := c.mc.PresignedGetObject(ctx, c.bucket, objectKey, expiry, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate presigned get url: %w", err)
+	}
+	return url.String(), nil
+}
+
+// StatObject 获取 MinIO 对象元信息，用于确认上传确实完成。
+func (c *Client) StatObject(ctx context.Context, objectKey string) (*minio.ObjectInfo, error) {
 	if c == nil || c.mc == nil {
 		return nil, common.ErrStorageUnavailable
 	}
-
-	file, err := fileHeader.Open()
+	info, err := c.mc.StatObject(ctx, c.bucket, objectKey, minio.StatObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("failed to open uploaded file: %w", err)
-	}
-	defer file.Close()
-
-	contentType := fileHeader.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "application/octet-stream"
-	}
-
-	info, err := c.mc.PutObject(ctx, c.bucket, objectKey, file, fileHeader.Size,
-		minio.PutObjectOptions{
-			ContentType:  contentType,
-			UserMetadata: tags,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("failed to upload to minio: %w", err)
+		return nil, fmt.Errorf("failed to stat object: %w", err)
 	}
 	return &info, nil
-}
-
-// GetFile 从 MinIO 获取文件流。调用方必须在读取后关闭 reader。
-func (c *Client) GetFile(ctx context.Context, objectKey string) (io.ReadCloser, *minio.ObjectInfo, error) {
-	if c == nil || c.mc == nil {
-		return nil, nil, common.ErrStorageUnavailable
-	}
-
-	obj, err := c.mc.GetObject(ctx, c.bucket, objectKey, minio.GetObjectOptions{})
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get object from minio: %w", err)
-	}
-
-	stat, err := obj.Stat()
-	if err != nil {
-		obj.Close()
-		return nil, nil, fmt.Errorf("failed to stat object: %w", err)
-	}
-
-	return obj, &stat, nil
 }
 
 // DeleteFile 从 MinIO 删除指定对象。若对象不存在则静默返回 nil。
