@@ -96,13 +96,7 @@ export function AlumniFilesCard({ alumniId }: Props) {
 
   const handleDownload = async (item: AlumniFileItem) => {
     try {
-      const blob = await alumniApi.downloadFile(alumniId, item.id);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = item.original_name;
-      link.click();
-      window.URL.revokeObjectURL(url);
+      await alumniApi.downloadFile(alumniId, item.id);
     } catch (error) {
       const err = error as Error;
       message.error(err.message || '下载失败');

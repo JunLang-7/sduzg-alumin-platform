@@ -16,6 +16,8 @@ type AlumniFileStore interface {
 	Create(ctx context.Context, record *model.AlumniFile) (*model.AlumniFile, error)
 	ListByAlumniID(ctx context.Context, alumniID uint64) ([]*model.AlumniFile, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniFile, error)
+	GetByIDAnyStatus(ctx context.Context, id uint64) (*model.AlumniFile, error)
+	MarkActive(ctx context.Context, id uint64, fileSize uint64) error
 	SoftDelete(ctx context.Context, id uint64) error
 	SoftDeleteByAlumniIDAndType(ctx context.Context, alumniID uint64, fileType string) error
 	SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error
@@ -78,6 +80,49 @@ func (r *AlumniFileRepository) GetByID(ctx context.Context, id uint64) (*model.A
 		return nil, err
 	}
 	return &item, nil
+}
+
+// GetByIDAnyStatus 根据 ID 获取文件记录（不限制 status），用于确认 pending 上传。
+func (r *AlumniFileRepository) GetByIDAnyStatus(ctx context.Context, id uint64) (*model.AlumniFile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).AlumniFile
+	var item model.AlumniFile
+	err := r.db.WithContext(ctx).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull()).
+		First(&item).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrFileNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &item, nil
+}
+
+// MarkActive 将文件记录标记为 active 并更新文件大小（确认直传完成后调用）。
+func (r *AlumniFileRepository) MarkActive(ctx context.Context, id uint64, fileSize uint64) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).AlumniFile
+	result := r.db.WithContext(ctx).
+		Model(&model.AlumniFile{}).
+		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusPending), qs.DeletedAt.IsNull()).
+		Updates(map[string]any{
+			qs.Status.ColumnName().String():   common.FileStatusActive,
+			qs.FileSize.ColumnName().String(): fileSize,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return common.ErrFileNotFound
+	}
+	return nil
 }
 
 // SoftDelete 软删除单条文件记录。

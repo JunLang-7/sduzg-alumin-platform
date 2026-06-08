@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"mime/multipart"
 	"strings"
+	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
@@ -51,22 +51,19 @@ func NewAlumniFileService(
 	}
 }
 
-// Upload 上传文件：校验 → 替换旧文件 → 上传 MinIO → 写入 DB 元数据 → 记录日志。
-func (s *AlumniFileService) Upload(ctx context.Context, operatorID uint64, alumniID uint64, fileType string, fileHeader *multipart.FileHeader) (*dto.AlumniFileUploadResponse, error) {
-	// 1. 校验 file_type 参数
+const presignedURLExpiry = 15 * time.Minute
+
+// GenerateUploadURL 生成预签名上传 URL：校验 → 创建 pending 记录 → 返回 Presigned PUT URL。
+// 客户端拿到 URL 后直传 MinIO，完成后调用 ConfirmUpload 确认。
+func (s *AlumniFileService) GenerateUploadURL(ctx context.Context, operatorID uint64, alumniID uint64, fileType, originalName, mimeType string) (*dto.AlumniFileUploadURLResponse, error) {
+	// 1. 校验 file_type
 	if fileType != common.FileTypeDegreeArchive && fileType != common.FileTypeAcademicRecord {
 		return nil, common.ErrFileTypeNotAllowed
 	}
 
-	// 2. 校验文件 MIME 类型
-	mimeType := fileHeader.Header.Get("Content-Type")
+	// 2. 校验 MIME 类型
 	if _, allowed := allowedMimeTypes[mimeType]; !allowed {
 		return nil, common.ErrFileTypeNotAllowed
-	}
-
-	// 3. 校验文件大小
-	if fileHeader.Size > maxFileSize {
-		return nil, common.ErrFileTooLarge
 	}
 
 	// 3. 校验校友存在
@@ -75,19 +72,13 @@ func (s *AlumniFileService) Upload(ctx context.Context, operatorID uint64, alumn
 		return nil, err
 	}
 
-	// 4. 构建 MinIO 对象路径（路径中含校友名，Console 中可直接辨识）
-	objectKey := buildObjectKey(alumniID, alumni.Name, fileType, fileHeader.Filename)
+	// 4. 构建 MinIO 对象路径
+	objectKey := buildObjectKey(alumniID, alumni.Name, fileType, originalName)
 
-	// 5. 替换旧文件：先软删除同类型的旧记录
-	if err := s.replaceOldFiles(ctx, alumniID, fileType); err != nil {
-		logger.Error("failed to replace old files", zap.Error(err))
-		// 非致命，继续上传
-	}
-
-	// 6. 上传到 MinIO
-	uploadInfo, err := s.store.UploadFile(ctx, objectKey, fileHeader, nil)
+	// 5. 生成预签名 PUT URL
+	uploadURL, err := s.store.PresignedPutURL(ctx, objectKey, presignedURLExpiry)
 	if err != nil {
-		logger.Error("failed to upload file to minio",
+		logger.Error("failed to generate presigned put url",
 			zap.Uint64("alumni_id", alumniID),
 			zap.String("file_type", fileType),
 			zap.Error(err),
@@ -95,41 +86,119 @@ func (s *AlumniFileService) Upload(ctx context.Context, operatorID uint64, alumn
 		return nil, common.ErrStorageUnavailable
 	}
 
-	// 7. 写入 DB 元数据
+	// 6. 写入 DB 元数据（pending 状态）
 	record := &model.AlumniFile{
 		AlumniID:     alumniID,
 		FileType:     fileType,
 		ObjectKey:    objectKey,
-		OriginalName: fileHeader.Filename,
-		FileSize:     uint64(uploadInfo.Size),
+		OriginalName: originalName,
+		FileSize:     0,
 		MimeType:     mimeType,
 		UploadedBy:   &operatorID,
-		Status:       common.FileStatusActive,
+		Status:       common.FileStatusPending,
 	}
 
 	saved, err := s.files.Create(ctx, record)
 	if err != nil {
-		// DB 写入失败，清除已上传的 MinIO 对象
-		if delErr := s.store.DeleteFile(ctx, objectKey); delErr != nil {
-			logger.Warn("failed to clean up minio object after db error",
-				zap.String("object_key", objectKey),
-				zap.Error(delErr),
-			)
-		}
-		logger.Error("failed to save file metadata", zap.Error(err))
+		logger.Error("failed to save pending file record", zap.Error(err))
 		return nil, err
 	}
 
-	// 8. 记录操作日志
-	s.writeOpLog(ctx, operatorID, "upload_alumni_file", saved.ID, alumni, fileType, fileHeader.Filename)
+	s.writeOpLog(ctx, operatorID, "request_upload_url", saved.ID, alumni, fileType, originalName)
+
+	return &dto.AlumniFileUploadURLResponse{
+		FileID:    saved.ID,
+		UploadURL: uploadURL,
+		ExpiresIn: int(presignedURLExpiry.Seconds()),
+		ObjectKey: objectKey,
+	}, nil
+}
+
+// ConfirmUpload 确认直传完成：验证 MinIO 对象存在 → 替换旧文件 → 标记 active → 记录日志。
+func (s *AlumniFileService) ConfirmUpload(ctx context.Context, operatorID uint64, alumniID uint64, fileID uint64) (*dto.AlumniFileUploadResponse, error) {
+	// 1. 查找 pending 记录
+	record, err := s.files.GetByIDAnyStatus(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+	if record.AlumniID != alumniID {
+		return nil, common.ErrFileNotFound
+	}
+	if record.Status != common.FileStatusPending {
+		return nil, common.ErrFileNotFound
+	}
+
+	// 2. 验证 MinIO 对象确实存在
+	stat, err := s.store.StatObject(ctx, record.ObjectKey)
+	if err != nil || stat.Size == 0 {
+		logger.Error("upload confirm failed: object not in minio",
+			zap.Uint64("file_id", fileID),
+			zap.String("object_key", record.ObjectKey),
+			zap.Error(err),
+		)
+		return nil, common.ErrFileNotFound
+	}
+
+	// 2b. 校验实际文件大小
+	if stat.Size > maxFileSize {
+		// 删除超限的 MinIO 对象
+		if delErr := s.store.DeleteFile(ctx, record.ObjectKey); delErr != nil {
+			logger.Warn("failed to delete oversized minio object", zap.Error(delErr))
+		}
+		return nil, common.ErrFileTooLarge
+	}
+
+	// 3. 替换旧文件：软删除同类型的旧 active 记录
+	if err := s.replaceOldFiles(ctx, alumniID, record.FileType); err != nil {
+		logger.Error("failed to replace old files on confirm", zap.Error(err))
+	}
+
+	// 4. 标记 active、更新文件大小
+	if err := s.files.MarkActive(ctx, fileID, uint64(stat.Size)); err != nil {
+		logger.Error("failed to mark file active", zap.Uint64("file_id", fileID), zap.Error(err))
+		return nil, err
+	}
+
+	// 5. 记录操作日志
+	alumni, _ := s.alumni.GetByID(ctx, alumniID)
+	s.writeOpLog(ctx, operatorID, "confirm_upload", fileID, alumni, record.FileType, record.OriginalName)
 
 	return &dto.AlumniFileUploadResponse{
-		ID:           saved.ID,
-		AlumniID:     saved.AlumniID,
-		FileType:     saved.FileType,
-		OriginalName: saved.OriginalName,
-		FileSize:     saved.FileSize,
-		MimeType:     saved.MimeType,
+		ID:           record.ID,
+		AlumniID:     record.AlumniID,
+		FileType:     record.FileType,
+		OriginalName: record.OriginalName,
+		FileSize:     uint64(stat.Size),
+		MimeType:     record.MimeType,
+	}, nil
+}
+
+// GenerateDownloadURL 生成预签名下载 URL：校验权限 → 返回 Presigned GET URL。
+// 客户端凭该 URL 直连 MinIO 下载，数据不经过 API Server。
+func (s *AlumniFileService) GenerateDownloadURL(ctx context.Context, alumniID uint64, fileID uint64) (*dto.AlumniFileDownloadURLResponse, error) {
+	record, err := s.files.GetByID(ctx, fileID)
+	if err != nil {
+		return nil, err
+	}
+
+	if record.AlumniID != alumniID {
+		return nil, common.ErrFileNotFound
+	}
+
+	downloadURL, err := s.store.PresignedGetURL(ctx, record.ObjectKey, presignedURLExpiry)
+	if err != nil {
+		logger.Error("failed to generate presigned get url",
+			zap.Uint64("file_id", fileID),
+			zap.String("object_key", record.ObjectKey),
+			zap.Error(err),
+		)
+		return nil, common.ErrStorageUnavailable
+	}
+
+	return &dto.AlumniFileDownloadURLResponse{
+		DownloadURL:  downloadURL,
+		ExpiresIn:    int(presignedURLExpiry.Seconds()),
+		OriginalName: record.OriginalName,
 	}, nil
 }
 
@@ -165,35 +234,6 @@ func (s *AlumniFileService) ListFiles(ctx context.Context, alumniID uint64) (*dt
 	}
 
 	return result, nil
-}
-
-// Download 获取文件流和文件信息，供 handler 流式输出。
-func (s *AlumniFileService) Download(ctx context.Context, id uint64, alumniID uint64) (*storage.FileDownload, error) {
-	record, err := s.files.GetByID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if record.AlumniID != alumniID {
-		return nil, common.ErrFileNotFound
-	}
-
-	reader, stat, err := s.store.GetFile(ctx, record.ObjectKey)
-	if err != nil {
-		logger.Error("failed to get file from minio",
-			zap.Uint64("file_id", id),
-			zap.String("object_key", record.ObjectKey),
-			zap.Error(err),
-		)
-		return nil, common.ErrStorageUnavailable
-	}
-
-	return &storage.FileDownload{
-		Reader:       reader,
-		ContentType:  stat.ContentType,
-		Size:         stat.Size,
-		OriginalName: record.OriginalName,
-	}, nil
 }
 
 // DeleteFile 软删除文件记录 + 尽力清理 MinIO 对象 + 记录日志。

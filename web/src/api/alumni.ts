@@ -4,6 +4,8 @@ import type {
   AlumniImportResult,
   AlumniFileItem,
   AlumniFileListResponse,
+  AlumniFileUploadURLResponse,
+  AlumniFileDownloadURLResponse,
   AlumniProfile,
   AlumniProfilePayload,
   AlumniQuery,
@@ -82,16 +84,42 @@ export const alumniApi = {
     });
   },
 
-  uploadFile(id: number, fileType: string, file: File) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('file_type', fileType);
-
-    return request<AlumniFileItem>({
+  async uploadFile(id: number, fileType: 'degree_archive' | 'academic_record', file: File): Promise<AlumniFileItem> {
+    // 1. 请求预签名上传 URL
+    const { file_id, upload_url } = await request<AlumniFileUploadURLResponse>({
       method: 'POST',
-      url: `/admin/alumni/${id}/files`,
-      data: formData,
+      url: `/admin/alumni/${id}/files/upload-url`,
+      data: {
+        file_type: fileType,
+        original_name: file.name,
+        mime_type: file.type || 'application/octet-stream',
+      },
     });
+
+    // 2. 客户端直传 MinIO
+    const putResp = await fetch(upload_url, {
+      method: 'PUT',
+      body: file,
+      headers: { 'Content-Type': file.type || 'application/octet-stream' },
+    });
+    if (!putResp.ok) {
+      throw new Error(`文件上传失败: ${putResp.status}`);
+    }
+
+    // 3. 确认上传完成（返回值未使用，后端返回 AlumniFileUploadResponse）
+    await request({
+      method: 'POST',
+      url: `/admin/alumni/${id}/files/${file_id}/confirm`,
+    });
+
+    return {
+      id: file_id,
+      file_type: fileType,
+      original_name: file.name,
+      file_size: file.size,
+      mime_type: file.type || 'application/octet-stream',
+      created_at: new Date().toISOString(),
+    };
   },
 
   deleteFile(alumniId: number, fileId: number) {
@@ -100,13 +128,32 @@ export const alumniApi = {
       url: `/admin/alumni/${alumniId}/files/${fileId}`,
     });
   },
-   
-  downloadFile(alumniId: number, fileId: number) {
-    return request<Blob>({
+
+  async downloadFile(alumniId: number, fileId: number) {
+    const { download_url, original_name } = await request<AlumniFileDownloadURLResponse>({
       method: 'GET',
       url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
-      responseType: 'blob',
     });
+    // 通过 fetch 获取文件再创建 blob URL 下载，绕过弹窗拦截且保证下载行为
+    const fileResp = await fetch(download_url);
+    if (!fileResp.ok) {
+      throw new Error(`下载失败: ${fileResp.status}`);
+    }
+    const blob = await fileResp.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = original_name;
+    a.click();
+    window.URL.revokeObjectURL(url);
+  },
+
+  async getDownloadURL(alumniId: number, fileId: number) {
+    const { download_url } = await request<AlumniFileDownloadURLResponse>({
+      method: 'GET',
+      url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
+    });
+    return download_url;
   },
 
   exportData(params: AlumniQuery & { format?: string }) {
