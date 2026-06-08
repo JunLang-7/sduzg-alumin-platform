@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EnvironmentOutlined, SearchOutlined } from '@ant-design/icons';
-import { Input, Segmented, Spin, message } from 'antd';
-import { alumniApi } from '../../api/alumni';
+import { Input, Segmented } from 'antd';
 import type { AlumniProfile } from '../../types/alumni';
 
 interface RegionIndustryExplorerProps {
+  alumni: AlumniProfile[];
   expanded: boolean;
   onSelectAlumni: (profile: AlumniProfile) => void;
 }
@@ -79,96 +79,6 @@ const branchSuffixes = ['分公司', '分行', '支行', '办事处', '联络处
 
 function normalize(value?: string) {
   return value?.replace(/\s+/gu, '').trim() || '';
-}
-
-function parseCsv(text: string) {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let field = '';
-  let quoted = false;
-  const source = text.replace(/^\uFEFF/u, '');
-
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (character === '"') {
-      if (quoted && source[index + 1] === '"') {
-        field += '"';
-        index += 1;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (character === ',' && !quoted) {
-      row.push(field);
-      field = '';
-    } else if ((character === '\n' || character === '\r') && !quoted) {
-      if (character === '\r' && source[index + 1] === '\n') {
-        index += 1;
-      }
-      row.push(field);
-      if (row.some(Boolean)) {
-        rows.push(row);
-      }
-      row = [];
-      field = '';
-    } else {
-      field += character;
-    }
-  }
-
-  row.push(field);
-  if (row.some(Boolean)) {
-    rows.push(row);
-  }
-  return rows;
-}
-
-function alumniKey(item: Pick<AlumniProfile, 'name' | 'grade' | 'work_unit' | 'mobile'>) {
-  return [item.name, item.grade, item.work_unit, item.mobile].map(normalize).join('|');
-}
-
-async function fetchAllAlumni() {
-  const pageSize = 100;
-  const firstPage = await alumniApi.list({ page: 1, page_size: pageSize });
-  const pageCount = Math.ceil(firstPage.total / pageSize);
-  const remainingPages = pageCount > 1
-    ? await Promise.all(
-      Array.from({ length: pageCount - 1 }, (_, index) =>
-        alumniApi.list({ page: index + 2, page_size: pageSize }),
-      ),
-    )
-    : [];
-  const items = [firstPage.items, ...remainingPages.map((page) => page.items)]
-    .flat()
-    .map((item) => ({ ...item }));
-
-  try {
-    const blob = await alumniApi.exportData({ format: 'csv' });
-    const rows = parseCsv(await blob.text()).slice(1);
-    const addressQueues = new Map<string, string[]>();
-
-    rows.forEach((columns) => {
-      const key = alumniKey({
-        name: columns[0] || '',
-        grade: columns[1] || '',
-        work_unit: columns[9] || '',
-        mobile: columns[13] || '',
-      });
-      const addresses = addressQueues.get(key) || [];
-      addresses.push(columns[11] || '');
-      addressQueues.set(key, addresses);
-    });
-
-    items.forEach((item) => {
-      const addresses = addressQueues.get(alumniKey(item));
-      if (addresses?.length) {
-        item.mailing_address = addresses.shift();
-      }
-    });
-  } catch {
-    message.warning('通讯地址加载失败，地域将仅按工作单位判定');
-  }
-
-  return items;
 }
 
 function findBranchLocation(workUnit: string) {
@@ -259,6 +169,7 @@ function resolveRegion(item: AlumniProfile): AlumniRegion | null {
 }
 
 export function RegionIndustryExplorer({
+  alumni: allAlumni,
   expanded,
   onSelectAlumni,
 }: RegionIndustryExplorerProps) {
@@ -267,34 +178,8 @@ export function RegionIndustryExplorer({
   const [selectedDistrict, setSelectedDistrict] = useState('');
   const [selectedIndustry, setSelectedIndustry] = useState('');
   const [peopleKeyword, setPeopleKeyword] = useState('');
-  const [allAlumni, setAllAlumni] = useState<AlumniProfile[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const activeKeyword = selectedDistrict || selectedRegion;
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    fetchAllAlumni()
-      .then((items) => {
-        if (active) {
-          setAllAlumni(items);
-        }
-      })
-      .catch((error: Error) => {
-        if (active) {
-          message.error(error.message || '地域数据加载失败');
-        }
-      })
-      .finally(() => {
-        if (active) {
-          setLoading(false);
-        }
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
 
   useEffect(() => {
     setSelectedIndustry('');
@@ -368,8 +253,7 @@ export function RegionIndustryExplorer({
   };
 
   return (
-    <Spin spinning={loading}>
-      <div className={`region-industry-explorer ${expanded ? 'region-industry-expanded' : ''}`}>
+    <div className={`region-industry-explorer ${expanded ? 'region-industry-expanded' : ''}`}>
         <div className="region-industry-controls">
           <Segmented
             value={scope}
@@ -485,7 +369,6 @@ export function RegionIndustryExplorer({
             <div className="region-result-empty">当前地域和行业暂无匹配人员</div>
           )}
         </div>
-      </div>
-    </Spin>
+    </div>
   );
 }
