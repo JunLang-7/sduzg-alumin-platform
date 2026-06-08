@@ -2244,13 +2244,6 @@ button {
   overflow: hidden;
 }
 
-.data-screen-expanded-body:has(.region-industry-expanded) > .ant-spin-nested-loading,
-.data-screen-expanded-body:has(.region-industry-expanded) > .ant-spin-nested-loading > .ant-spin-container {
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-
 .region-industry-expanded .region-industry-controls {
   grid-column: 1;
   grid-row: 1 / 3;

@@ -14,6 +14,7 @@ import { dashboardApi } from '../../api/dashboard';
 import logoUrl from '../../assets/pspa-logo.png';
 import type { AlumniProfile } from '../../types/alumni';
 import { AlumniDetailModal } from './AlumniDetailModal';
+import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
 import { RegionIndustryExplorer } from './RegionIndustryExplorer';
 import type {
@@ -97,21 +98,6 @@ function sortByNumericName(items: DistributionItem[]) {
     }
     return leftNumber - rightNumber;
   });
-}
-
-async function loadAllAlumni() {
-  const firstPage = await alumniApi.list({ page: 1, page_size: 100 });
-  const pageCount = Math.ceil(firstPage.total / 100);
-  if (pageCount <= 1) {
-    return firstPage.items;
-  }
-
-  const remainingPages = await Promise.all(
-    Array.from({ length: pageCount - 1 }, (_, index) =>
-      alumniApi.list({ page: index + 2, page_size: 100 }),
-    ),
-  );
-  return [firstPage.items, ...remainingPages.map((page) => page.items)].flat();
 }
 
 function DataScreenPanel({
@@ -240,6 +226,14 @@ export function DashboardPage() {
         if (feedResult.status === 'fulfilled') {
           setAlumniFeed(feedResult.value);
           setAllAlumniCache(feedResult.value);
+          void enrichAlumniMailingAddresses(feedResult.value)
+            .then((items) => {
+              setAlumniFeed(items);
+              setAllAlumniCache(items);
+            })
+            .catch(() => {
+              message.warning('通讯地址加载失败，地域将仅按工作单位判定');
+            });
         } else {
           message.error(feedResult.reason?.message || '校友信息加载失败');
         }
@@ -663,6 +657,7 @@ export function DashboardPage() {
         >
           {(expanded) => (
             <RegionIndustryExplorer
+              alumni={allAlumniCache ?? alumniFeed}
               expanded={expanded}
               onSelectAlumni={openAlumniDetail}
             />
