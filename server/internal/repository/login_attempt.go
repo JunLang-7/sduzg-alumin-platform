@@ -12,9 +12,9 @@ import (
 const loginFailureKeyPrefix = "auth:login_failure:"
 
 type LoginAttemptStore interface {
-	FailureCount(ctx context.Context, account string) (int, error)
-	RecordFailure(ctx context.Context, account string, window time.Duration) (int, error)
-	ClearFailures(ctx context.Context, account string) error
+	FailureCount(ctx context.Context, identifier string) (int, error)
+	RecordFailure(ctx context.Context, identifier string, window time.Duration) (int, error)
+	ClearFailures(ctx context.Context, identifier string) error
 }
 
 type LoginAttemptRepository struct {
@@ -25,13 +25,13 @@ func NewLoginAttemptRepository(redisClient *redis.Client) *LoginAttemptRepositor
 	return &LoginAttemptRepository{redis: redisClient}
 }
 
-// FailureCount 获取指定账号的登录失败次数
-func (r *LoginAttemptRepository) FailureCount(ctx context.Context, account string) (int, error) {
+// FailureCount 获取指定标识的登录失败次数
+func (r *LoginAttemptRepository) FailureCount(ctx context.Context, identifier string) (int, error) {
 	if r.redis == nil {
 		return 0, common.ErrCacheUnavailable
 	}
 
-	count, err := r.redis.Get(ctx, loginFailureKey(account)).Int()
+	count, err := r.redis.Get(ctx, loginFailureKey(identifier)).Int()
 	if err == nil {
 		return count, nil
 	}
@@ -42,12 +42,12 @@ func (r *LoginAttemptRepository) FailureCount(ctx context.Context, account strin
 }
 
 // RecordFailure 记录一次登录失败，并返回当前失败次数。如果达到锁定阈值，返回 true。
-func (r *LoginAttemptRepository) RecordFailure(ctx context.Context, account string, window time.Duration) (int, error) {
+func (r *LoginAttemptRepository) RecordFailure(ctx context.Context, identifier string, window time.Duration) (int, error) {
 	if r.redis == nil {
 		return 0, common.ErrCacheUnavailable
 	}
 
-	key := loginFailureKey(account)
+	key := loginFailureKey(identifier)
 	count, err := r.redis.Incr(ctx, key).Result()
 	if err != nil {
 		return 0, err
@@ -61,15 +61,15 @@ func (r *LoginAttemptRepository) RecordFailure(ctx context.Context, account stri
 	return int(count), nil
 }
 
-// ClearFailures 清除指定账号的登录失败记录
-func (r *LoginAttemptRepository) ClearFailures(ctx context.Context, account string) error {
+// ClearFailures 清除指定标识的登录失败记录
+func (r *LoginAttemptRepository) ClearFailures(ctx context.Context, identifier string) error {
 	if r.redis == nil {
 		return common.ErrCacheUnavailable
 	}
 
-	return r.redis.Del(ctx, loginFailureKey(account)).Err()
+	return r.redis.Del(ctx, loginFailureKey(identifier)).Err()
 }
 
-func loginFailureKey(account string) string {
-	return loginFailureKeyPrefix + strings.ToLower(strings.TrimSpace(account))
+func loginFailureKey(identifier string) string {
+	return loginFailureKeyPrefix + strings.ToLower(strings.TrimSpace(identifier))
 }

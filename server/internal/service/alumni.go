@@ -201,6 +201,7 @@ func (s *AlumniService) maskSensitiveFields(ctx context.Context, detail *dto.Alu
 
 	mask := func() {
 		detail.Mobile = nil
+		detail.Email = nil
 		detail.Position = nil
 		detail.MailingAddress = nil
 	}
@@ -769,6 +770,7 @@ func mapAlumniDetail(item *model.AlumniProfile) *dto.AlumniDetail {
 		MailingAddress: item.MailingAddress,
 		Gender:         item.Gender,
 		Mobile:         item.Mobile,
+		Email:          item.Email,
 		Status:         item.Status,
 		CreatedAt:      item.CreatedAt,
 		UpdatedAt:      item.UpdatedAt,

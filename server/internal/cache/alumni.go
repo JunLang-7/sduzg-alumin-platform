@@ -12,10 +12,10 @@ import (
 )
 
 const (
-	alumniCountKey       = "alumni:count"
-	alumniExportVersion  = "alumni:export:version"
-	alumniExportKeyFmt   = "alumni:export:%d:%x"
-	alumniExportTTL      = 2 * time.Hour
+	alumniCountKey      = "alumni:count"
+	alumniExportVersion = "alumni:export:version"
+	alumniExportKeyFmt  = "alumni:export:%d:%x"
+	alumniExportTTL     = 2 * time.Hour
 )
 
 type CountCache struct {

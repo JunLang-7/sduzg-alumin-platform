@@ -15,12 +15,18 @@ import (
 
 type UserStore interface {
 	FindByAccount(ctx context.Context, account string) (*model.User, error)
+	FindByMobile(ctx context.Context, mobile string) (*model.User, error)
+	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByAlumniID(ctx context.Context, alumniID uint64) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
 	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
 	DeleteAdmin(ctx context.Context, id uint64) error
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
+	UpdateMobile(ctx context.Context, id uint64, mobile string) error
+	UpdateEmail(ctx context.Context, id uint64, email string) error
+	CreateUser(ctx context.Context, user *model.User) error
 }
 
 type UserRepository struct {
@@ -41,6 +47,51 @@ func (r *UserRepository) FindByAccount(ctx context.Context, account string) (*mo
 	qs := query.Use(r.db).User
 	err := r.db.WithContext(ctx).
 		Where(qs.Account.Eq(account), qs.DeletedAt.IsNull()).
+		First(&user).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// FindByMobile 通过手机号查找用户（忽略软删除）
+func (r *UserRepository) FindByMobile(ctx context.Context, mobile string) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var user model.User
+	qs := query.Use(r.db).User
+	err := r.db.WithContext(ctx).
+		Where(qs.Mobile.Eq(mobile), qs.DeletedAt.IsNull()).
+		First(&user).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// FindByEmail 通过邮箱查找用户（忽略软删除，大小写不敏感）
+func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	lowerEmail := strings.ToLower(email)
+	var user model.User
+	qs := query.Use(r.db).User
+	err := r.db.WithContext(ctx).
+		Where(qs.Email.Lower().Eq(lowerEmail), qs.DeletedAt.IsNull()).
 		First(&user).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -185,5 +236,61 @@ func (r *UserRepository) UpdatePasswordHash(ctx context.Context, id uint64, pass
 		Model(&model.User{}).
 		Where(qs.ID.Eq(id)).
 		Update(qs.PasswordHash.ColumnName().String(), passwordHash).
+		Error
+}
+
+// FindByAlumniID 通过校友ID查找关联用户
+func (r *UserRepository) FindByAlumniID(ctx context.Context, alumniID uint64) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var user model.User
+	qs := query.Use(r.db).User
+	err := r.db.WithContext(ctx).
+		Where(qs.AlumniID.Eq(alumniID), qs.DeletedAt.IsNull()).
+		First(&user).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrUserNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
+// CreateUser 创建新用户记录
+func (r *UserRepository) CreateUser(ctx context.Context, user *model.User) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Create(user).Error
+}
+
+// UpdateMobile 更新用户手机号
+func (r *UserRepository) UpdateMobile(ctx context.Context, id uint64, mobile string) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	qs := query.Use(r.db).User
+	return r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where(qs.ID.Eq(id)).
+		Update(qs.Mobile.ColumnName().String(), mobile).
+		Error
+}
+
+// UpdateEmail 更新用户邮箱（小写）
+func (r *UserRepository) UpdateEmail(ctx context.Context, id uint64, email string) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	qs := query.Use(r.db).User
+	return r.db.WithContext(ctx).
+		Model(&model.User{}).
+		Where(qs.ID.Eq(id)).
+		Update(qs.Email.ColumnName().String(), strings.ToLower(email)).
 		Error
 }
