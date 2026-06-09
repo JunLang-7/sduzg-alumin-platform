@@ -39,7 +39,11 @@ export function ChangePasswordPage() {
             name="new_password"
             rules={[
               { required: true, message: '请输入新密码' },
-              { min: 8, message: '密码至少 8 位' },
+              { min: 8, message: '密码至少8位' },
+              {
+                pattern: /^(?=.*[a-zA-Z])(?=.*\d)/,
+                message: '密码必须包含字母和数字',
+              },
             ]}
           >
             <Input.Password prefix={<LockOutlined />} autoComplete="new-password" />
