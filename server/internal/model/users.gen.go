@@ -21,6 +21,7 @@ type User struct {
 	AlumniID     *uint64        `gorm:"column:alumni_id;type:bigint unsigned;index:idx_users_alumni_id,priority:1;comment:linked alumni profile id" json:"alumni_id"`           // linked alumni profile id
 	RealName     *string        `gorm:"column:real_name;type:varchar(100);comment:real name" json:"real_name"`                                                                  // real name
 	Mobile       *string        `gorm:"column:mobile;type:varchar(30);comment:mobile or backup contact" json:"mobile"`                                                          // mobile or backup contact
+	Email        *string        `gorm:"column:email;type:varchar(255);uniqueIndex:uk_users_email,priority:1;comment:email address" json:"email"`                                // email address
 	Status       string         `gorm:"column:status;type:varchar(32);not null;index:idx_users_status,priority:1;default:active;comment:active/disabled/deleted" json:"status"` // active/disabled/deleted
 	LastLoginAt  *time.Time     `gorm:"column:last_login_at;type:datetime;comment:last login time" json:"last_login_at"`                                                        // last login time
 	CreatedAt    time.Time      `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP" json:"created_at"`

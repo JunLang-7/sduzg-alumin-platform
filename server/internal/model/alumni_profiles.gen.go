@@ -29,6 +29,7 @@ type AlumniProfile struct {
 	MailingAddress *string        `gorm:"column:mailing_address;type:varchar(255);comment:mailing address" json:"mailing_address"`                                            // mailing address
 	Gender         *string        `gorm:"column:gender;type:varchar(20);comment:gender" json:"gender"`                                                                        // gender
 	Mobile         *string        `gorm:"column:mobile;type:varchar(30);index:idx_alumni_mobile,priority:1;comment:mobile" json:"mobile"`                                     // mobile
+	Email          *string        `gorm:"column:email;type:varchar(255);comment:email address" json:"email"`                                                                  // email address
 	Remark         *string        `gorm:"column:remark;type:text;comment:admin remark" json:"remark"`                                                                         // admin remark
 	Status         string         `gorm:"column:status;type:varchar(32);not null;index:idx_alumni_status,priority:1;default:active;comment:active/deleted" json:"status"`     // active/deleted
 	CreatedBy      *uint64        `gorm:"column:created_by;type:bigint unsigned;comment:creator user id" json:"created_by"`                                                   // creator user id
