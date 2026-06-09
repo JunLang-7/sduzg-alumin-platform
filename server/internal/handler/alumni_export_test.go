@@ -30,6 +30,17 @@ func (s *fakeExportStore) GetByID(_ context.Context, _ uint64) (*model.AlumniPro
 	return nil, common.ErrAlumniNotFound
 }
 
+func (s *fakeExportStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+
+func (s *fakeExportStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+
+func (s *fakeExportStore) UpdateMobile(_ context.Context, _ uint64, _ string) error { return nil }
+func (s *fakeExportStore) UpdateEmail(_ context.Context, _ uint64, _ string) error  { return nil }
+
 func (s *fakeExportStore) Create(_ context.Context, _ *do.AlumniCreateProfile, _ uint64) (*model.AlumniProfile, error) {
 	return nil, nil
 }
