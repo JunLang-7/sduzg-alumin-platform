@@ -200,7 +200,7 @@ type AlumniListItem struct {
 	Position     *string   `json:"position"`
 	Gender       *string   `json:"gender"`
 	Mobile       *string   `json:"mobile"`
-	Email        *string   `json:"email,omitempty"`
+	Email        *string   `json:"email"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
@@ -232,7 +232,7 @@ type AlumniDetail struct {
 	MailingAddress *string   `json:"mailing_address"`
 	Gender         *string   `json:"gender"`
 	Mobile         *string   `json:"mobile"`
-	Email          *string   `json:"email,omitempty"`
+	Email          *string   `json:"email"`
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
