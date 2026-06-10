@@ -16,6 +16,20 @@ const (
 	verifyCodeKeyPrefix    = "alumni:verify_code:"
 	verificationCodeTTL    = 5 * time.Minute
 	verifyCodeSendCountKey = "alumni:verify_code:send_count:"
+
+	// verifyCodeLua 原子比较并删除验证码。
+	// KEYS[1] = code key, ARGV[1] = input code.
+	// 返回 1: 验证成功并已删除, 0: 验证码不匹配, -1: key 不存在(已过期).
+	verifyCodeLua = `
+local stored = redis.call("GET", KEYS[1])
+if stored == false then
+  return -1
+end
+if stored ~= ARGV[1] then
+  return 0
+end
+return redis.call("DEL", KEYS[1])
+`
 )
 
 // CodeSender 可插拔的验证码发送接口。
@@ -79,23 +93,19 @@ func (s *verifyCodeStore) Verify(ctx context.Context, target, code string) (bool
 	}
 
 	key := codeKey(target)
-	stored, err := s.redis.Get(ctx, key).Result()
+	result, err := s.redis.Eval(ctx, verifyCodeLua, []string{key}, code).Int()
 	if err != nil {
-		if err == redis.Nil {
-			return false, common.ErrCodeExpired
-		}
 		return false, err
 	}
 
-	if stored != code {
+	switch result {
+	case 1:
+		return true, nil
+	case 0:
 		return false, common.ErrCodeInvalid
+	default: // -1: key not found
+		return false, common.ErrCodeExpired
 	}
-
-	if err := s.redis.Del(ctx, key).Err(); err != nil {
-		return false, err
-	}
-
-	return true, nil
 }
 
 func (s *verifyCodeStore) IncrementSendCount(ctx context.Context, target string) (int64, error) {
