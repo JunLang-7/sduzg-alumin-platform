@@ -52,6 +52,7 @@ export function AlumniDetailPage() {
               <Descriptions.Item label="姓名">{profile.name}</Descriptions.Item>
               <Descriptions.Item label="性别">{profile.gender || '-'}</Descriptions.Item>
               <Descriptions.Item label="手机号">{isHidden(profile.mobile, isRestrictedViewer) ? '***' : (profile.mobile || '-')}</Descriptions.Item>
+              <Descriptions.Item label="邮箱">{isHidden(profile.email, isRestrictedViewer) ? '***' : (profile.email || '-')}</Descriptions.Item>
               <Descriptions.Item label="年级">{profile.grade}</Descriptions.Item>
               <Descriptions.Item label="班级">{profile.class_name || '-'}</Descriptions.Item>
               <Descriptions.Item label="届数">{profile.cohort || '-'}</Descriptions.Item>

@@ -120,6 +120,7 @@ type AdminAlumniCreateRequest struct {
 	MailingAddress *string `json:"mailing_address"`
 	Gender         *string `json:"gender"`
 	Mobile         *string `json:"mobile"`
+	Email          *string `json:"email"`
 	Remark         *string `json:"remark"`
 }
 
@@ -138,6 +139,7 @@ type AdminAlumniUpdateRequest struct {
 	MailingAddress *string `json:"mailing_address"`
 	Gender         *string `json:"gender"`
 	Mobile         *string `json:"mobile"`
+	Email          *string `json:"email"`
 	Remark         *string `json:"remark"`
 }
 
@@ -157,6 +159,7 @@ func (r AdminAlumniCreateRequest) ToProfile() do.AlumniCreateProfile {
 		MailingAddress: r.MailingAddress,
 		Gender:         r.Gender,
 		Mobile:         r.Mobile,
+		Email:          r.Email,
 		Remark:         r.Remark,
 	}
 }
@@ -177,6 +180,7 @@ func (r AdminAlumniUpdateRequest) ToProfile() do.AlumniUpdateProfile {
 		MailingAddress: r.MailingAddress,
 		Gender:         r.Gender,
 		Mobile:         r.Mobile,
+		Email:          r.Email,
 		Remark:         r.Remark,
 	}
 }
@@ -196,6 +200,7 @@ type AlumniListItem struct {
 	Position     *string   `json:"position"`
 	Gender       *string   `json:"gender"`
 	Mobile       *string   `json:"mobile"`
+	Email        *string   `json:"email"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
 
@@ -227,7 +232,7 @@ type AlumniDetail struct {
 	MailingAddress *string   `json:"mailing_address"`
 	Gender         *string   `json:"gender"`
 	Mobile         *string   `json:"mobile"`
-	Email          *string   `json:"email,omitempty"`
+	Email          *string   `json:"email"`
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`

@@ -329,6 +329,7 @@ export function AlumniDetailModal({
                 <Descriptions.Item label="姓名">{displayValue(profile.name)}</Descriptions.Item>
                 <Descriptions.Item label="性别">{displayValue(profile.gender)}</Descriptions.Item>
                 <Descriptions.Item label="联系电话">{displayValue(profile.mobile)}</Descriptions.Item>
+                <Descriptions.Item label="邮箱">{displayValue(profile.email)}</Descriptions.Item>
                 <Descriptions.Item label="年级">{displayValue(profile.grade)}</Descriptions.Item>
                 <Descriptions.Item label="班级">{displayValue(profile.class_name)}</Descriptions.Item>
                 <Descriptions.Item label="届数">{displayValue(profile.cohort)}</Descriptions.Item>

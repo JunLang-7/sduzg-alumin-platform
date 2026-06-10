@@ -312,11 +312,20 @@ func (s *AuthService) createUserForAlumni(ctx context.Context, mobile, email str
 	if account == "" && email != "" {
 		account = email
 	}
+
+	var realName *string
+	if s.alumni != nil {
+		if profile, err := s.alumni.GetByID(ctx, alumniID); err == nil {
+			realName = &profile.Name
+		}
+	}
+
 	newUser := &model.User{
 		Account:      account,
 		PasswordHash: passwordHash,
 		Role:         common.RoleAlumni,
 		AlumniID:     &alumniID,
+		RealName:     realName,
 		Status:       common.UserStatusActive,
 	}
 	if mobile != "" {

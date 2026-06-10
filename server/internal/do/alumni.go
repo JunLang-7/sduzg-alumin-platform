@@ -44,6 +44,7 @@ type AlumniUpdateProfile struct {
 	MailingAddress *string
 	Gender         *string
 	Mobile         *string
+	Email          *string
 	Remark         *string
 }
 
@@ -62,6 +63,7 @@ type AlumniCreateProfile struct {
 	MailingAddress *string
 	Gender         *string
 	Mobile         *string
+	Email          *string
 	Remark         *string
 	Status         string
 }
@@ -82,6 +84,7 @@ func (p AlumniCreateProfile) Normalize() AlumniCreateProfile {
 	p.MailingAddress = trimEmptyStringPointer(p.MailingAddress)
 	p.Gender = trimEmptyStringPointer(p.Gender)
 	p.Mobile = trimEmptyStringPointer(p.Mobile)
+	p.Email = trimEmptyStringPointer(p.Email)
 	p.Remark = trimEmptyStringPointer(p.Remark)
 	p.Status = strings.TrimSpace(p.Status)
 	if p.Status == "" {
@@ -115,6 +118,7 @@ func (p AlumniUpdateProfile) Normalize() AlumniUpdateProfile {
 	p.MailingAddress = trimStringPointer(p.MailingAddress)
 	p.Gender = trimStringPointer(p.Gender)
 	p.Mobile = trimStringPointer(p.Mobile)
+	p.Email = trimStringPointer(p.Email)
 	p.Remark = trimStringPointer(p.Remark)
 	return p
 }
