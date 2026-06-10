@@ -28,7 +28,7 @@ func buildMultipartXLSX(t *testing.T, rows [][]string) (*bytes.Buffer, string) {
 		t.Fatalf("create stream writer: %v", err)
 	}
 
-	headers := []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
+	headers := []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号", "邮箱"}
 	headerVals := make([]interface{}, len(headers))
 	for i, h := range headers {
 		headerVals[i] = h

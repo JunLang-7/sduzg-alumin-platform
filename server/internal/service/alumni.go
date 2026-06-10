@@ -32,7 +32,7 @@ type ExportResult struct {
 	Filename    string
 }
 
-var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号"}
+var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号", "邮箱"}
 
 func exportRow(item *model.AlumniProfile) []string {
 	return []string{
@@ -50,6 +50,7 @@ func exportRow(item *model.AlumniProfile) []string {
 		sanitizeExportValue(stringOrEmpty(item.MailingAddress)),
 		sanitizeExportValue(stringOrEmpty(item.Gender)),
 		sanitizeExportValue(stringOrEmpty(item.Mobile)),
+		sanitizeExportValue(stringOrEmpty(item.Email)),
 	}
 }
 
@@ -640,6 +641,7 @@ func parseRowToProfile(row []string) do.AlumniCreateProfile {
 	p.MailingAddress = optionalStr(11)
 	p.Gender = optionalStr(12)
 	p.Mobile = optionalStr(13)
+	p.Email = optionalStr(14)
 
 	return p
 }
