@@ -6,6 +6,17 @@ const roleWeight: Record<UserRole, number> = {
   super_admin: 3,
 };
 
+const roleLabel: Record<UserRole, string> = {
+  alumni: '校友',
+  admin: '管理员',
+  super_admin: '超级管理员',
+};
+
+export function getRoleLabel(role?: UserRole): string {
+  if (!role) return '';
+  return roleLabel[role] || role;
+}
+
 export function hasRole(user: CurrentUser | null, role: UserRole) {
   if (!user) {
     return false;

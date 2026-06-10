@@ -12,7 +12,7 @@ import { Avatar, Dropdown, Input, Layout, Menu, Space, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import logoUrl from '../assets/pspa-logo.png';
 import { useAuthStore } from '../store/authStore';
-import { getDefaultPath, hasRole } from '../utils/permissions';
+import { getDefaultPath, getRoleLabel, hasRole } from '../utils/permissions';
 
 const { Content } = Layout;
 const { Text } = Typography;
@@ -140,7 +140,7 @@ export function AppLayout() {
                   <Avatar size={30} icon={<UserOutlined />} />
                   <span className="user-meta">
                     <Text strong>{user?.real_name || user?.account}</Text>
-                    <Text>{user?.role}</Text>
+                    <Text>{getRoleLabel(user?.role)}</Text>
                   </span>
                 </Space>
               </button>
