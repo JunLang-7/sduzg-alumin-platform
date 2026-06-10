@@ -42,6 +42,7 @@ func newAlumniProfile(db *gorm.DB, opts ...gen.DOOption) alumniProfile {
 	_alumniProfile.MailingAddress = field.NewString(tableName, "mailing_address")
 	_alumniProfile.Gender = field.NewString(tableName, "gender")
 	_alumniProfile.Mobile = field.NewString(tableName, "mobile")
+	_alumniProfile.Email = field.NewString(tableName, "email")
 	_alumniProfile.Remark = field.NewString(tableName, "remark")
 	_alumniProfile.Status = field.NewString(tableName, "status")
 	_alumniProfile.CreatedBy = field.NewUint64(tableName, "created_by")
@@ -75,6 +76,7 @@ type alumniProfile struct {
 	MailingAddress field.String // mailing address
 	Gender         field.String // gender
 	Mobile         field.String // mobile
+	Email          field.String // email address
 	Remark         field.String // admin remark
 	Status         field.String // active/deleted
 	CreatedBy      field.Uint64 // creator user id
@@ -113,6 +115,7 @@ func (a *alumniProfile) updateTableName(table string) *alumniProfile {
 	a.MailingAddress = field.NewString(table, "mailing_address")
 	a.Gender = field.NewString(table, "gender")
 	a.Mobile = field.NewString(table, "mobile")
+	a.Email = field.NewString(table, "email")
 	a.Remark = field.NewString(table, "remark")
 	a.Status = field.NewString(table, "status")
 	a.CreatedBy = field.NewUint64(table, "created_by")
@@ -148,7 +151,7 @@ func (a *alumniProfile) GetFieldByName(fieldName string) (field.OrderExpr, bool)
 }
 
 func (a *alumniProfile) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 22)
+	a.fieldMap = make(map[string]field.Expr, 23)
 	a.fieldMap["id"] = a.ID
 	a.fieldMap["name"] = a.Name
 	a.fieldMap["grade"] = a.Grade
@@ -164,6 +167,7 @@ func (a *alumniProfile) fillFieldMap() {
 	a.fieldMap["mailing_address"] = a.MailingAddress
 	a.fieldMap["gender"] = a.Gender
 	a.fieldMap["mobile"] = a.Mobile
+	a.fieldMap["email"] = a.Email
 	a.fieldMap["remark"] = a.Remark
 	a.fieldMap["status"] = a.Status
 	a.fieldMap["created_by"] = a.CreatedBy

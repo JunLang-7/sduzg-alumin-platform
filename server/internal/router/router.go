@@ -49,8 +49,10 @@ func New(deps Dependencies) *gin.Engine {
 	alumniRepository := repository.NewAlumniRepository(deps.DB)
 	// 登录尝试仓库
 	loginAttemptRepository := repository.NewLoginAttemptRepository(deps.RedisClient)
+	// 验证码仓库
+	verifyCodeRepository := repository.NewVerifyCodeStore(deps.RedisClient)
 	// 认证服务和处理器
-	authService := service.NewAuthService(userRepository, loginAttemptRepository, deps.Config)
+	authService := service.NewAuthService(userRepository, alumniRepository, loginAttemptRepository, verifyCodeRepository, deps.Config)
 	authHandler := handler.NewAuthHandler(authService)
 	// 操作日志写入器
 	opLogger := service.NewOperationLogger(deps.DB)
@@ -80,6 +82,8 @@ func New(deps Dependencies) *gin.Engine {
 		"/api/v1/health/live",
 		"/api/v1/health/ready",
 		"/api/v1/auth/login",
+		"/api/v1/auth/setup-password",
+		"/api/v1/auth/verify-code/send",
 	}
 
 	api := engine.Group("/api/v1")
@@ -93,11 +97,14 @@ func New(deps Dependencies) *gin.Engine {
 		api.POST("/auth/login", authHandler.Login)
 		api.POST("/auth/logout", authHandler.Logout)
 		api.POST("/auth/change-password", authHandler.ChangePassword)
+		api.POST("/auth/setup-password", authHandler.SetupPassword)
+		api.POST("/auth/verify-code/send", authHandler.SendVerifyCode)
 
 		// 校友查询与更新
 		api.GET("/alumni", alumniHandler.List)
 		api.GET("/alumni/me", alumniHandler.Me)
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
+		api.PUT("/alumni/me/contact", authHandler.UpdateContact)
 		api.GET("/alumni/:id", alumniHandler.Detail)
 
 		// 管理员专用接口
@@ -109,7 +116,7 @@ func New(deps Dependencies) *gin.Engine {
 			admin.PUT("/alumni/:id", alumniHandler.Update)
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
 			admin.POST("/alumni/import", alumniHandler.Import)
-				admin.GET("/alumni/export", alumniHandler.Export)
+			admin.GET("/alumni/export", alumniHandler.Export)
 
 			// 管理校友文件（仅存储启用时注册）
 			if alumniFileHandler != nil {

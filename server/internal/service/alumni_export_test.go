@@ -17,15 +17,15 @@ func TestExportXlsxFormat(t *testing.T) {
 	store := &fakeAlumniStore{
 		items: []*model.AlumniProfile{
 			{
-				ID:     1,
-				Name:   "张三",
-				Grade:  "2020级",
-				ClassName: stringPtr("2020级MPA周末班"),
-				Cohort: stringPtr("2020"),
-				Major:  stringPtr("公共管理"),
-				WorkUnit: &workUnit,
-				Position: &position,
-				Status: "active",
+				ID:        1,
+				Name:      "张三",
+				Grade:     "2020级",
+				ClassName: strPtr("2020级MPA周末班"),
+				Cohort:    strPtr("2020"),
+				Major:     strPtr("公共管理"),
+				WorkUnit:  &workUnit,
+				Position:  &position,
+				Status:    "active",
 			},
 		},
 	}
@@ -245,4 +245,4 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 	}
 }
 
-func stringPtr(s string) *string { return &s }
+func strPtr(s string) *string { return &s }

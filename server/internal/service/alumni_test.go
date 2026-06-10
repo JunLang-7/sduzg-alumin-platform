@@ -12,6 +12,8 @@ import (
 )
 
 type fakeAlumniStore struct {
+	profile       *model.AlumniProfile
+	findErr       error
 	query         do.AlumniListQuery
 	items         []*model.AlumniProfile
 	total         int64
@@ -597,4 +599,19 @@ func TestAlumniServiceDeleteReturnsNotFound(t *testing.T) {
 	if err != common.ErrAlumniNotFound {
 		t.Fatalf("expected alumni not found, got %v", err)
 	}
+}
+func (s *fakeAlumniStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return s.profile, s.findErr
+}
+
+func (s *fakeAlumniStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return s.profile, s.findErr
+}
+
+func (s *fakeAlumniStore) UpdateMobile(_ context.Context, _ uint64, _ string) error {
+	return s.updateErr
+}
+
+func (s *fakeAlumniStore) UpdateEmail(_ context.Context, _ uint64, _ string) error {
+	return s.updateErr
 }

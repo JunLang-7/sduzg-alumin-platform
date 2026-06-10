@@ -25,6 +25,10 @@ type AlumniStore interface {
 	Delete(ctx context.Context, id uint64, updaterID uint64) error
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 	FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error)
+	FindByMobile(ctx context.Context, mobile string) (*model.AlumniProfile, error)
+	FindByEmail(ctx context.Context, email string) (*model.AlumniProfile, error)
+	UpdateMobile(ctx context.Context, id uint64, mobile string) error
+	UpdateEmail(ctx context.Context, id uint64, email string) error
 }
 
 type AlumniRepository struct {
@@ -465,4 +469,76 @@ func (r *AlumniRepository) UpdateEditableFields(ctx context.Context, id uint64, 
 	}
 
 	return nil
+}
+
+// FindByMobile 通过手机号查找校友档案
+func (r *AlumniRepository) FindByMobile(ctx context.Context, mobile string) (*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var profile model.AlumniProfile
+	qs := query.Use(r.db).AlumniProfile
+	err := r.db.WithContext(ctx).
+		Where(qs.Mobile.Eq(mobile), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+		First(&profile).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrAlumniNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &profile, nil
+}
+
+// FindByEmail 通过邮箱查找校友档案（大小写不敏感）
+func (r *AlumniRepository) FindByEmail(ctx context.Context, email string) (*model.AlumniProfile, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	lowerEmail := strings.ToLower(email)
+	var profile model.AlumniProfile
+	qs := query.Use(r.db).AlumniProfile
+	err := r.db.WithContext(ctx).
+		Where(qs.Email.Lower().Eq(lowerEmail), qs.Status.Eq(common.AlumniStatusActive)).
+		First(&profile).
+		Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrAlumniNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &profile, nil
+}
+
+
+// UpdateMobile 更新校友手机号
+func (r *AlumniRepository) UpdateMobile(ctx context.Context, id uint64, mobile string) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	qs := query.Use(r.db).AlumniProfile
+	return r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.ID.Eq(id)).
+		Update(qs.Mobile.ColumnName().String(), mobile).
+		Error
+}
+
+// UpdateEmail 更新校友邮箱（小写）
+func (r *AlumniRepository) UpdateEmail(ctx context.Context, id uint64, email string) error {
+	if r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	qs := query.Use(r.db).AlumniProfile
+	return r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
+		Where(qs.ID.Eq(id)).
+		Update(qs.Email.ColumnName().String(), strings.ToLower(email)).
+		Error
 }

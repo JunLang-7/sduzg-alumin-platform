@@ -34,6 +34,7 @@ func newUser(db *gorm.DB, opts ...gen.DOOption) user {
 	_user.AlumniID = field.NewUint64(tableName, "alumni_id")
 	_user.RealName = field.NewString(tableName, "real_name")
 	_user.Mobile = field.NewString(tableName, "mobile")
+	_user.Email = field.NewString(tableName, "email")
 	_user.Status = field.NewString(tableName, "status")
 	_user.LastLoginAt = field.NewTime(tableName, "last_login_at")
 	_user.CreatedAt = field.NewTime(tableName, "created_at")
@@ -57,6 +58,7 @@ type user struct {
 	AlumniID     field.Uint64 // linked alumni profile id
 	RealName     field.String // real name
 	Mobile       field.String // mobile or backup contact
+	Email        field.String // email address
 	Status       field.String // active/disabled/deleted
 	LastLoginAt  field.Time   // last login time
 	CreatedAt    field.Time
@@ -85,6 +87,7 @@ func (u *user) updateTableName(table string) *user {
 	u.AlumniID = field.NewUint64(table, "alumni_id")
 	u.RealName = field.NewString(table, "real_name")
 	u.Mobile = field.NewString(table, "mobile")
+	u.Email = field.NewString(table, "email")
 	u.Status = field.NewString(table, "status")
 	u.LastLoginAt = field.NewTime(table, "last_login_at")
 	u.CreatedAt = field.NewTime(table, "created_at")
@@ -114,7 +117,7 @@ func (u *user) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (u *user) fillFieldMap() {
-	u.fieldMap = make(map[string]field.Expr, 12)
+	u.fieldMap = make(map[string]field.Expr, 13)
 	u.fieldMap["id"] = u.ID
 	u.fieldMap["account"] = u.Account
 	u.fieldMap["password_hash"] = u.PasswordHash
@@ -122,6 +125,7 @@ func (u *user) fillFieldMap() {
 	u.fieldMap["alumni_id"] = u.AlumniID
 	u.fieldMap["real_name"] = u.RealName
 	u.fieldMap["mobile"] = u.Mobile
+	u.fieldMap["email"] = u.Email
 	u.fieldMap["status"] = u.Status
 	u.fieldMap["last_login_at"] = u.LastLoginAt
 	u.fieldMap["created_at"] = u.CreatedAt

@@ -31,10 +31,10 @@ type AlumniFileListResponse struct {
 
 // AlumniFileUploadURLResponse 预签名上传 URL 响应，客户端用该 URL 直传 MinIO。
 type AlumniFileUploadURLResponse struct {
-	FileID     uint64 `json:"file_id"`
-	UploadURL  string `json:"upload_url"`
-	ExpiresIn  int    `json:"expires_in"`
-	ObjectKey  string `json:"-"`
+	FileID    uint64 `json:"file_id"`
+	UploadURL string `json:"upload_url"`
+	ExpiresIn int    `json:"expires_in"`
+	ObjectKey string `json:"-"`
 }
 
 // AlumniFileDownloadURLResponse 预签名下载 URL 响应，客户端用该 URL 直连 MinIO 下载。

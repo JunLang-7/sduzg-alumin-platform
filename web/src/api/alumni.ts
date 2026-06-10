@@ -43,6 +43,14 @@ export const alumniApi = {
     });
   },
 
+  updateContact(payload: { mobile?: string; email?: string; code: string }) {
+    return request<void>({
+      method: 'PUT',
+      url: '/alumni/me/contact',
+      data: payload,
+    });
+  },
+
   create(payload: AlumniProfilePayload) {
     return request<AlumniProfile>({
       method: 'POST',

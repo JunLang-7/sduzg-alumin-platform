@@ -16,6 +16,7 @@ export interface AlumniProfile {
   mailing_address?: string;
   gender?: string;
   mobile?: string;
+  email?: string;
   remark?: string;
   status?: AlumniStatus;
   created_at?: string;

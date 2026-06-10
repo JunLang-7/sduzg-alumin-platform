@@ -227,7 +227,15 @@ type AlumniDetail struct {
 	MailingAddress *string   `json:"mailing_address"`
 	Gender         *string   `json:"gender"`
 	Mobile         *string   `json:"mobile"`
+	Email          *string   `json:"email,omitempty"`
 	Status         string    `json:"status"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+// UpdateContactRequest 修改校友手机号和/或邮箱
+type UpdateContactRequest struct {
+	Mobile *string `json:"mobile"`
+	Email  *string `json:"email"`
+	Code   string  `json:"code"`
 }

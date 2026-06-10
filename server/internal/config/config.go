@@ -22,6 +22,8 @@ type Config struct {
 	Redis    RedisConfig
 	Auth     AuthConfig
 	Storage  StorageConfig
+	SMS      SMSConfig
+	Email    EmailConfig
 }
 
 type AppConfig struct {
@@ -77,6 +79,23 @@ type StorageConfig struct {
 	SecretKey string
 	Bucket    string
 	UseSSL    bool
+}
+
+type SMSConfig struct {
+	Enabled      bool
+	APIKey       string
+	APISecret    string
+	SignName     string
+	TemplateCode string
+}
+
+type EmailConfig struct {
+	Enabled  bool
+	Host     string
+	Port     int
+	Username string
+	Password string
+	FromName string
 }
 
 func (c DatabaseConfig) DSN() string {
@@ -153,6 +172,21 @@ func Load() (Config, error) {
 			Bucket:    v.GetString("STORAGE_BUCKET"),
 			UseSSL:    v.GetBool("STORAGE_USE_SSL"),
 		},
+		SMS: SMSConfig{
+			Enabled:      v.GetBool("SMS_ENABLED"),
+			APIKey:       v.GetString("SMS_API_KEY"),
+			APISecret:    v.GetString("SMS_API_SECRET"),
+			SignName:     v.GetString("SMS_SIGN_NAME"),
+			TemplateCode: v.GetString("SMS_TEMPLATE_CODE"),
+		},
+		Email: EmailConfig{
+			Enabled:  v.GetBool("EMAIL_ENABLED"),
+			Host:     v.GetString("EMAIL_HOST"),
+			Port:     v.GetInt("EMAIL_PORT"),
+			Username: v.GetString("EMAIL_USERNAME"),
+			Password: v.GetString("EMAIL_PASSWORD"),
+			FromName: v.GetString("EMAIL_FROM_NAME"),
+		},
 	}
 
 	return cfg, nil
@@ -192,4 +226,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("STORAGE_SECRET_KEY", "minioadmin123")
 	v.SetDefault("STORAGE_BUCKET", "sdu-alumni-files")
 	v.SetDefault("STORAGE_USE_SSL", false)
+	v.SetDefault("SMS_ENABLED", false)
+	v.SetDefault("SMS_API_KEY", "")
+	v.SetDefault("SMS_API_SECRET", "")
+	v.SetDefault("SMS_SIGN_NAME", "山东大学政管学院")
+	v.SetDefault("SMS_TEMPLATE_CODE", "")
+	v.SetDefault("EMAIL_ENABLED", false)
+	v.SetDefault("EMAIL_HOST", "")
+	v.SetDefault("EMAIL_PORT", 465)
+	v.SetDefault("EMAIL_USERNAME", "")
+	v.SetDefault("EMAIL_PASSWORD", "")
+	v.SetDefault("EMAIL_FROM_NAME", "山东大学政管学院")
 }

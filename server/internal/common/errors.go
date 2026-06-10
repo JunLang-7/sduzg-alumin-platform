@@ -19,6 +19,12 @@ var (
 	ErrAccountDisabled    = errors.New("account disabled")
 	ErrAccountLocked      = errors.New("account temporarily locked")
 
+	ErrCodeExpired    = errors.New("verification code expired")
+	ErrCodeInvalid    = errors.New("invalid verification code")
+	ErrCodeConsumed   = errors.New("verification code already used")
+	ErrRateLimited    = errors.New("rate limited, please try again later")
+	ErrAlumniNotMatch = errors.New("no matching alumni profile found")
+
 	ErrFileNotFound       = errors.New("file not found")
 	ErrFileTooLarge       = errors.New("file too large")
 	ErrFileTypeNotAllowed = errors.New("file type not allowed")

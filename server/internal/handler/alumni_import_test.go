@@ -60,6 +60,17 @@ func buildMultipartXLSX(t *testing.T, rows [][]string) (*bytes.Buffer, string) {
 	return &buf, "alumni_import.xlsx"
 }
 
+func (s *fakeImportStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+
+func (s *fakeImportStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+
+func (s *fakeImportStore) UpdateMobile(_ context.Context, _ uint64, _ string) error { return nil }
+func (s *fakeImportStore) UpdateEmail(_ context.Context, _ uint64, _ string) error  { return nil }
+
 type fakeImportStore struct{}
 
 func (s *fakeImportStore) List(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
@@ -101,6 +112,19 @@ func (s *fakeImportStore) CountActive(_ context.Context) (int64, error) { return
 func (s *fakeImportStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
 	return nil, nil
 }
+
+func (s *fakeImportUserStore) FindByMobile(_ context.Context, _ string) (*model.User, error) {
+	return nil, common.ErrUserNotFound
+}
+func (s *fakeImportUserStore) FindByEmail(_ context.Context, _ string) (*model.User, error) {
+	return nil, common.ErrUserNotFound
+}
+func (s *fakeImportUserStore) FindByAlumniID(_ context.Context, _ uint64) (*model.User, error) {
+	return nil, common.ErrUserNotFound
+}
+func (s *fakeImportUserStore) CreateUser(_ context.Context, _ *model.User) error        { return nil }
+func (s *fakeImportUserStore) UpdateMobile(_ context.Context, _ uint64, _ string) error { return nil }
+func (s *fakeImportUserStore) UpdateEmail(_ context.Context, _ uint64, _ string) error  { return nil }
 
 type fakeImportUserStore struct{}
 
@@ -148,7 +172,9 @@ func TestImportHandlerSuccess(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	body.WriteString("--boundary\r\n")
-	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"");body.WriteString(filename);body.WriteString("\"\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"")
+	body.WriteString(filename)
+	body.WriteString("\"\r\n")
 	body.WriteString("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n")
 	body.Write(buf.Bytes())
 	body.WriteString("\r\n--boundary--\r\n")
@@ -178,7 +204,9 @@ func TestImportHandlerUnauthorized(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	body.WriteString("--boundary\r\n")
-	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"");body.WriteString(filename);body.WriteString("\"\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"")
+	body.WriteString(filename)
+	body.WriteString("\"\r\n")
 	body.WriteString("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n")
 	body.Write(buf.Bytes())
 	body.WriteString("\r\n--boundary--\r\n")

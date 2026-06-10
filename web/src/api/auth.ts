@@ -4,6 +4,10 @@ import type {
   CurrentUser,
   LoginRequest,
   LoginResponse,
+  SetupPasswordRequest,
+  SetupPasswordResult,
+  VerifyCodeRequest,
+  VerifyCodeResult,
 } from '../types/auth';
 
 type MeResponse = CurrentUser | { user: CurrentUser };
@@ -41,6 +45,22 @@ export const authApi = {
     return request<void>({
       method: 'POST',
       url: '/auth/change-password',
+      data: payload,
+    });
+  },
+
+  setupPassword(payload: SetupPasswordRequest) {
+    return request<SetupPasswordResult>({
+      method: 'POST',
+      url: '/auth/setup-password',
+      data: payload,
+    });
+  },
+
+  sendVerifyCode(payload: VerifyCodeRequest) {
+    return request<VerifyCodeResult>({
+      method: 'POST',
+      url: '/auth/verify-code/send',
       data: payload,
     });
   },
