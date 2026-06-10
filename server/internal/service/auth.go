@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"net/smtp"
 	"regexp"
 	"strconv"
@@ -221,6 +220,10 @@ func (s *AuthService) loginWithSMSCode(ctx context.Context, req dto.LoginRequest
 
 	ok, err := s.verifyCode.Verify(ctx, phone, code)
 	if err != nil {
+		if errors.Is(err, common.ErrCodeInvalid) {
+			s.recordLoginFailure(ctx, phone)
+			return nil, common.ErrCodeInvalid
+		}
 		return nil, common.ErrCodeExpired
 	}
 	if !ok {
@@ -266,6 +269,10 @@ func (s *AuthService) loginWithEmailCode(ctx context.Context, req dto.LoginReque
 
 	ok, err := s.verifyCode.Verify(ctx, email, code)
 	if err != nil {
+		if errors.Is(err, common.ErrCodeInvalid) {
+			s.recordLoginFailure(ctx, email)
+			return nil, common.ErrCodeInvalid
+		}
 		return nil, common.ErrCodeExpired
 	}
 	if !ok {
@@ -408,7 +415,7 @@ func generateCode(cfg config.Config) string {
 	if !cfg.SMS.Enabled && !cfg.Email.Enabled {
 		return "888888"
 	}
-	return fmt.Sprintf("%06d", rand.Intn(900000)+100000)
+	return repository.GenerateRandomCode()
 }
 
 // UpdateContact updates the alumni's phone and/or email with code verification.

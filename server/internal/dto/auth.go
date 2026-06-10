@@ -4,11 +4,11 @@ import "time"
 
 type LoginRequest struct {
 	Account   string `json:"account"`
-	Mobile    string `json:"mobile"`
-	Email     string `json:"email"`
+	Mobile    string `json:"mobile" binding:"omitempty,numeric,len=11"`
+	Email     string `json:"email" binding:"omitempty,email"`
 	Password  string `json:"password"`
 	Code      string `json:"code"`
-	GrantType string `json:"grant_type"` // "password" | "sms_code" | "email_code"
+	GrantType string `json:"grant_type" binding:"omitempty,oneof=password sms_code email_code"`
 }
 
 // LoginIdentifier returns the primary login identifier.

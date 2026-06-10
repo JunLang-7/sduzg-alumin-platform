@@ -2,8 +2,9 @@ package repository
 
 import (
 	"context"
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"strings"
 	"time"
 
@@ -56,7 +57,11 @@ func sendCountKey(target string) string {
 
 // GenerateRandomCode 生成 6 位随机数字验证码。
 func GenerateRandomCode() string {
-	code := rand.Intn(900000) + 100000
+	n, err := rand.Int(rand.Reader, big.NewInt(900000))
+	if err != nil {
+		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+	}
+	code := n.Int64() + 100000
 	return fmt.Sprintf("%06d", code)
 }
 
@@ -77,17 +82,20 @@ func (s *verifyCodeStore) Verify(ctx context.Context, target, code string) (bool
 	stored, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return false, fmt.Errorf("验证码已过期或不存在")
+			return false, common.ErrCodeExpired
 		}
 		return false, err
 	}
 
-	// 删除验证码（一次性使用）
+	if stored != code {
+		return false, common.ErrCodeInvalid
+	}
+
 	if err := s.redis.Del(ctx, key).Err(); err != nil {
 		return false, err
 	}
 
-	return stored == code, nil
+	return true, nil
 }
 
 func (s *verifyCodeStore) IncrementSendCount(ctx context.Context, target string) (int64, error) {

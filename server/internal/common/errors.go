@@ -23,7 +23,7 @@ var (
 	ErrCodeInvalid    = errors.New("invalid verification code")
 	ErrCodeConsumed   = errors.New("verification code already used")
 	ErrRateLimited    = errors.New("rate limited, please try again later")
-	ErrAlumniNotMatch = errors.New("未找到匹配的校友信息")
+	ErrAlumniNotMatch = errors.New("no matching alumni profile found")
 
 	ErrFileNotFound       = errors.New("file not found")
 	ErrFileTooLarge       = errors.New("file too large")

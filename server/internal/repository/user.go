@@ -81,7 +81,8 @@ func (r *UserRepository) FindByMobile(ctx context.Context, mobile string) (*mode
 	return &user, nil
 }
 
-// FindByEmail 通过邮箱查找用户（忽略软删除，大小写不敏感）
+// FindByEmail 通过邮箱查找用户（忽略软删除）。
+// Email 在写入时已统一转为小写，查询时直接精确匹配以利用索引。
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
@@ -91,7 +92,7 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*model.
 	var user model.User
 	qs := query.Use(r.db).User
 	err := r.db.WithContext(ctx).
-		Where(qs.Email.Lower().Eq(lowerEmail), qs.DeletedAt.IsNull()).
+		Where(qs.Email.Eq(lowerEmail), qs.DeletedAt.IsNull()).
 		First(&user).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

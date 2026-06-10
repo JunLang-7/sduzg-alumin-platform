@@ -45,6 +45,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "验证码错误")
 	case errors.Is(err, common.ErrCodeExpired):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "验证码已过期")
+	case errors.Is(err, common.ErrCodeConsumed):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "验证码已被使用")
+	case errors.Is(err, common.ErrRateLimited):
+		response.Fail(c, http.StatusTooManyRequests, response.CodeTooManyRequests, "操作过于频繁，请稍后再试")
 	case errors.Is(err, common.ErrAlumniNotMatch):
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "未找到匹配的校友信息")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
