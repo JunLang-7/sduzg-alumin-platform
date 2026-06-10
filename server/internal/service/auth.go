@@ -415,7 +415,12 @@ func generateCode(cfg config.Config) string {
 	if !cfg.SMS.Enabled && !cfg.Email.Enabled {
 		return "888888"
 	}
-	return repository.GenerateRandomCode()
+	code, err := repository.GenerateRandomCode()
+	if err != nil {
+		logger.Error("failed to generate random code", zap.Error(err))
+		return "888888"
+	}
+	return code
 }
 
 // UpdateContact updates the alumni's phone and/or email with code verification.

@@ -56,13 +56,13 @@ func sendCountKey(target string) string {
 }
 
 // GenerateRandomCode 生成 6 位随机数字验证码。
-func GenerateRandomCode() string {
+func GenerateRandomCode() (string, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(900000))
 	if err != nil {
-		panic(fmt.Sprintf("crypto/rand failed: %v", err))
+		return "", fmt.Errorf("generate random code: %w", err)
 	}
 	code := n.Int64() + 100000
-	return fmt.Sprintf("%06d", code)
+	return fmt.Sprintf("%06d", code), nil
 }
 
 func (s *verifyCodeStore) Save(ctx context.Context, target, code string) error {

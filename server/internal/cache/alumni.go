@@ -76,7 +76,10 @@ func (c *ExportCache) buildKey(ctx context.Context, query interface{}) (string, 
 	if err != nil && err != redis.Nil {
 		return "", err
 	}
-	data, _ := json.Marshal(query)
+	data, err := json.Marshal(query)
+	if err != nil {
+		return "", fmt.Errorf("marshal query: %w", err)
+	}
 	hash := md5.Sum(data)
 	return fmt.Sprintf(alumniExportKeyFmt, version, hash), nil
 }
