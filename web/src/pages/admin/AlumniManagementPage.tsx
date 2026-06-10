@@ -368,6 +368,9 @@ export function AlumniManagementPage() {
           <Form.Item label="手机号" name="mobile">
             <Input maxLength={30} />
           </Form.Item>
+          <Form.Item label="邮箱" name="email">
+            <Input maxLength={255} />
+          </Form.Item>
           <Form.Item label="专业" name="major">
             <Input maxLength={100} />
           </Form.Item>

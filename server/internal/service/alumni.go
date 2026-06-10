@@ -141,6 +141,7 @@ func (s *AlumniService) maskListItems(ctx context.Context, items []dto.AlumniLis
 	mask := func() {
 		for i := range items {
 			items[i].Mobile = nil
+			items[i].Email = nil
 			items[i].Position = nil
 		}
 	}
@@ -742,6 +743,7 @@ func mapAlumniListItems(items []*model.AlumniProfile) []dto.AlumniListItem {
 			Position:     item.Position,
 			Gender:       item.Gender,
 			Mobile:       item.Mobile,
+			Email:        item.Email,
 			UpdatedAt:    item.UpdatedAt,
 		})
 	}

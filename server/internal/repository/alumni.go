@@ -230,6 +230,7 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 		MailingAddress: profile.MailingAddress,
 		Gender:         profile.Gender,
 		Mobile:         profile.Mobile,
+		Email:          profile.Email,
 		Remark:         profile.Remark,
 		Status:         profile.Status,
 		CreatedBy:      &operatorID,
@@ -270,6 +271,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 			MailingAddress: p.MailingAddress,
 			Gender:         p.Gender,
 			Mobile:         p.Mobile,
+			Email:          p.Email,
 			Remark:         p.Remark,
 			Status:         p.Status,
 			CreatedBy:      &operatorID,
@@ -369,6 +371,9 @@ func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint
 	}
 	if profile.Mobile != nil {
 		updates[qs.Mobile.ColumnName().String()] = nullableString(*profile.Mobile)
+	}
+	if profile.Email != nil {
+		updates[qs.Email.ColumnName().String()] = nullableString(*profile.Email)
 	}
 	if profile.Remark != nil {
 		updates[qs.Remark.ColumnName().String()] = nullableString(*profile.Remark)
