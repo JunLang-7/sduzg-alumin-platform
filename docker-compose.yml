@@ -8,10 +8,10 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sdu_alumni_db}
+      MYSQL_USER: ${MYSQL_USER:-sdu_alumni}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
     ports:
       - "${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
@@ -28,7 +28,7 @@ services:
     image: redis:7-alpine
     container_name: sdu-alumni-redis
     restart: unless-stopped
-    command: /bin/sh -c 'if [ -n "$${REDIS_PASSWORD:-}" ]; then exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD:-}"; else exec redis-server --appendonly yes; fi'
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
@@ -53,17 +53,17 @@ services:
       DB_ENABLED: "true"
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      DB_NAME: ${MYSQL_DATABASE}
+      DB_USER: ${MYSQL_USER:-sdu_alumni}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+      DB_NAME: ${MYSQL_DATABASE:-sdu_alumni_db}
       DB_PARAMS: "charset=utf8mb4&parseTime=true&loc=Local"
       REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       STORAGE_ENABLED: "true"
       STORAGE_ENDPOINT: minio:9000
-      STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER}
-      STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       STORAGE_BUCKET: sdu-alumni-files
       STORAGE_USE_SSL: "false"
       SMS_ENABLED: ${SMS_ENABLED:-false}
@@ -104,8 +104,8 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
       - "${MINIO_API_HOST_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
