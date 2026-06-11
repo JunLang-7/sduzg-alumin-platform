@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"net/url"
 	"strconv"
@@ -108,7 +109,10 @@ func (c DatabaseConfig) DSN() string {
 	cfg.Addr = net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
 	cfg.DBName = c.Name
 	if c.Params != "" {
-		params, _ := url.ParseQuery(c.Params)
+		params, err := url.ParseQuery(c.Params)
+		if err != nil {
+			log.Printf("[config] failed to parse DB_PARAMS %q: %v, using raw params string", c.Params, err)
+		}
 		if len(params) > 0 && cfg.Params == nil {
 			cfg.Params = make(map[string]string, len(params))
 		}

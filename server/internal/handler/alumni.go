@@ -203,7 +203,8 @@ func (h *AlumniHandler) ExportTemplate(c *gin.Context) {
 		return
 	}
 
-	response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	c.Error(err)
+	response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "导出模板生成失败")
 }
 
 func (h *AlumniHandler) Import(c *gin.Context) {

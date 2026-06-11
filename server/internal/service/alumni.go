@@ -396,7 +396,12 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 
 // ExportTemplate 生成导入模板 Excel 文件，包含表头行和一条示例空行。
 func (s *AlumniService) ExportTemplate(ctx context.Context) (*ExportResult, error) {
-	return buildTemplateXLSX()
+	result, err := buildTemplateXLSX()
+	if err != nil {
+		logger.Error("failed to build template xlsx", zap.Error(err))
+		return nil, fmt.Errorf("build template: %w", err)
+	}
+	return result, nil
 }
 
 func buildTemplateXLSX() (*ExportResult, error) {
@@ -405,6 +410,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 
 	sw, err := f.NewStreamWriter("Sheet1")
 	if err != nil {
+		logger.Error("build template: create stream writer", zap.Error(err))
 		return nil, fmt.Errorf("create stream writer: %w", err)
 	}
 
@@ -414,6 +420,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 		headerRow[i] = h
 	}
 	if err := sw.SetRow("A1", headerRow); err != nil {
+		logger.Error("build template: write header", zap.Error(err))
 		return nil, fmt.Errorf("write header: %w", err)
 	}
 
@@ -423,15 +430,18 @@ func buildTemplateXLSX() (*ExportResult, error) {
 		emptyRow[i] = ""
 	}
 	if err := sw.SetRow("A2", emptyRow); err != nil {
+		logger.Error("build template: write empty row", zap.Error(err))
 		return nil, fmt.Errorf("write empty row: %w", err)
 	}
 
 	if err := sw.Flush(); err != nil {
+		logger.Error("build template: flush stream writer", zap.Error(err))
 		return nil, fmt.Errorf("flush stream: %w", err)
 	}
 
 	var buf bytes.Buffer
 	if err := f.Write(&buf); err != nil {
+		logger.Error("build template: write xlsx to buffer", zap.Error(err))
 		return nil, fmt.Errorf("write xlsx: %w", err)
 	}
 
