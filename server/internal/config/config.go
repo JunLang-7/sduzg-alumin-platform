@@ -109,6 +109,9 @@ func (c DatabaseConfig) DSN() string {
 	cfg.DBName = c.Name
 	if c.Params != "" {
 		params, _ := url.ParseQuery(c.Params)
+		if len(params) > 0 && cfg.Params == nil {
+			cfg.Params = make(map[string]string, len(params))
+		}
 		for k, v := range params {
 			if len(v) > 0 {
 				cfg.Params[k] = v[0]

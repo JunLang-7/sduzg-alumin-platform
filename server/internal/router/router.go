@@ -117,6 +117,7 @@ func New(deps Dependencies) *gin.Engine {
 			admin.DELETE("/alumni/:id", alumniHandler.Delete)
 			admin.POST("/alumni/import", alumniHandler.Import)
 			admin.GET("/alumni/export", alumniHandler.Export)
+			admin.GET("/alumni/template", alumniHandler.ExportTemplate)
 
 			// 管理校友文件（仅存储启用时注册）
 			if alumniFileHandler != nil {

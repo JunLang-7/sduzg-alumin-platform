@@ -195,6 +195,17 @@ func (h *AlumniHandler) Export(c *gin.Context) {
 	}
 }
 
+func (h *AlumniHandler) ExportTemplate(c *gin.Context) {
+	result, err := h.alumni.ExportTemplate(c.Request.Context())
+	if err == nil {
+		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", result.Filename))
+		c.Data(http.StatusOK, result.ContentType, result.Data)
+		return
+	}
+
+	response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+}
+
 func (h *AlumniHandler) Import(c *gin.Context) {
 	userID, ok := middleware.CurrentUserID(c)
 	if !ok {
