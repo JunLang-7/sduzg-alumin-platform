@@ -24,3 +24,6 @@ web/.vite/
 # Docker / local data
 .docker/
 mysql-data/
+
+openspec/
+.claude/

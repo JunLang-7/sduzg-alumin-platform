@@ -8,12 +8,12 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
     environment:
-      MYSQL_ROOT_PASSWORD: root123456
-      MYSQL_DATABASE: sdu_alumni_db
-      MYSQL_USER: sdu_alumni
-      MYSQL_PASSWORD: sdu_alumni_password
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sdu_alumni_db}
+      MYSQL_USER: ${MYSQL_USER:-sdu_alumni}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
     ports:
-      - "3307:3306"
+      - "${MYSQL_HOST_PORT:-3307}:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./server/migrations:/docker-entrypoint-initdb.d:ro
@@ -28,13 +28,15 @@ services:
     image: redis:7-alpine
     container_name: sdu-alumni-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "if [ -n \"$${REDIS_PASSWORD:-}\" ]; then redis-cli -a \"$${REDIS_PASSWORD:-}\" ping; else redis-cli ping; fi"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -45,27 +47,36 @@ services:
       dockerfile: Dockerfile
     container_name: sdu-alumni-api
     restart: unless-stopped
-    env_file:
-      - path: ./server/.env
-        required: false
     environment:
       APP_ENV: production
       GIN_MODE: release
       DB_ENABLED: "true"
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_NAME: sdu_alumni_db
-      DB_USER: sdu_alumni
-      DB_PASSWORD: sdu_alumni_password
+      DB_USER: ${MYSQL_USER:-sdu_alumni}
+      DB_PASSWORD: ${MYSQL_PASSWORD:-change-me}
+      DB_NAME: ${MYSQL_DATABASE:-sdu_alumni_db}
       DB_PARAMS: "charset=utf8mb4&parseTime=true&loc=Local"
       REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       STORAGE_ENABLED: "true"
       STORAGE_ENDPOINT: minio:9000
-      STORAGE_ACCESS_KEY: minioadmin
-      STORAGE_SECRET_KEY: minioadmin123
+      STORAGE_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       STORAGE_BUCKET: sdu-alumni-files
       STORAGE_USE_SSL: "false"
+      SMS_ENABLED: ${SMS_ENABLED:-false}
+      SMS_API_KEY: ${SMS_API_KEY:-}
+      SMS_API_SECRET: ${SMS_API_SECRET:-}
+      SMS_SIGN_NAME: ${SMS_SIGN_NAME:-山东大学政管学院}
+      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE:-}
+      EMAIL_ENABLED: ${EMAIL_ENABLED:-false}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-465}
+      EMAIL_USERNAME: ${EMAIL_USERNAME:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-山东大学政管学院}
     depends_on:
       mysql:
         condition: service_healthy
@@ -74,7 +85,7 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "8080:8080"
+      - "${API_HOST_PORT:-8080}:8080"
 
   web:
     build:
@@ -85,7 +96,7 @@ services:
     depends_on:
       - api
     ports:
-      - "80:80"
+      - "${WEB_HOST_PORT:-80}:80"
 
   minio:
     image: minio/minio:latest
@@ -93,11 +104,11 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin123
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
     volumes:
       - minio_data:/data
     healthcheck:
