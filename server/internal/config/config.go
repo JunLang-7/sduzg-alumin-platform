@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"time"
 
+	"github.com/go-sql-driver/mysql"
 	"github.com/spf13/viper"
 )
 
@@ -99,14 +101,21 @@ type EmailConfig struct {
 }
 
 func (c DatabaseConfig) DSN() string {
-	return fmt.Sprintf(
-		"%s:%s@tcp(%s)/%s?%s",
-		c.User,
-		c.Password,
-		net.JoinHostPort(c.Host, strconv.Itoa(c.Port)),
-		c.Name,
-		c.Params,
-	)
+	cfg := mysql.NewConfig()
+	cfg.User = c.User
+	cfg.Passwd = c.Password
+	cfg.Net = "tcp"
+	cfg.Addr = net.JoinHostPort(c.Host, strconv.Itoa(c.Port))
+	cfg.DBName = c.Name
+	if c.Params != "" {
+		params, _ := url.ParseQuery(c.Params)
+		for k, v := range params {
+			if len(v) > 0 {
+				cfg.Params[k] = v[0]
+			}
+		}
+	}
+	return cfg.FormatDSN()
 }
 
 func Load() (Config, error) {
