@@ -126,14 +126,16 @@ func Load() (Config, error) {
 	v.SetConfigType("env")
 	v.AddConfigPath(".")
 	v.AddConfigPath("./server")
-	v.AutomaticEnv()
-
 	if err := v.ReadInConfig(); err != nil {
 		var notFound viper.ConfigFileNotFoundError
 		if !errors.As(err, &notFound) {
 			return Config{}, fmt.Errorf("failed to read config: %w", err)
 		}
 	}
+
+	// AutomaticEnv must be called after ReadInConfig so that environment
+	// variables take precedence over .env file values.
+	v.AutomaticEnv()
 
 	cfg := Config{
 		App: AppConfig{
