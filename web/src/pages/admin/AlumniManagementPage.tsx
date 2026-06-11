@@ -3,6 +3,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  FileTextOutlined,
   PlusOutlined,
   SearchOutlined,
   UndoOutlined,
@@ -224,6 +225,22 @@ export function AlumniManagementPage() {
     fileInputRef.current?.click();
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const blob = await alumniApi.downloadTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'alumni_import_template.xlsx';
+      link.click();
+      window.URL.revokeObjectURL(url);
+      message.success('模板已下载');
+    } catch (error) {
+      const err = error as Error;
+      message.error(err.message || '模板下载失败');
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -291,6 +308,9 @@ export function AlumniManagementPage() {
             </Button>
             <Button icon={<UploadOutlined />} loading={importing} onClick={handleImportClick}>
               导入 Excel
+            </Button>
+            <Button icon={<FileTextOutlined />} onClick={handleDownloadTemplate}>
+              导出模板
             </Button>
             <input
               ref={fileInputRef}

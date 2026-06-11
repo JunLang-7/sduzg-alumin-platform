@@ -172,4 +172,12 @@ export const alumniApi = {
       responseType: 'blob',
     });
   },
+
+  downloadTemplate() {
+    return request<Blob>({
+      method: 'GET',
+      url: '/admin/alumni/template',
+      responseType: 'blob',
+    });
+  },
 };

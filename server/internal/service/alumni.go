@@ -394,6 +394,64 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 	}
 }
 
+// ExportTemplate 生成导入模板 Excel 文件，包含表头行和一条示例空行。
+func (s *AlumniService) ExportTemplate(ctx context.Context) (*ExportResult, error) {
+	result, err := buildTemplateXLSX()
+	if err != nil {
+		logger.Error("failed to build template xlsx", zap.Error(err))
+		return nil, fmt.Errorf("build template: %w", err)
+	}
+	return result, nil
+}
+
+func buildTemplateXLSX() (*ExportResult, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	sw, err := f.NewStreamWriter("Sheet1")
+	if err != nil {
+		logger.Error("build template: create stream writer", zap.Error(err))
+		return nil, fmt.Errorf("create stream writer: %w", err)
+	}
+
+	// 写表头行
+	headerRow := make([]interface{}, len(alumniColumnHeaders))
+	for i, h := range alumniColumnHeaders {
+		headerRow[i] = h
+	}
+	if err := sw.SetRow("A1", headerRow); err != nil {
+		logger.Error("build template: write header", zap.Error(err))
+		return nil, fmt.Errorf("write header: %w", err)
+	}
+
+	// 写一条空行，提示用户按此结构填写
+	emptyRow := make([]interface{}, len(alumniColumnHeaders))
+	for i := range emptyRow {
+		emptyRow[i] = ""
+	}
+	if err := sw.SetRow("A2", emptyRow); err != nil {
+		logger.Error("build template: write empty row", zap.Error(err))
+		return nil, fmt.Errorf("write empty row: %w", err)
+	}
+
+	if err := sw.Flush(); err != nil {
+		logger.Error("build template: flush stream writer", zap.Error(err))
+		return nil, fmt.Errorf("flush stream: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := f.Write(&buf); err != nil {
+		logger.Error("build template: write xlsx to buffer", zap.Error(err))
+		return nil, fmt.Errorf("write xlsx: %w", err)
+	}
+
+	return &ExportResult{
+		Data:        buf.Bytes(),
+		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		Filename:    "alumni_import_template.xlsx",
+	}, nil
+}
+
 func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
 	f := excelize.NewFile()
 	defer f.Close()
