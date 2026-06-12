@@ -881,6 +881,51 @@ func TestEmailSenderMissingPasswordReturnsError(t *testing.T) {
 	}
 }
 
+func TestEmailSenderInvalidPortReturnsError(t *testing.T) {
+	sender := &EmailSender{
+		Host:     "smtp.example.com",
+		Port:     0,
+		Username: "sender@example.com",
+		Password: "secret",
+	}
+
+	err := sender.Send(context.Background(), "alumni@sdu.edu.cn", "123456")
+	if err == nil {
+		t.Fatal("expected invalid port error")
+	}
+	if !strings.Contains(err.Error(), "email port out of range") {
+		t.Fatalf("expected invalid port error, got %v", err)
+	}
+}
+
+type failingCodeSender struct {
+	err error
+}
+
+func (s *failingCodeSender) Send(context.Context, string, string) error {
+	return s.err
+}
+
+func TestAuthServiceSendVerifyCodeReturnsSendError(t *testing.T) {
+	verifyCode := &fakeVerifyCodeStore{}
+	svc := NewAuthService(nil, nil, nil, verifyCode, config.Config{
+		App:  config.AppConfig{Name: "test-api"},
+		Auth: config.AuthConfig{JWTSecret: "test-secret"},
+	})
+	svc.codeSender = &failingCodeSender{err: errors.New("smtp unavailable")}
+
+	_, err := svc.SendVerifyCode(context.Background(), dto.VerifyCodeRequest{
+		Target:  "alumni@sdu.edu.cn",
+		Purpose: "login",
+	})
+	if err == nil {
+		t.Fatal("expected send error")
+	}
+	if !strings.Contains(err.Error(), "send verify code") {
+		t.Fatalf("expected send verify code error, got %v", err)
+	}
+}
+
 func TestAuthServiceSendVerifyCodeRateLimited(t *testing.T) {
 	verifyCode := &fakeVerifyCodeStore{
 		lastSend: time.Now(),

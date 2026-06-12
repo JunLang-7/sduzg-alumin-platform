@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	stdmail "net/mail"
 	"regexp"
 	"strconv"
 	"strings"
@@ -16,9 +17,9 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/golang-jwt/jwt/v5"
+	mail "github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
-	"gopkg.in/gomail.v2"
 )
 
 const (
@@ -73,18 +74,42 @@ func (s *EmailSender) Send(_ context.Context, target, code string) error {
 		logger.Warn("Email password not configured", zap.String("target", target), zap.Error(err))
 		return err
 	}
+	if s.Port < 1 || s.Port > 65535 {
+		err := fmt.Errorf("email port out of range: %d", s.Port)
+		logger.Warn("Email port not configured", zap.String("target", target), zap.Error(err))
+		return err
+	}
 	fromName := sanitizeMailHeader(s.FromName)
 	if fromName == "" {
 		fromName = s.Username
 	}
-	msg := gomail.NewMessage()
-	msg.SetAddressHeader("From", s.Username, fromName)
-	msg.SetHeader("To", sanitizeMailHeader(target))
-	msg.SetHeader("Subject", "山东大学政治学与公共管理学院校友平台邮箱登录验证码")
-	msg.SetBody("text/plain", buildEmailCodeBody(target, code))
+	msg := mail.NewMsg()
+	from := (&stdmail.Address{Name: fromName, Address: s.Username}).String()
+	if err := msg.From(from); err != nil {
+		return fmt.Errorf("set email sender: %w", err)
+	}
+	if err := msg.To(sanitizeMailHeader(target)); err != nil {
+		return fmt.Errorf("set email recipient: %w", err)
+	}
+	msg.Subject("山东大学政治学与公共管理学院校友平台邮箱登录验证码")
+	msg.SetBodyString(mail.TypeTextPlain, buildEmailCodeBody(target, code))
 
-	dialer := gomail.NewDialer(s.Host, s.Port, s.Username, s.Password)
-	if err := dialer.DialAndSend(msg); err != nil {
+	options := []mail.Option{
+		mail.WithPort(s.Port),
+		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover),
+		mail.WithUsername(s.Username),
+		mail.WithPassword(s.Password),
+	}
+	if s.Port == 465 {
+		options = append(options, mail.WithSSL())
+	} else {
+		options = append(options, mail.WithTLSPolicy(mail.TLSMandatory))
+	}
+	client, err := mail.NewClient(s.Host, options...)
+	if err != nil {
+		return fmt.Errorf("create email client: %w", err)
+	}
+	if err := client.DialAndSend(msg); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 	return nil
@@ -439,6 +464,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 
 	if err := s.codeSender.Send(ctx, target, code); err != nil {
 		logger.Warn("failed to send code", zap.Error(err))
+		return nil, fmt.Errorf("send verify code: %w", err)
 	}
 
 	return &dto.VerifyCodeResult{
