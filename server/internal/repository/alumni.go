@@ -282,7 +282,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
 }
 
-// FindExistingByDedupKey 批量查询已存在的 (姓名, 年级, 班级, 届数) 组合，返回 key 集合用于去重。
+// FindExistingByDedupKey 批量查询已存在的 (姓名, 年级, 班级, 届数, 手机号) 组合，返回 key 集合用于去重。
 func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error) {
 	result := make(map[string]bool, len(keys))
 	if r.db == nil || len(keys) == 0 {
@@ -295,17 +295,17 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 		Where(qs.DeletedAt.IsNull()).
 		Where(qs.Status.Eq(common.AlumniStatusActive))
 
-	cond := "(name = ? AND grade = ? AND COALESCE(class_name, '') = ? AND COALESCE(cohort, '') = ?)"
+	cond := "(name = ? AND grade = ? AND COALESCE(class_name, '') = ? AND COALESCE(cohort, '') = ? AND COALESCE(mobile, '') = ?)"
 	var parts []string
 	var args []interface{}
 	for _, k := range keys {
 		parts = append(parts, cond)
-		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort)
+		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort, strings.TrimSpace(k.Mobile))
 	}
 	db = db.Where("("+strings.Join(parts, " OR ")+")", args...)
 
 	var existing []model.AlumniProfile
-	if err := db.Select("name, grade, class_name, cohort").Find(&existing).Error; err != nil {
+	if err := db.Select("name, grade, class_name, cohort, mobile").Find(&existing).Error; err != nil {
 		return nil, err
 	}
 
@@ -318,7 +318,11 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 		if e.Cohort != nil {
 			ch = *e.Cohort
 		}
-		result[do.AlumniDedupKey{Name: e.Name, Grade: e.Grade, ClassName: cn, Cohort: ch}.Key()] = true
+		mb := ""
+		if e.Mobile != nil {
+			mb = *e.Mobile
+		}
+		result[do.AlumniDedupKey{Name: e.Name, Grade: e.Grade, ClassName: cn, Cohort: ch, Mobile: mb}.Key()] = true
 	}
 	return result, nil
 }
@@ -520,7 +524,6 @@ func (r *AlumniRepository) FindByEmail(ctx context.Context, email string) (*mode
 
 	return &profile, nil
 }
-
 
 // UpdateMobile 更新校友手机号
 func (r *AlumniRepository) UpdateMobile(ctx context.Context, id uint64, mobile string) error {

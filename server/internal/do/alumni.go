@@ -166,10 +166,17 @@ type AlumniDedupKey struct {
 	Grade     string
 	ClassName string
 	Cohort    string
+	Mobile    string
 }
 
 func (k AlumniDedupKey) Key() string {
-	return k.Name + "|" + k.Grade + "|" + k.ClassName + "|" + k.Cohort
+	return strings.Join([]string{
+		strings.TrimSpace(k.Name),
+		strings.TrimSpace(k.Grade),
+		strings.TrimSpace(k.ClassName),
+		strings.TrimSpace(k.Cohort),
+		strings.TrimSpace(k.Mobile),
+	}, "|")
 }
 
 func trimEmptyStringPointer(value *string) *string {
