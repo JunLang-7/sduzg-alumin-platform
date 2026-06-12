@@ -29,6 +29,7 @@ const (
 	codeSendInterval = 60 * time.Second
 	codeDailyMax     = 10
 	codeTTL          = 5 * time.Minute
+	emailSendTimeout = 15 * time.Second
 )
 
 var (
@@ -50,7 +51,7 @@ type SMSSender struct {
 }
 
 func (s *SMSSender) Send(_ context.Context, target, code string) error {
-	logger.Info("SMS not configured, skipping", zap.String("target", target), zap.String("code", code))
+	logger.Info("SMS not configured, skipping", zap.String("target", target))
 	return nil
 }
 
@@ -63,7 +64,7 @@ type EmailSender struct {
 	FromName string
 }
 
-func (s *EmailSender) Send(_ context.Context, target, code string) error {
+func (s *EmailSender) Send(ctx context.Context, target, code string) error {
 	if s.Host == "" || s.Username == "" {
 		err := errors.New("email host or username not configured")
 		logger.Warn("Email not configured", zap.String("target", target), zap.Error(err))
@@ -96,6 +97,7 @@ func (s *EmailSender) Send(_ context.Context, target, code string) error {
 
 	options := []mail.Option{
 		mail.WithPort(s.Port),
+		mail.WithTimeout(emailSendTimeout),
 		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover),
 		mail.WithUsername(s.Username),
 		mail.WithPassword(s.Password),
@@ -109,7 +111,12 @@ func (s *EmailSender) Send(_ context.Context, target, code string) error {
 	if err != nil {
 		return fmt.Errorf("create email client: %w", err)
 	}
-	if err := client.DialAndSend(msg); err != nil {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, emailSendTimeout)
+	defer cancel()
+	if err := client.DialAndSendWithContext(sendCtx, msg); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 	return nil
@@ -129,6 +136,7 @@ func buildEmailCodeBody(target, code string) string {
 func sanitizeMailHeader(value string) string {
 	value = strings.ReplaceAll(value, "\r", "")
 	value = strings.ReplaceAll(value, "\n", "")
+	value = strings.ReplaceAll(value, "\x00", "")
 	return strings.TrimSpace(value)
 }
 
@@ -136,7 +144,7 @@ func sanitizeMailHeader(value string) string {
 type mockSender struct{}
 
 func (m *mockSender) Send(_ context.Context, target, code string) error {
-	logger.Info("Mock sender", zap.String("target", target), zap.String("code", code))
+	logger.Info("Mock sender", zap.String("target", target))
 	return nil
 }
 
