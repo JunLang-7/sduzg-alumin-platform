@@ -300,7 +300,7 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 	var args []interface{}
 	for _, k := range keys {
 		parts = append(parts, cond)
-		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort, k.Mobile)
+		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort, strings.TrimSpace(k.Mobile))
 	}
 	db = db.Where("("+strings.Join(parts, " OR ")+")", args...)
 
@@ -524,7 +524,6 @@ func (r *AlumniRepository) FindByEmail(ctx context.Context, email string) (*mode
 
 	return &profile, nil
 }
-
 
 // UpdateMobile 更新校友手机号
 func (r *AlumniRepository) UpdateMobile(ctx context.Context, id uint64, mobile string) error {

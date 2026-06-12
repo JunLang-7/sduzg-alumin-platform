@@ -599,25 +599,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 	if len(validRows) > 0 {
 		dedupKeys := make([]do.AlumniDedupKey, 0, len(validRows))
 		for _, rp := range validRows {
-			cn := ""
-			if rp.profile.ClassName != nil {
-				cn = *rp.profile.ClassName
-			}
-			ch := ""
-			if rp.profile.Cohort != nil {
-				ch = *rp.profile.Cohort
-			}
-			mb := ""
-			if rp.profile.Mobile != nil {
-				mb = *rp.profile.Mobile
-			}
-			dedupKeys = append(dedupKeys, do.AlumniDedupKey{
-				Name:      rp.profile.Name,
-				Grade:     rp.profile.Grade,
-				ClassName: cn,
-				Cohort:    ch,
-				Mobile:    mb,
-			})
+			dedupKeys = append(dedupKeys, alumniImportDedupKey(rp.profile))
 		}
 
 		existing, err := s.alumni.FindExistingByDedupKey(ctx, dedupKeys)
@@ -628,23 +610,12 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 
 		var dedupedProfiles []do.AlumniCreateProfile
 		for _, rp := range validRows {
-			cn := ""
-			if rp.profile.ClassName != nil {
-				cn = *rp.profile.ClassName
-			}
-			ch := ""
-			if rp.profile.Cohort != nil {
-				ch = *rp.profile.Cohort
-			}
-			mb := ""
-			if rp.profile.Mobile != nil {
-				mb = *rp.profile.Mobile
-			}
-			if existing[do.AlumniDedupKey{Name: rp.profile.Name, Grade: rp.profile.Grade, ClassName: cn, Cohort: ch, Mobile: mb}.Key()] {
+			key := alumniImportDedupKey(rp.profile).Key()
+			if existing[key] {
 				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rp.rowNum, Name: rp.profile.Name, Message: "已存在相同姓名、年级、班级、届数和手机号的记录"})
 			} else {
 				dedupedProfiles = append(dedupedProfiles, rp.profile)
-				existing[do.AlumniDedupKey{Name: rp.profile.Name, Grade: rp.profile.Grade, ClassName: cn, Cohort: ch, Mobile: mb}.Key()] = true
+				existing[key] = true
 			}
 		}
 		validProfiles := dedupedProfiles
@@ -675,6 +646,16 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		Total:  len(rows) - 1,
 		Errors: rowErrors,
 	}, nil
+}
+
+func alumniImportDedupKey(profile do.AlumniCreateProfile) do.AlumniDedupKey {
+	return do.AlumniDedupKey{
+		Name:      profile.Name,
+		Grade:     profile.Grade,
+		ClassName: stringOrEmpty(profile.ClassName),
+		Cohort:    stringOrEmpty(profile.Cohort),
+		Mobile:    strings.TrimSpace(stringOrEmpty(profile.Mobile)),
+	}
 }
 
 func parseRowToProfile(row []string) do.AlumniCreateProfile {

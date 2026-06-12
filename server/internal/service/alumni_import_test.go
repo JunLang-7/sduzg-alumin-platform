@@ -80,6 +80,114 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 }
 
+func TestImportKeepsRowsWithDifferentMobile(t *testing.T) {
+	headers := alumniColumnHeaders
+	rows := [][]string{
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", "13800000000"},
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", "13900000000"},
+	}
+
+	reader, err := buildXLSXReader(headers, rows)
+	if err != nil {
+		t.Fatalf("failed to build xlsx: %v", err)
+	}
+
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, nil)
+
+	result, err := svc.Import(context.Background(), 1, reader)
+	if err != nil {
+		t.Fatalf("expected import success, got %v", err)
+	}
+	if result.Success != 2 {
+		t.Fatalf("expected success 2 for different mobile values, got %d with errors %+v", result.Success, result.Errors)
+	}
+	if len(result.Errors) != 0 {
+		t.Fatalf("expected no duplicate errors, got %+v", result.Errors)
+	}
+}
+
+func TestImportDeduplicatesRowsWithSameMobile(t *testing.T) {
+	headers := alumniColumnHeaders
+	rows := [][]string{
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", "13800000000"},
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", "13800000000"},
+	}
+
+	reader, err := buildXLSXReader(headers, rows)
+	if err != nil {
+		t.Fatalf("failed to build xlsx: %v", err)
+	}
+
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, nil)
+
+	result, err := svc.Import(context.Background(), 1, reader)
+	if err != nil {
+		t.Fatalf("expected import success, got %v", err)
+	}
+	if result.Success != 1 {
+		t.Fatalf("expected success 1 for duplicate mobile values, got %d with errors %+v", result.Success, result.Errors)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected 1 duplicate error, got %+v", result.Errors)
+	}
+}
+
+func TestImportDeduplicatesRowsWithPaddedMobile(t *testing.T) {
+	headers := alumniColumnHeaders
+	rows := [][]string{
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", "13800000000"},
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", " 13800000000 "},
+	}
+
+	reader, err := buildXLSXReader(headers, rows)
+	if err != nil {
+		t.Fatalf("failed to build xlsx: %v", err)
+	}
+
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, nil)
+
+	result, err := svc.Import(context.Background(), 1, reader)
+	if err != nil {
+		t.Fatalf("expected import success, got %v", err)
+	}
+	if result.Success != 1 {
+		t.Fatalf("expected success 1 for padded duplicate mobile values, got %d with errors %+v", result.Success, result.Errors)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected 1 duplicate error, got %+v", result.Errors)
+	}
+}
+
+func TestImportDeduplicatesRowsWithEmptyMobile(t *testing.T) {
+	headers := alumniColumnHeaders
+	rows := [][]string{
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", ""},
+		{"张三", "2020级", "2020级MPA", "2020", "", "", "", "", "", "", "", "", "", " "},
+	}
+
+	reader, err := buildXLSXReader(headers, rows)
+	if err != nil {
+		t.Fatalf("failed to build xlsx: %v", err)
+	}
+
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, nil)
+
+	result, err := svc.Import(context.Background(), 1, reader)
+	if err != nil {
+		t.Fatalf("expected import success, got %v", err)
+	}
+	if result.Success != 1 {
+		t.Fatalf("expected success 1 for empty duplicate mobile values, got %d with errors %+v", result.Success, result.Errors)
+	}
+	if len(result.Errors) != 1 {
+		t.Fatalf("expected 1 duplicate error, got %+v", result.Errors)
+	}
+}
+
 func TestImportPartialErrors(t *testing.T) {
 	headers := alumniColumnHeaders
 	rows := [][]string{
