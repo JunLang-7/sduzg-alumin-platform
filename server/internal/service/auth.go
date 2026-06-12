@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/smtp"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+	"gopkg.in/gomail.v2"
 )
 
 const (
@@ -63,20 +63,46 @@ type EmailSender struct {
 }
 
 func (s *EmailSender) Send(_ context.Context, target, code string) error {
-	if s.Host == "" || s.Username == "" {
+	if s.Host == "" || s.Username == "" || s.Password == "" {
 		logger.Info("Email not configured, skipping", zap.String("target", target), zap.String("code", code))
 		return nil
 	}
-	auth := smtp.PlainAuth("", s.Username, s.Password, s.Host)
-	msg := []byte(fmt.Sprintf(
-		"From: %s <%s>\r\nTo: %s\r\nSubject: 山大政管学院校友平台登录验证码\r\n\r\n您的验证码: %s，5分钟内有效。",
-		s.FromName, s.Username, target, code,
-	))
-	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
-	if err := smtp.SendMail(addr, auth, s.Username, []string{target}, msg); err != nil {
+	fromName := sanitizeMailHeader(s.FromName)
+	if fromName == "" {
+		fromName = s.Username
+	}
+	msg := gomail.NewMessage()
+	msg.SetAddressHeader("From", s.Username, fromName)
+	msg.SetHeader("To", sanitizeMailHeader(target))
+	msg.SetHeader("Subject", "山东大学政治学与公共管理学院校友平台邮箱登录验证码")
+	msg.SetBody("text/plain", buildEmailCodeBody(target, code))
+
+	dialer := gomail.NewDialer(s.Host, s.Port, s.Username, s.Password)
+	if err := dialer.DialAndSend(msg); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 	return nil
+}
+
+func buildEmailCodeBody(target, code string) string {
+	return fmt.Sprintf(`亲爱的 %s 先生/女士，
+
+您好！感谢您登录山东大学政治学与公共管理学院校友平台。请查收您的邮箱验证码：%s。该验证码5分钟内有效。
+
+祝好，
+山东大学政治学与公共管理学院
+
+注意：这是自动发送邮件，请勿直接回复。`, emailDisplayName(target), code)
+}
+
+func emailDisplayName(email string) string {
+	return sanitizeMailHeader(email)
+}
+
+func sanitizeMailHeader(value string) string {
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	return strings.TrimSpace(value)
 }
 
 // mockSender logs the code when services are not configured.
@@ -390,7 +416,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 	if s.verifyCode != nil {
 		last, err := s.verifyCode.LastSendTime(ctx, target)
 		if err == nil && time.Since(last) < codeSendInterval {
-			remaining := max(int(codeSendInterval - time.Since(last)), 1)
+			remaining := max(int(codeSendInterval-time.Since(last)), 1)
 			return nil, fmt.Errorf("请勿频繁发送，%d 秒后可重新获取", remaining)
 		}
 	}
