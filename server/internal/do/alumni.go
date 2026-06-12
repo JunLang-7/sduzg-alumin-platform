@@ -166,6 +166,7 @@ type AlumniDedupKey struct {
 	Grade     string
 	ClassName string
 	Cohort    string
+	Mobile	  string
 }
 
 func (k AlumniDedupKey) Key() string {
