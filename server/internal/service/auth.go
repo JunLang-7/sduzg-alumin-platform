@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/smtp"
+	stdmail "net/mail"
 	"regexp"
 	"strconv"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/golang-jwt/jwt/v5"
+	mail "github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -28,6 +29,7 @@ const (
 	codeSendInterval = 60 * time.Second
 	codeDailyMax     = 10
 	codeTTL          = 5 * time.Minute
+	emailSendTimeout = 15 * time.Second
 )
 
 var (
@@ -49,7 +51,7 @@ type SMSSender struct {
 }
 
 func (s *SMSSender) Send(_ context.Context, target, code string) error {
-	logger.Info("SMS not configured, skipping", zap.String("target", target), zap.String("code", code))
+	logger.Info("SMS not configured, skipping", zap.String("target", target))
 	return nil
 }
 
@@ -62,28 +64,87 @@ type EmailSender struct {
 	FromName string
 }
 
-func (s *EmailSender) Send(_ context.Context, target, code string) error {
+func (s *EmailSender) Send(ctx context.Context, target, code string) error {
 	if s.Host == "" || s.Username == "" {
-		logger.Info("Email not configured, skipping", zap.String("target", target), zap.String("code", code))
-		return nil
+		err := errors.New("email host or username not configured")
+		logger.Warn("Email not configured", zap.String("target", target), zap.Error(err))
+		return err
 	}
-	auth := smtp.PlainAuth("", s.Username, s.Password, s.Host)
-	msg := []byte(fmt.Sprintf(
-		"From: %s <%s>\r\nTo: %s\r\nSubject: 山大政管学院校友平台登录验证码\r\n\r\n您的验证码: %s，5分钟内有效。",
-		s.FromName, s.Username, target, code,
-	))
-	addr := fmt.Sprintf("%s:%d", s.Host, s.Port)
-	if err := smtp.SendMail(addr, auth, s.Username, []string{target}, msg); err != nil {
+	if s.Password == "" {
+		err := errors.New("email password not configured")
+		logger.Warn("Email password not configured", zap.String("target", target), zap.Error(err))
+		return err
+	}
+	if s.Port < 1 || s.Port > 65535 {
+		err := fmt.Errorf("email port out of range: %d", s.Port)
+		logger.Warn("Email port not configured", zap.String("target", target), zap.Error(err))
+		return err
+	}
+	fromName := sanitizeMailHeader(s.FromName)
+	if fromName == "" {
+		fromName = s.Username
+	}
+	msg := mail.NewMsg()
+	from := (&stdmail.Address{Name: fromName, Address: s.Username}).String()
+	if err := msg.From(from); err != nil {
+		return fmt.Errorf("set email sender: %w", err)
+	}
+	if err := msg.To(sanitizeMailHeader(target)); err != nil {
+		return fmt.Errorf("set email recipient: %w", err)
+	}
+	msg.Subject("山东大学政治学与公共管理学院校友平台邮箱登录验证码")
+	msg.SetBodyString(mail.TypeTextPlain, buildEmailCodeBody(target, code))
+
+	options := []mail.Option{
+		mail.WithPort(s.Port),
+		mail.WithTimeout(emailSendTimeout),
+		mail.WithSMTPAuth(mail.SMTPAuthAutoDiscover),
+		mail.WithUsername(s.Username),
+		mail.WithPassword(s.Password),
+	}
+	if s.Port == 465 {
+		options = append(options, mail.WithSSL())
+	} else {
+		options = append(options, mail.WithTLSPolicy(mail.TLSMandatory))
+	}
+	client, err := mail.NewClient(s.Host, options...)
+	if err != nil {
+		return fmt.Errorf("create email client: %w", err)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	sendCtx, cancel := context.WithTimeout(ctx, emailSendTimeout)
+	defer cancel()
+	if err := client.DialAndSendWithContext(sendCtx, msg); err != nil {
 		return fmt.Errorf("send email: %w", err)
 	}
 	return nil
+}
+
+func buildEmailCodeBody(target, code string) string {
+	return fmt.Sprintf(`亲爱的 %s 先生/女士，
+
+您好！感谢您登录山东大学政治学与公共管理学院校友平台。请查收您的邮箱验证码：%s。该验证码5分钟内有效。
+
+祝好，
+山东大学政治学与公共管理学院
+
+注意：这是自动发送邮件，请勿直接回复。`, sanitizeMailHeader(target), code)
+}
+
+func sanitizeMailHeader(value string) string {
+	value = strings.ReplaceAll(value, "\r", "")
+	value = strings.ReplaceAll(value, "\n", "")
+	value = strings.ReplaceAll(value, "\x00", "")
+	return strings.TrimSpace(value)
 }
 
 // mockSender logs the code when services are not configured.
 type mockSender struct{}
 
 func (m *mockSender) Send(_ context.Context, target, code string) error {
-	logger.Info("Mock sender", zap.String("target", target), zap.String("code", code))
+	logger.Info("Mock sender", zap.String("target", target))
 	return nil
 }
 
@@ -390,7 +451,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 	if s.verifyCode != nil {
 		last, err := s.verifyCode.LastSendTime(ctx, target)
 		if err == nil && time.Since(last) < codeSendInterval {
-			remaining := max(int(codeSendInterval - time.Since(last)), 1)
+			remaining := max(int(codeSendInterval-time.Since(last)), 1)
 			return nil, fmt.Errorf("请勿频繁发送，%d 秒后可重新获取", remaining)
 		}
 	}
@@ -411,6 +472,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 
 	if err := s.codeSender.Send(ctx, target, code); err != nil {
 		logger.Warn("failed to send code", zap.Error(err))
+		return nil, fmt.Errorf("send verify code: %w", err)
 	}
 
 	return &dto.VerifyCodeResult{
