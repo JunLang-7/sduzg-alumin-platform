@@ -63,9 +63,15 @@ type EmailSender struct {
 }
 
 func (s *EmailSender) Send(_ context.Context, target, code string) error {
-	if s.Host == "" || s.Username == "" || s.Password == "" {
-		logger.Info("Email not configured, skipping", zap.String("target", target), zap.String("code", code))
-		return nil
+	if s.Host == "" || s.Username == "" {
+		err := errors.New("email host or username not configured")
+		logger.Warn("Email not configured", zap.String("target", target), zap.Error(err))
+		return err
+	}
+	if s.Password == "" {
+		err := errors.New("email password not configured")
+		logger.Warn("Email password not configured", zap.String("target", target), zap.Error(err))
+		return err
 	}
 	fromName := sanitizeMailHeader(s.FromName)
 	if fromName == "" {
@@ -92,11 +98,7 @@ func buildEmailCodeBody(target, code string) string {
 祝好，
 山东大学政治学与公共管理学院
 
-注意：这是自动发送邮件，请勿直接回复。`, emailDisplayName(target), code)
-}
-
-func emailDisplayName(email string) string {
-	return sanitizeMailHeader(email)
+注意：这是自动发送邮件，请勿直接回复。`, sanitizeMailHeader(target), code)
 }
 
 func sanitizeMailHeader(value string) string {

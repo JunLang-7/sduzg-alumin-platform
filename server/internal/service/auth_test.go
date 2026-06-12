@@ -865,6 +865,22 @@ func TestAuthServiceSendVerifyCodeToEmailSuccess(t *testing.T) {
 	}
 }
 
+func TestEmailSenderMissingPasswordReturnsError(t *testing.T) {
+	sender := &EmailSender{
+		Host:     "smtp.example.com",
+		Port:     25,
+		Username: "sender@example.com",
+	}
+
+	err := sender.Send(context.Background(), "alumni@sdu.edu.cn", "123456")
+	if err == nil {
+		t.Fatal("expected missing password error")
+	}
+	if !strings.Contains(err.Error(), "email password not configured") {
+		t.Fatalf("expected missing password error, got %v", err)
+	}
+}
+
 func TestAuthServiceSendVerifyCodeRateLimited(t *testing.T) {
 	verifyCode := &fakeVerifyCodeStore{
 		lastSend: time.Now(),
