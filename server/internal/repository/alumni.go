@@ -297,7 +297,7 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 
 	cond := "(name = ? AND grade = ? AND COALESCE(class_name, '') = ? AND COALESCE(cohort, '') = ? AND COALESCE(mobile, '') = ?)"
 	var parts []string
-	var args []interface{}
+	var args []any
 	for _, k := range keys {
 		parts = append(parts, cond)
 		args = append(args, k.Name, k.Grade, k.ClassName, k.Cohort, strings.TrimSpace(k.Mobile))

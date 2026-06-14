@@ -71,7 +71,7 @@ func NewExportCache(client *redis.Client) *ExportCache {
 }
 
 // buildKey 根据当前版本和查询条件的 MD5 生成缓存 key。
-func (c *ExportCache) buildKey(ctx context.Context, query interface{}) (string, error) {
+func (c *ExportCache) buildKey(ctx context.Context, query any) (string, error) {
 	version, err := c.client.Get(ctx, alumniExportVersion).Int64()
 	if err != nil && err != redis.Nil {
 		return "", err
@@ -85,7 +85,7 @@ func (c *ExportCache) buildKey(ctx context.Context, query interface{}) (string, 
 }
 
 // Get 命中时返回序列化的校友列表 JSON 字节。
-func (c *ExportCache) Get(ctx context.Context, query interface{}) ([]byte, error) {
+func (c *ExportCache) Get(ctx context.Context, query any) ([]byte, error) {
 	if c.client == nil {
 		return nil, redis.Nil
 	}
@@ -97,7 +97,7 @@ func (c *ExportCache) Get(ctx context.Context, query interface{}) ([]byte, error
 }
 
 // Set 缓存序列化的校友列表，TTL 20 分钟。
-func (c *ExportCache) Set(ctx context.Context, query interface{}, data []byte) error {
+func (c *ExportCache) Set(ctx context.Context, query any, data []byte) error {
 	if c.client == nil {
 		return nil
 	}

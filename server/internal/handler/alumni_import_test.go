@@ -29,7 +29,7 @@ func buildMultipartXLSX(t *testing.T, rows [][]string) (*bytes.Buffer, string) {
 	}
 
 	headers := []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号", "邮箱"}
-	headerVals := make([]interface{}, len(headers))
+	headerVals := make([]any, len(headers))
 	for i, h := range headers {
 		headerVals[i] = h
 	}
@@ -38,7 +38,7 @@ func buildMultipartXLSX(t *testing.T, rows [][]string) (*bytes.Buffer, string) {
 	}
 
 	for i, row := range rows {
-		vals := make([]interface{}, len(row))
+		vals := make([]any, len(row))
 		for j, v := range row {
 			vals[j] = v
 		}

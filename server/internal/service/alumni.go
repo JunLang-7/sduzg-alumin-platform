@@ -415,7 +415,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 	}
 
 	// 写表头行
-	headerRow := make([]interface{}, len(alumniColumnHeaders))
+	headerRow := make([]any, len(alumniColumnHeaders))
 	for i, h := range alumniColumnHeaders {
 		headerRow[i] = h
 	}
@@ -425,7 +425,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 	}
 
 	// 写一条空行，提示用户按此结构填写
-	emptyRow := make([]interface{}, len(alumniColumnHeaders))
+	emptyRow := make([]any, len(alumniColumnHeaders))
 	for i := range emptyRow {
 		emptyRow[i] = ""
 	}
@@ -461,7 +461,7 @@ func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
 		return nil, fmt.Errorf("create stream writer: %w", err)
 	}
 
-	headerRow := make([]interface{}, len(alumniColumnHeaders))
+	headerRow := make([]any, len(alumniColumnHeaders))
 	for i, h := range alumniColumnHeaders {
 		headerRow[i] = h
 	}
@@ -471,7 +471,7 @@ func buildXLSX(items []*model.AlumniProfile) (*ExportResult, error) {
 
 	for i, item := range items {
 		row := exportRow(item)
-		vals := make([]interface{}, len(row))
+		vals := make([]any, len(row))
 		for j, v := range row {
 			vals[j] = v
 		}

@@ -18,7 +18,7 @@ func buildXLSXReader(headers []string, rows [][]string) (*bytes.Reader, error) {
 		return nil, err
 	}
 
-	headerVals := make([]interface{}, len(headers))
+	headerVals := make([]any, len(headers))
 	for i, h := range headers {
 		headerVals[i] = h
 	}
@@ -27,7 +27,7 @@ func buildXLSXReader(headers []string, rows [][]string) (*bytes.Reader, error) {
 	}
 
 	for i, row := range rows {
-		vals := make([]interface{}, len(row))
+		vals := make([]any, len(row))
 		for j, v := range row {
 			vals[j] = v
 		}

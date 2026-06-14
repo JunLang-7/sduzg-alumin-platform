@@ -649,7 +649,7 @@ func TestAuthServiceSmsCodeLoginExistingUser(t *testing.T) {
 			ID:     10,
 			Name:   "张三",
 			Grade:  "2020级",
-			Mobile: ptr("13800138000"),
+			Mobile: new("13800138000"),
 		},
 	}
 	verifyCode := &fakeVerifyCodeStore{
@@ -756,7 +756,7 @@ func TestAuthServiceEmailCodeLoginExistingUser(t *testing.T) {
 			ID:    11,
 			Name:  "李四",
 			Grade: "2021级",
-			Email: ptr("user@example.com"),
+			Email: new("user@example.com"),
 		},
 	}
 	verifyCode := &fakeVerifyCodeStore{savedCode: "654321", verifyOk: true}
@@ -976,7 +976,7 @@ func TestAuthServiceUpdateMobile(t *testing.T) {
 			Account:  "13800138000",
 			Role:     common.RoleAlumni,
 			Status:   common.UserStatusActive,
-			Mobile:   ptr("13800138000"),
+			Mobile:   new("13800138000"),
 			AlumniID: &alumniID,
 		},
 	}
@@ -1007,7 +1007,7 @@ func TestAuthServiceUpdateEmail(t *testing.T) {
 			Account:  "user@example.com",
 			Role:     common.RoleAlumni,
 			Status:   common.UserStatusActive,
-			Email:    ptr("old@example.com"),
+			Email:    new("old@example.com"),
 			AlumniID: &alumniID,
 		},
 	}
@@ -1081,7 +1081,7 @@ func TestAuthServiceUpdateContactDuplicateMobile(t *testing.T) {
 			Account:  "13800138000",
 			Role:     common.RoleAlumni,
 			Status:   common.UserStatusActive,
-			Mobile:   ptr("13800138000"),
+			Mobile:   new("13800138000"),
 			AlumniID: &alumniID,
 		},
 	}
@@ -1122,4 +1122,5 @@ func TestDetectLoginType(t *testing.T) {
 	}
 }
 
-func ptr[T any](v T) *T { return &v }
+//go:fix inline
+func ptr[T any](v T) *T { return new(v) }
