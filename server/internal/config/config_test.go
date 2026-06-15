@@ -27,6 +27,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.Auth.JWTSecret != "test-secret" {
 		t.Fatalf("expected auth jwt secret override, got %q", cfg.Auth.JWTSecret)
 	}
+	if cfg.RateLimit.Enabled {
+		t.Fatal("expected rate limit to be disabled by default")
+	}
+	if cfg.RateLimit.GlobalRPM != 120 {
+		t.Fatalf("expected default global rpm 120, got %d", cfg.RateLimit.GlobalRPM)
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -38,6 +44,8 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("REDIS_ENABLED", "true")
 	t.Setenv("REDIS_READ_TIMEOUT", "1500ms")
 	t.Setenv("AUTH_ACCESS_TOKEN_TTL", "2h")
+	t.Setenv("RATE_LIMIT_ENABLED", "true")
+	t.Setenv("RATE_LIMIT_AUTH_RPM", "8")
 
 	cfg, _ := Load()
 
@@ -58,6 +66,12 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Auth.AccessTokenTTL != 2*time.Hour {
 		t.Fatalf("expected auth access token ttl override, got %s", cfg.Auth.AccessTokenTTL)
+	}
+	if !cfg.RateLimit.Enabled {
+		t.Fatal("expected rate limit override to enable rate limit")
+	}
+	if cfg.RateLimit.AuthRPM != 8 {
+		t.Fatalf("expected auth rpm override, got %d", cfg.RateLimit.AuthRPM)
 	}
 }
 
@@ -116,6 +130,11 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_WRITE_TIMEOUT",
 		"AUTH_JWT_SECRET",
 		"AUTH_ACCESS_TOKEN_TTL",
+		"RATE_LIMIT_ENABLED",
+		"RATE_LIMIT_GLOBAL_RPM",
+		"RATE_LIMIT_AUTH_RPM",
+		"RATE_LIMIT_VERIFY_CODE_RPM",
+		"RATE_LIMIT_ADMIN_RPM",
 	} {
 		t.Setenv(key, "")
 	}

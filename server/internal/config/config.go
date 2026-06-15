@@ -18,14 +18,15 @@ const (
 )
 
 type Config struct {
-	App      AppConfig
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Auth     AuthConfig
-	Storage  StorageConfig
-	SMS      SMSConfig
-	Email    EmailConfig
+	App       AppConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	Auth      AuthConfig
+	Storage   StorageConfig
+	SMS       SMSConfig
+	Email     EmailConfig
+	RateLimit RateLimitConfig
 }
 
 type AppConfig struct {
@@ -98,6 +99,14 @@ type EmailConfig struct {
 	Username string
 	Password string
 	FromName string
+}
+
+type RateLimitConfig struct {
+	Enabled       bool
+	GlobalRPM     int
+	AuthRPM       int
+	VerifyCodeRPM int
+	AdminRPM      int
 }
 
 func (c DatabaseConfig) DSN() string {
@@ -201,6 +210,13 @@ func Load() (Config, error) {
 			Password: v.GetString("EMAIL_PASSWORD"),
 			FromName: v.GetString("EMAIL_FROM_NAME"),
 		},
+		RateLimit: RateLimitConfig{
+			Enabled:       v.GetBool("RATE_LIMIT_ENABLED"),
+			GlobalRPM:     v.GetInt("RATE_LIMIT_GLOBAL_RPM"),
+			AuthRPM:       v.GetInt("RATE_LIMIT_AUTH_RPM"),
+			VerifyCodeRPM: v.GetInt("RATE_LIMIT_VERIFY_CODE_RPM"),
+			AdminRPM:      v.GetInt("RATE_LIMIT_ADMIN_RPM"),
+		},
 	}
 
 	return cfg, nil
@@ -251,4 +267,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("EMAIL_USERNAME", "")
 	v.SetDefault("EMAIL_PASSWORD", "")
 	v.SetDefault("EMAIL_FROM_NAME", "山东大学政管学院")
+	v.SetDefault("RATE_LIMIT_ENABLED", false)
+	v.SetDefault("RATE_LIMIT_GLOBAL_RPM", 120)
+	v.SetDefault("RATE_LIMIT_AUTH_RPM", 10)
+	v.SetDefault("RATE_LIMIT_VERIFY_CODE_RPM", 3)
+	v.SetDefault("RATE_LIMIT_ADMIN_RPM", 30)
 }

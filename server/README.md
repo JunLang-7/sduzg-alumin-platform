@@ -69,6 +69,14 @@ curl http://127.0.0.1:8080/api/v1/health/live
 curl http://127.0.0.1:8080/api/v1/health/ready
 ```
 
+## 限流边界压测
+
+在 Docker MySQL 和 Redis 已启动后，可以运行限流边界测试脚本。脚本会临时启动一个本地 API 进程，使用 Redis 分布式限流，并通过 Vegeta 验证健康检查跳过限流、登录 burst、账号隔离、验证码 target 隔离和全局接口限流。
+
+```bash
+./server/scripts/rate_limit_boundary_test.sh
+```
+
 ## GORM 代码生成
 
 后续数据表变更后，可以使用 GORM gentool 从当前数据库生成模型代码。
