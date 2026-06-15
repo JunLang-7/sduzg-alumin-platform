@@ -39,7 +39,7 @@ func TestRuleForRequestMatchesSpecialRoutes(t *testing.T) {
 		burst int
 	}{
 		{name: "auth_login", path: "/api/v1/auth/login", limit: 10, burst: 3},
-		{name: "verify_code", path: "/api/v1/auth/verify-code/send", limit: 3, burst: 1},
+		{name: "verify_code", path: "/api/v1/auth/verify-code/send", limit: 3, burst: 2},
 		{name: "admin", path: "/api/v1/admin/alumni/export", limit: 30, burst: 5},
 		{name: "global", path: "/api/v1/alumni", limit: 120, burst: 120},
 	}

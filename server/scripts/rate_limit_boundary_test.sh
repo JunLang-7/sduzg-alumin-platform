@@ -263,10 +263,15 @@ main() {
     echo "FAIL: first verify-code request should not be rate limited" >&2
     exit 1
   fi
+  second_target_status="$(curl_status POST "$API_URL/api/v1/auth/verify-code/send" "$same_target")"
+  if [[ "$second_target_status" -eq 429 ]]; then
+    echo "FAIL: second verify-code request should pass the rate limiter with burst=2" >&2
+    exit 1
+  fi
   same_target_status="$(curl_status POST "$API_URL/api/v1/auth/verify-code/send" "$same_target")"
   assert_eq "$same_target_status" 429 "same target should be rate limited after burst"
   other_verify="$(curl_status POST "$API_URL/api/v1/auth/verify-code/send" "$other_target")"
-  printf '{"first_target":%s,"same_target_after_burst":%s,"different_target":%s}\n' "$first_verify" "$same_target_status" "$other_verify"
+  printf '{"first_target":%s,"second_target":%s,"same_target_after_burst":%s,"different_target":%s}\n' "$first_verify" "$second_target_status" "$same_target_status" "$other_verify"
   if [[ "$other_verify" -eq 429 ]]; then
     echo "FAIL: different verify-code target should not share limiter" >&2
     exit 1

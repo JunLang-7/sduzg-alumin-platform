@@ -50,6 +50,7 @@ services:
     environment:
       APP_ENV: production
       GIN_MODE: release
+      SERVER_TRUSTED_PROXIES: ${SERVER_TRUSTED_PROXIES:-}
       DB_ENABLED: "true"
       DB_HOST: mysql
       DB_PORT: 3306

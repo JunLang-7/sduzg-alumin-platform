@@ -40,6 +40,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("AUTH_JWT_SECRET", "test-secret")
 	t.Setenv("APP_NAME", "override-api")
 	t.Setenv("SERVER_PORT", "9090")
+	t.Setenv("SERVER_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.1")
 	t.Setenv("DB_ENABLED", "true")
 	t.Setenv("REDIS_ENABLED", "true")
 	t.Setenv("REDIS_READ_TIMEOUT", "1500ms")
@@ -54,6 +55,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Server.Port != 9090 {
 		t.Fatalf("expected server port override, got %d", cfg.Server.Port)
+	}
+	if len(cfg.Server.TrustedProxies) != 2 || cfg.Server.TrustedProxies[0] != "10.0.0.0/8" || cfg.Server.TrustedProxies[1] != "192.168.0.1" {
+		t.Fatalf("expected trusted proxies override, got %#v", cfg.Server.TrustedProxies)
 	}
 	if !cfg.Database.Enabled {
 		t.Fatal("expected database override to enable database")
@@ -109,6 +113,7 @@ func clearConfigEnv(t *testing.T) {
 		"SERVER_PORT",
 		"SERVER_READ_HEADER_TIMEOUT",
 		"SERVER_SHUTDOWN_TIMEOUT",
+		"SERVER_TRUSTED_PROXIES",
 		"DB_ENABLED",
 		"DB_HOST",
 		"DB_PORT",

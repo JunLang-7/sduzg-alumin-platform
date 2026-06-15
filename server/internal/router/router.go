@@ -29,6 +29,9 @@ type Dependencies struct {
 
 func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
+	if err := engine.SetTrustedProxies(deps.Config.Server.TrustedProxies); err != nil && deps.Logger != nil {
+		deps.Logger.Warn("failed to configure trusted proxies", zap.Error(err))
+	}
 
 	// 全局中间件
 	engine.Use(

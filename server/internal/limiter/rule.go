@@ -19,7 +19,7 @@ func RuleForRequest(method string, path string, cfg config.RateLimitConfig) (Rul
 	case method == http.MethodPost && path == "/api/v1/auth/login":
 		return newRule("auth_login", cfg.AuthRPM, minPositive(3, cfg.AuthRPM)), true
 	case method == http.MethodPost && path == "/api/v1/auth/verify-code/send":
-		return newRule("verify_code", cfg.VerifyCodeRPM, 1), true
+		return newRule("verify_code", cfg.VerifyCodeRPM, minPositive(2, cfg.VerifyCodeRPM)), true
 	case strings.HasPrefix(path, "/api/v1/admin/") || strings.HasPrefix(path, "/api/v1/super-admin/"):
 		return newRule("admin", cfg.AdminRPM, minPositive(5, cfg.AdminRPM)), true
 	default:

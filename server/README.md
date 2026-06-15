@@ -32,6 +32,12 @@ REDIS_ADDR=127.0.0.1:6379
 REDIS_DB=0
 ```
 
+如果 API 部署在 Nginx、Cloudflare 或其他反向代理之后，需要配置可信代理，否则限流中间件获取到的客户端 IP 可能是代理服务器地址：
+
+```bash
+SERVER_TRUSTED_PROXIES=10.0.0.0/8,192.168.0.1
+```
+
 认证默认使用 HS256 JWT。生产环境必须覆盖：
 
 ```bash

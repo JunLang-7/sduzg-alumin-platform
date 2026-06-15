@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -39,6 +40,7 @@ type ServerConfig struct {
 	Port              int
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
+	TrustedProxies    []string
 }
 
 func (c ServerConfig) Address() string {
@@ -159,6 +161,7 @@ func Load() (Config, error) {
 			Port:              v.GetInt("SERVER_PORT"),
 			ReadHeaderTimeout: v.GetDuration("SERVER_READ_HEADER_TIMEOUT"),
 			ShutdownTimeout:   v.GetDuration("SERVER_SHUTDOWN_TIMEOUT"),
+			TrustedProxies:    splitCSV(v.GetString("SERVER_TRUSTED_PROXIES")),
 		},
 		Database: DatabaseConfig{
 			Enabled:         v.GetBool("DB_ENABLED"),
@@ -229,6 +232,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("SERVER_PORT", 8080)
 	v.SetDefault("SERVER_READ_HEADER_TIMEOUT", 5*time.Second)
 	v.SetDefault("SERVER_SHUTDOWN_TIMEOUT", 10*time.Second)
+	v.SetDefault("SERVER_TRUSTED_PROXIES", "")
 	v.SetDefault("DB_ENABLED", false)
 	v.SetDefault("DB_HOST", "127.0.0.1")
 	v.SetDefault("DB_PORT", 3306)
@@ -272,4 +276,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("RATE_LIMIT_AUTH_RPM", 10)
 	v.SetDefault("RATE_LIMIT_VERIFY_CODE_RPM", 3)
 	v.SetDefault("RATE_LIMIT_ADMIN_RPM", 30)
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
