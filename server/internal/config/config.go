@@ -28,6 +28,7 @@ type Config struct {
 	SMS       SMSConfig
 	Email     EmailConfig
 	RateLimit RateLimitConfig
+	CORS      CORSConfig
 }
 
 type AppConfig struct {
@@ -109,6 +110,11 @@ type RateLimitConfig struct {
 	AuthRPM       int
 	VerifyCodeRPM int
 	AdminRPM      int
+}
+
+type CORSConfig struct {
+	Enabled        bool
+	AllowedOrigins []string
 }
 
 func (c DatabaseConfig) DSN() string {
@@ -220,6 +226,10 @@ func Load() (Config, error) {
 			VerifyCodeRPM: v.GetInt("RATE_LIMIT_VERIFY_CODE_RPM"),
 			AdminRPM:      v.GetInt("RATE_LIMIT_ADMIN_RPM"),
 		},
+		CORS: CORSConfig{
+			Enabled:        v.GetBool("CORS_ENABLED"),
+			AllowedOrigins: splitCSV(v.GetString("CORS_ALLOWED_ORIGINS")),
+		},
 	}
 
 	return cfg, nil
@@ -276,6 +286,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("RATE_LIMIT_AUTH_RPM", 10)
 	v.SetDefault("RATE_LIMIT_VERIFY_CODE_RPM", 3)
 	v.SetDefault("RATE_LIMIT_ADMIN_RPM", 30)
+	v.SetDefault("CORS_ENABLED", false)
+	v.SetDefault("CORS_ALLOWED_ORIGINS", "")
 }
 
 func splitCSV(value string) []string {

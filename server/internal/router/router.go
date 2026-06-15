@@ -36,6 +36,7 @@ func New(deps Dependencies) *gin.Engine {
 	// 全局中间件
 	engine.Use(
 		middleware.RequestID(),
+		middleware.CORS(deps.Config.CORS),
 		middleware.Recovery(deps.Logger),
 		middleware.RequestLogger(deps.Logger),
 		middleware.RateLimit(deps.Config.RateLimit, limiter.New(deps.RedisClient), deps.Logger),
