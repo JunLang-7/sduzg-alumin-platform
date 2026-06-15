@@ -33,6 +33,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.RateLimit.GlobalRPM != 120 {
 		t.Fatalf("expected default global rpm 120, got %d", cfg.RateLimit.GlobalRPM)
 	}
+	if cfg.CORS.Enabled {
+		t.Fatal("expected cors to be disabled by default")
+	}
+	if len(cfg.CORS.AllowedOrigins) != 0 {
+		t.Fatalf("expected no cors allowed origins by default, got %#v", cfg.CORS.AllowedOrigins)
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -47,6 +53,8 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("AUTH_ACCESS_TOKEN_TTL", "2h")
 	t.Setenv("RATE_LIMIT_ENABLED", "true")
 	t.Setenv("RATE_LIMIT_AUTH_RPM", "8")
+	t.Setenv("CORS_ENABLED", "true")
+	t.Setenv("CORS_ALLOWED_ORIGINS", "http://127.0.0.1:5173, https://h5.example.com")
 
 	cfg, _ := Load()
 
@@ -76,6 +84,12 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.RateLimit.AuthRPM != 8 {
 		t.Fatalf("expected auth rpm override, got %d", cfg.RateLimit.AuthRPM)
+	}
+	if !cfg.CORS.Enabled {
+		t.Fatal("expected cors override to enable cors")
+	}
+	if len(cfg.CORS.AllowedOrigins) != 2 || cfg.CORS.AllowedOrigins[0] != "http://127.0.0.1:5173" || cfg.CORS.AllowedOrigins[1] != "https://h5.example.com" {
+		t.Fatalf("expected cors allowed origins override, got %#v", cfg.CORS.AllowedOrigins)
 	}
 }
 
@@ -140,6 +154,8 @@ func clearConfigEnv(t *testing.T) {
 		"RATE_LIMIT_AUTH_RPM",
 		"RATE_LIMIT_VERIFY_CODE_RPM",
 		"RATE_LIMIT_ADMIN_RPM",
+		"CORS_ENABLED",
+		"CORS_ALLOWED_ORIGINS",
 	} {
 		t.Setenv(key, "")
 	}

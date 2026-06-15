@@ -49,6 +49,38 @@ func TestHealthRoutes(t *testing.T) {
 	}
 }
 
+func TestCORSPreflightRunsBeforeAuth(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := New(Dependencies{
+		Config: config.Config{
+			App: config.AppConfig{
+				Name: "test-api",
+				Env:  config.EnvDevelopment,
+			},
+			CORS: config.CORSConfig{
+				Enabled:        true,
+				AllowedOrigins: []string{"https://h5.example.com"},
+			},
+		},
+		Logger: zap.NewNop(),
+	})
+
+	req := httptest.NewRequest(http.MethodOptions, "/api/v1/alumni", nil)
+	req.Header.Set("Origin", "https://h5.example.com")
+	req.Header.Set("Access-Control-Request-Method", http.MethodGet)
+	rec := httptest.NewRecorder()
+
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected status %d, got %d", http.StatusNoContent, rec.Code)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "https://h5.example.com" {
+		t.Fatalf("expected cors allow origin header, got %q", rec.Header().Get("Access-Control-Allow-Origin"))
+	}
+}
+
 func TestAuthLoginRouteWithoutDatabase(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
