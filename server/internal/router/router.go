@@ -7,6 +7,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/handler"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/limiter"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
@@ -28,12 +29,16 @@ type Dependencies struct {
 
 func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
+	if err := engine.SetTrustedProxies(deps.Config.Server.TrustedProxies); err != nil && deps.Logger != nil {
+		deps.Logger.Warn("failed to configure trusted proxies", zap.Error(err))
+	}
 
 	// 全局中间件
 	engine.Use(
 		middleware.RequestID(),
 		middleware.Recovery(deps.Logger),
 		middleware.RequestLogger(deps.Logger),
+		middleware.RateLimit(deps.Config.RateLimit, limiter.New(deps.RedisClient), deps.Logger),
 	)
 
 	// 404 处理

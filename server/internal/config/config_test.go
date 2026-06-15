@@ -27,6 +27,12 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.Auth.JWTSecret != "test-secret" {
 		t.Fatalf("expected auth jwt secret override, got %q", cfg.Auth.JWTSecret)
 	}
+	if cfg.RateLimit.Enabled {
+		t.Fatal("expected rate limit to be disabled by default")
+	}
+	if cfg.RateLimit.GlobalRPM != 120 {
+		t.Fatalf("expected default global rpm 120, got %d", cfg.RateLimit.GlobalRPM)
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -34,10 +40,13 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("AUTH_JWT_SECRET", "test-secret")
 	t.Setenv("APP_NAME", "override-api")
 	t.Setenv("SERVER_PORT", "9090")
+	t.Setenv("SERVER_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.1")
 	t.Setenv("DB_ENABLED", "true")
 	t.Setenv("REDIS_ENABLED", "true")
 	t.Setenv("REDIS_READ_TIMEOUT", "1500ms")
 	t.Setenv("AUTH_ACCESS_TOKEN_TTL", "2h")
+	t.Setenv("RATE_LIMIT_ENABLED", "true")
+	t.Setenv("RATE_LIMIT_AUTH_RPM", "8")
 
 	cfg, _ := Load()
 
@@ -46,6 +55,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Server.Port != 9090 {
 		t.Fatalf("expected server port override, got %d", cfg.Server.Port)
+	}
+	if len(cfg.Server.TrustedProxies) != 2 || cfg.Server.TrustedProxies[0] != "10.0.0.0/8" || cfg.Server.TrustedProxies[1] != "192.168.0.1" {
+		t.Fatalf("expected trusted proxies override, got %#v", cfg.Server.TrustedProxies)
 	}
 	if !cfg.Database.Enabled {
 		t.Fatal("expected database override to enable database")
@@ -58,6 +70,12 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.Auth.AccessTokenTTL != 2*time.Hour {
 		t.Fatalf("expected auth access token ttl override, got %s", cfg.Auth.AccessTokenTTL)
+	}
+	if !cfg.RateLimit.Enabled {
+		t.Fatal("expected rate limit override to enable rate limit")
+	}
+	if cfg.RateLimit.AuthRPM != 8 {
+		t.Fatalf("expected auth rpm override, got %d", cfg.RateLimit.AuthRPM)
 	}
 }
 
@@ -95,6 +113,7 @@ func clearConfigEnv(t *testing.T) {
 		"SERVER_PORT",
 		"SERVER_READ_HEADER_TIMEOUT",
 		"SERVER_SHUTDOWN_TIMEOUT",
+		"SERVER_TRUSTED_PROXIES",
 		"DB_ENABLED",
 		"DB_HOST",
 		"DB_PORT",
@@ -116,6 +135,11 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_WRITE_TIMEOUT",
 		"AUTH_JWT_SECRET",
 		"AUTH_ACCESS_TOKEN_TTL",
+		"RATE_LIMIT_ENABLED",
+		"RATE_LIMIT_GLOBAL_RPM",
+		"RATE_LIMIT_AUTH_RPM",
+		"RATE_LIMIT_VERIFY_CODE_RPM",
+		"RATE_LIMIT_ADMIN_RPM",
 	} {
 		t.Setenv(key, "")
 	}

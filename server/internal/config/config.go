@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
@@ -18,14 +19,15 @@ const (
 )
 
 type Config struct {
-	App      AppConfig
-	Server   ServerConfig
-	Database DatabaseConfig
-	Redis    RedisConfig
-	Auth     AuthConfig
-	Storage  StorageConfig
-	SMS      SMSConfig
-	Email    EmailConfig
+	App       AppConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	Redis     RedisConfig
+	Auth      AuthConfig
+	Storage   StorageConfig
+	SMS       SMSConfig
+	Email     EmailConfig
+	RateLimit RateLimitConfig
 }
 
 type AppConfig struct {
@@ -38,6 +40,7 @@ type ServerConfig struct {
 	Port              int
 	ReadHeaderTimeout time.Duration
 	ShutdownTimeout   time.Duration
+	TrustedProxies    []string
 }
 
 func (c ServerConfig) Address() string {
@@ -100,6 +103,14 @@ type EmailConfig struct {
 	FromName string
 }
 
+type RateLimitConfig struct {
+	Enabled       bool
+	GlobalRPM     int
+	AuthRPM       int
+	VerifyCodeRPM int
+	AdminRPM      int
+}
+
 func (c DatabaseConfig) DSN() string {
 	cfg := mysql.NewConfig()
 	cfg.User = c.User
@@ -150,6 +161,7 @@ func Load() (Config, error) {
 			Port:              v.GetInt("SERVER_PORT"),
 			ReadHeaderTimeout: v.GetDuration("SERVER_READ_HEADER_TIMEOUT"),
 			ShutdownTimeout:   v.GetDuration("SERVER_SHUTDOWN_TIMEOUT"),
+			TrustedProxies:    splitCSV(v.GetString("SERVER_TRUSTED_PROXIES")),
 		},
 		Database: DatabaseConfig{
 			Enabled:         v.GetBool("DB_ENABLED"),
@@ -201,6 +213,13 @@ func Load() (Config, error) {
 			Password: v.GetString("EMAIL_PASSWORD"),
 			FromName: v.GetString("EMAIL_FROM_NAME"),
 		},
+		RateLimit: RateLimitConfig{
+			Enabled:       v.GetBool("RATE_LIMIT_ENABLED"),
+			GlobalRPM:     v.GetInt("RATE_LIMIT_GLOBAL_RPM"),
+			AuthRPM:       v.GetInt("RATE_LIMIT_AUTH_RPM"),
+			VerifyCodeRPM: v.GetInt("RATE_LIMIT_VERIFY_CODE_RPM"),
+			AdminRPM:      v.GetInt("RATE_LIMIT_ADMIN_RPM"),
+		},
 	}
 
 	return cfg, nil
@@ -213,6 +232,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("SERVER_PORT", 8080)
 	v.SetDefault("SERVER_READ_HEADER_TIMEOUT", 5*time.Second)
 	v.SetDefault("SERVER_SHUTDOWN_TIMEOUT", 10*time.Second)
+	v.SetDefault("SERVER_TRUSTED_PROXIES", "")
 	v.SetDefault("DB_ENABLED", false)
 	v.SetDefault("DB_HOST", "127.0.0.1")
 	v.SetDefault("DB_PORT", 3306)
@@ -251,4 +271,21 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("EMAIL_USERNAME", "")
 	v.SetDefault("EMAIL_PASSWORD", "")
 	v.SetDefault("EMAIL_FROM_NAME", "山东大学政管学院")
+	v.SetDefault("RATE_LIMIT_ENABLED", false)
+	v.SetDefault("RATE_LIMIT_GLOBAL_RPM", 120)
+	v.SetDefault("RATE_LIMIT_AUTH_RPM", 10)
+	v.SetDefault("RATE_LIMIT_VERIFY_CODE_RPM", 3)
+	v.SetDefault("RATE_LIMIT_ADMIN_RPM", 30)
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
 }
