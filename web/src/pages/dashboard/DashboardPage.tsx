@@ -16,7 +16,10 @@ import type { AlumniProfile } from '../../types/alumni';
 import { AlumniDetailModal } from './AlumniDetailModal';
 import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
-import { RegionIndustryExplorer } from './RegionIndustryExplorer';
+import {
+  RegionIndustryExplorer,
+  type MapMode,
+} from './RegionIndustryExplorer';
 import type {
   DashboardDimension,
   DashboardOverview,
@@ -73,6 +76,7 @@ interface DataScreenPanelProps {
   subtitle?: string;
   className?: string;
   loading?: boolean;
+  expandable?: boolean;
   extra?: ReactNode;
   children: (expanded: boolean) => ReactNode;
 }
@@ -105,6 +109,7 @@ function DataScreenPanel({
   subtitle,
   className,
   loading,
+  expandable = true,
   extra,
   children,
 }: DataScreenPanelProps) {
@@ -120,20 +125,22 @@ function DataScreenPanel({
         </div>
         <div className="data-screen-panel-actions">
           {extra}
-          <button
-            type="button"
-            className="data-screen-icon-button"
-            aria-label={`放大查看${title}`}
-            onClick={() => setExpanded(true)}
-          >
-            <ArrowsAltOutlined />
-          </button>
+          {expandable ? (
+            <button
+              type="button"
+              className="data-screen-icon-button"
+              aria-label={`放大查看${title}`}
+              onClick={() => setExpanded(true)}
+            >
+              <ArrowsAltOutlined />
+            </button>
+          ) : null}
         </div>
       </div>
       <div className="data-screen-panel-body">
         {loading ? <Spin className="data-screen-spin" /> : children(false)}
       </div>
-      <Modal
+      {expandable ? <Modal
         centered
         footer={null}
         open={expanded}
@@ -151,7 +158,7 @@ function DataScreenPanel({
         destroyOnHidden
       >
         {modalReady ? <div className="data-screen-expanded-body">{children(true)}</div> : null}
-      </Modal>
+      </Modal> : null}
     </section>
   );
 }
@@ -180,6 +187,10 @@ export function DashboardPage() {
   const [distributionTitle, setDistributionTitle] = useState('');
   const [distributionAlumni, setDistributionAlumni] = useState<AlumniProfile[]>([]);
   const [allAlumniCache, setAllAlumniCache] = useState<AlumniProfile[] | null>(null);
+  const [regionDataLoading, setRegionDataLoading] = useState(true);
+  const [regionMapMode, setRegionMapMode] = useState<MapMode>('shandong');
+  const [selectedMapRegion, setSelectedMapRegion] = useState('');
+  const [selectedMapDistrict, setSelectedMapDistrict] = useState('');
   const [now, setNow] = useState(() => new Date());
   const [isFullscreen, setIsFullscreen] = useState(() => Boolean(document.fullscreenElement));
   const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
@@ -233,8 +244,12 @@ export function DashboardPage() {
             })
             .catch(() => {
               message.warning('通讯地址加载失败，地域将仅按工作单位判定');
+            })
+            .finally(() => {
+              setRegionDataLoading(false);
             });
         } else {
+          setRegionDataLoading(false);
           message.error(feedResult.reason?.message || '校友信息加载失败');
         }
       })
@@ -316,8 +331,8 @@ export function DashboardPage() {
         axisLabel: {
           color: axisColor,
           interval: 0,
-          rotate: mainDistribution.length > 8 ? (isCompactChart ? 40 : 32) : 0,
-          fontSize: isCompactChart ? 11 : 12,
+          rotate: mainDistribution.length > 8 ? (isCompactChart ? 34 : 28) : 0,
+          fontSize: isCompactChart ? 9 : 11,
         },
       },
       yAxis: {
@@ -383,20 +398,20 @@ export function DashboardPage() {
         {
           name: '占比',
           type: 'pie',
-          radius: isCompactChart ? ['26%', '44%'] : ['30%', '49%'],
-          center: ['50%', isCompactChart ? '42%' : '44%'],
+          radius: isCompactChart ? ['22%', '37%'] : ['27%', '44%'],
+          center: ['50%', isCompactChart ? '52%' : '49%'],
           avoidLabelOverlap: true,
           label: {
             color: '#eaf7ff',
             formatter: (params: { name: string; percent?: number }) =>
               (params.percent || 0) >= 2 ? `${params.name}\n${params.percent}%` : '',
             fontWeight: 800,
-            fontSize: isCompactChart ? 10 : 11,
+            fontSize: isCompactChart ? 9 : 11,
             distanceToLabelLine: 3,
           },
           labelLine: {
-            length: isCompactChart ? 7 : 10,
-            length2: isCompactChart ? 5 : 8,
+            length: isCompactChart ? 5 : 10,
+            length2: isCompactChart ? 4 : 8,
             lineStyle: { color: 'rgba(195, 224, 255, 0.52)' },
           },
           labelLayout: {
@@ -597,6 +612,35 @@ export function DashboardPage() {
         </DataScreenPanel>
 
         <DataScreenPanel
+          title="校友地域地图"
+          subtitle="山东省与全国切换，点击区域联动右侧行业和人员"
+          className="dashboard-map-panel"
+          expandable={false}
+        >
+          {(expanded) => (
+            <RegionIndustryExplorer
+              alumni={allAlumniCache ?? alumniFeed}
+              expanded={expanded}
+              loading={regionDataLoading}
+              view="map"
+              mapMode={regionMapMode}
+              selectedRegion={selectedMapRegion}
+              selectedDistrict={selectedMapDistrict}
+              onMapModeChange={(mode) => {
+                setRegionMapMode(mode);
+                setSelectedMapDistrict('');
+              }}
+              onRegionChange={(region) => {
+                setSelectedMapRegion(region);
+                setSelectedMapDistrict('');
+              }}
+              onDistrictChange={setSelectedMapDistrict}
+              onSelectAlumni={openAlumniDetail}
+            />
+          )}
+        </DataScreenPanel>
+
+        <DataScreenPanel
           title="校友信息检索"
           subtitle="按姓名、单位、职务、导师等关键词检索，点击条目查看完整信息"
           loading={feedLoading}
@@ -653,12 +697,19 @@ export function DashboardPage() {
           title="地域与行业分布"
           subtitle="省内外、城市、区县与行业联动"
           className="dashboard-industry-panel"
-          loading={initialLoading}
         >
           {(expanded) => (
             <RegionIndustryExplorer
               alumni={allAlumniCache ?? alumniFeed}
               expanded={expanded}
+              loading={regionDataLoading}
+              view="industry"
+              mapMode={regionMapMode}
+              selectedRegion={selectedMapRegion}
+              selectedDistrict={selectedMapDistrict}
+              onMapModeChange={setRegionMapMode}
+              onRegionChange={setSelectedMapRegion}
+              onDistrictChange={setSelectedMapDistrict}
               onSelectAlumni={openAlumniDetail}
             />
           )}
