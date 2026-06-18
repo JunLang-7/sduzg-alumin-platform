@@ -29,14 +29,6 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           {
-            path: '/alumni',
-            element: <AlumniListPage />,
-          },
-          {
-            path: '/alumni/:id',
-            element: <AlumniDetailPage />,
-          },
-          {
             element: <RequireAuth exactRole="alumni" />,
             children: [
               {
@@ -70,6 +62,14 @@ export const router = createBrowserRouter([
           {
             path: '/admin/dashboard',
             element: <DashboardPage />,
+          },
+          {
+            path: '/alumni',
+            element: <AlumniListPage />,
+          },
+          {
+            path: '/alumni/:id',
+            element: <AlumniDetailPage />,
           },
         ],
       },

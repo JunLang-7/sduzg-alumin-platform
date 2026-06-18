@@ -24,6 +24,7 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
+import { useSearchParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
@@ -35,9 +36,15 @@ const defaultPageSize = 20;
 export function AlumniManagementPage() {
   const [searchForm] = Form.useForm<AlumniQuery>();
   const [modalForm] = Form.useForm<AlumniProfilePayload>();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const urlKeyword = searchParams.get('keyword') || undefined;
   const [items, setItems] = useState<AlumniProfile[]>([]);
   const [total, setTotal] = useState(0);
-  const [query, setQuery] = useState<AlumniQuery>({ page: 1, page_size: defaultPageSize });
+  const [query, setQuery] = useState<AlumniQuery>({
+    page: 1,
+    page_size: defaultPageSize,
+    keyword: urlKeyword,
+  });
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<AlumniProfile | null>(null);
@@ -45,25 +52,47 @@ export function AlumniManagementPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<AlumniImportResult | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const dataRequestIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = async (nextQuery: AlumniQuery) => {
+    const requestId = dataRequestIdRef.current + 1;
+    dataRequestIdRef.current = requestId;
     setLoading(true);
     try {
       const result = await alumniApi.list(nextQuery);
+      if (requestId !== dataRequestIdRef.current) {
+        return;
+      }
       setItems(result.items || []);
       setTotal(result.total || 0);
     } catch (error) {
+      if (requestId !== dataRequestIdRef.current) {
+        return;
+      }
       const err = error as Error;
       message.error(err.message || '校友数据加载失败');
     } finally {
-      setLoading(false);
+      if (requestId === dataRequestIdRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
     void loadData(query);
   }, [query]);
+
+  useEffect(() => {
+    searchForm.setFieldsValue({ keyword: urlKeyword });
+    setQuery((prev) => {
+      if (prev.keyword === urlKeyword && prev.page === 1) {
+        return prev;
+      }
+
+      return { ...prev, page: 1, keyword: urlKeyword };
+    });
+  }, [searchForm, urlKeyword]);
 
   const openCreateModal = () => {
     setEditing(null);
@@ -187,11 +216,31 @@ export function AlumniManagementPage() {
   );
 
   const handleSearch = (values: AlumniQuery) => {
-    setQuery({ ...values, page: 1, page_size: query.page_size || defaultPageSize });
+    const keyword = values.keyword?.trim();
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (keyword) {
+        next.set('keyword', keyword);
+      } else {
+        next.delete('keyword');
+      }
+      return next;
+    });
+    setQuery({
+      ...values,
+      keyword,
+      page: 1,
+      page_size: query.page_size || defaultPageSize,
+    });
   };
 
   const handleReset = () => {
     searchForm.resetFields();
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('keyword');
+      return next;
+    });
     setQuery({ page: 1, page_size: defaultPageSize });
   };
 

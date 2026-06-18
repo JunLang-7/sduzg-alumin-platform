@@ -30,5 +30,5 @@ export function getDefaultPath(role?: UserRole) {
     return '/admin/alumni';
   }
 
-  return '/alumni';
+  return '/profile';
 }

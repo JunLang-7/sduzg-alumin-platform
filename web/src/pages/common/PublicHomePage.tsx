@@ -20,7 +20,7 @@ export function PublicHomePage() {
 
   const submitSearch = () => {
     const query = keyword.trim();
-    navigate(query ? `/alumni?keyword=${encodeURIComponent(query)}` : '/alumni');
+    navigate(query ? `/admin/alumni?keyword=${encodeURIComponent(query)}` : '/admin/alumni');
   };
 
   const openUserEntry = () => {
@@ -29,6 +29,15 @@ export function PublicHomePage() {
 
   const openBrandHome = () => {
     navigate(user ? getDefaultPath(user.role) : '/');
+  };
+
+  const openAlumniService = () => {
+    if (hasRole(user, 'admin')) {
+      navigate('/alumni');
+      return;
+    }
+
+    navigate(user ? getDefaultPath(user.role) : '/login');
   };
 
   return (
@@ -46,15 +55,17 @@ export function PublicHomePage() {
             <Button className="public-login" type="primary" onClick={openUserEntry}>
               {user ? '进入平台' : '登录'}
             </Button>
-            <Input.Search
-              className="public-search"
-              value={keyword}
-              onChange={(event) => setKeyword(event.target.value)}
-              onSearch={submitSearch}
-              enterButton="搜索"
-              prefix={<SearchOutlined />}
-              placeholder="搜索..."
-            />
+            {hasRole(user, 'admin') ? (
+              <Input.Search
+                className="public-search"
+                value={keyword}
+                onChange={(event) => setKeyword(event.target.value)}
+                onSearch={submitSearch}
+                enterButton="搜索"
+                prefix={<SearchOutlined />}
+                placeholder="搜索..."
+              />
+            ) : null}
           </div>
         </div>
         <nav className="public-nav">
@@ -66,7 +77,7 @@ export function PublicHomePage() {
               数据大屏
             </button>
           ) : null}
-          <button type="button" onClick={() => navigate('/alumni')}>
+          <button type="button" onClick={openAlumniService}>
             校友服务
           </button>
           <button type="button" onClick={openUserEntry}>
@@ -84,7 +95,7 @@ export function PublicHomePage() {
             <Button type="primary" size="large" onClick={openUserEntry}>
               {user ? '进入校友平台' : '校友登录'}
             </Button>
-            <Button size="large" onClick={() => navigate('/alumni')}>
+            <Button size="large" onClick={openAlumniService}>
               校友服务
             </Button>
           </Space>
@@ -142,7 +153,7 @@ export function PublicHomePage() {
                 完善本人校友档案
                 <ArrowRightOutlined />
               </button>
-              <button type="button" className="notice-link" onClick={() => navigate('/alumni')}>
+              <button type="button" className="notice-link" onClick={openAlumniService}>
                 查询 MPA 校友名录
                 <ArrowRightOutlined />
               </button>
