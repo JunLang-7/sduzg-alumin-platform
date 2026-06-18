@@ -25,16 +25,15 @@ export function AppLayout() {
   const [search, setSearch] = useState('');
 
   const menuItems = useMemo<MenuProps['items']>(() => {
-    const items: MenuProps['items'] = [
-      {
-        key: '/alumni',
-        icon: <TeamOutlined />,
-        label: '校友服务',
-      },
-    ];
+    const items: MenuProps['items'] = [];
 
     if (hasRole(user, 'admin')) {
       items.push(
+        {
+          key: '/alumni',
+          icon: <TeamOutlined />,
+          label: '校友服务',
+        },
         {
           key: '/admin/dashboard',
           icon: <BarChartOutlined />,
@@ -105,7 +104,7 @@ export function AppLayout() {
 
   const submitSearch = () => {
     const keyword = search.trim();
-    navigate(keyword ? `/alumni?keyword=${encodeURIComponent(keyword)}` : '/alumni');
+    navigate(keyword ? `/admin/alumni?keyword=${encodeURIComponent(keyword)}` : '/admin/alumni');
   };
 
   const openHome = () => {
@@ -125,15 +124,17 @@ export function AppLayout() {
             </span>
           </button>
           <div className="site-actions">
-            <Input.Search
-              className="site-search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              onSearch={submitSearch}
-              enterButton="搜索"
-              prefix={<SearchOutlined />}
-              placeholder="搜索..."
-            />
+            {hasRole(user, 'admin') ? (
+              <Input.Search
+                className="site-search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                onSearch={submitSearch}
+                enterButton="搜索"
+                prefix={<SearchOutlined />}
+                placeholder="搜索..."
+              />
+            ) : null}
             <Dropdown menu={{ items: userMenu }} trigger={['click']}>
               <button className="user-menu" type="button">
                 <Space size={8}>
