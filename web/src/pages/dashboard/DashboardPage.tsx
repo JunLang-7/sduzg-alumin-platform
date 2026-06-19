@@ -84,6 +84,7 @@ interface DataScreenPanelProps {
 interface ChartDistributionItem extends DistributionItem {
   rawValue?: number;
   graduationRate?: number;
+  rateUnavailable?: boolean;
   admissionGrade?: string;
   admissionCount?: number;
   cohortTotal?: number;
@@ -113,8 +114,14 @@ function sortByNumericName(items: DistributionItem[]) {
 }
 
 function extractYear(value?: string) {
-  const match = value?.match(/\d{4}/);
-  return match ? Number.parseInt(match[0], 10) : null;
+  const match = value?.match(/(?:^|[^\d])((?:19|20)\d{2})(?:[^\d]|$)/);
+  if (!match) {
+    return null;
+  }
+
+  const year = Number.parseInt(match[1], 10);
+  const maxReasonableYear = new Date().getFullYear() + 10;
+  return year >= 1990 && year <= maxReasonableYear ? year : null;
 }
 
 function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniProfile[]): ChartDistributionItem[] {
@@ -124,13 +131,13 @@ function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniP
 
   alumni.forEach((profile) => {
     const gradeYear = extractYear(profile.grade);
-    if (!gradeYear) {
+    const cohortYear = extractYear(profile.cohort);
+    if (!gradeYear || !cohortYear) {
       return;
     }
     admissionCounts.set(gradeYear, (admissionCounts.get(gradeYear) || 0) + 1);
 
-    const cohortYear = extractYear(profile.cohort);
-    if (cohortYear && cohortYear - gradeYear === 3) {
+    if (cohortYear - gradeYear === 3) {
       normalGraduationCounts.set(cohortYear, (normalGraduationCounts.get(cohortYear) || 0) + 1);
     }
   });
@@ -143,6 +150,7 @@ function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniP
       const normalGraduates = cohortYear ? normalGraduationCounts.get(cohortYear) || 0 : 0;
 
       const graduationRate = admissionCount ? Number(((normalGraduates / admissionCount) * 100).toFixed(1)) : 0;
+      const rateUnavailable = !admissionCount;
 
       return {
         ...item,
@@ -150,13 +158,14 @@ function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniP
         admissionCount,
         cohortTotal: item.value,
         graduationRate,
+        rateUnavailable,
         rawValue: normalGraduates,
         value: graduationRate,
       };
     })
     .filter((item) => {
       const cohortYear = extractYear(item.name);
-      return Boolean(cohortYear && cohortYear < currentYear && item.admissionCount);
+      return Boolean(cohortYear && cohortYear < currentYear);
     });
 }
 
@@ -228,6 +237,7 @@ export function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverview>(emptyOverview);
   const [dimension, setDimension] = useState<DashboardDimension>('grade');
   const [mainDistribution, setMainDistribution] = useState<DistributionItem[]>([]);
+  const [mainDistributionDimension, setMainDistributionDimension] = useState<DashboardDimension>('grade');
   const [alumniFeed, setAlumniFeed] = useState<AlumniProfile[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<AlumniProfile[]>([]);
@@ -286,6 +296,7 @@ export function DashboardPage() {
 
         if (mainResult.status === 'fulfilled') {
           setMainDistribution(sortByNumericName(mainResult.value));
+          setMainDistributionDimension('grade');
         } else {
           message.error(mainResult.reason?.message || '主图数据加载失败');
         }
@@ -327,14 +338,32 @@ export function DashboardPage() {
   }, [alumniFeed.length, searchKeyword]);
 
   useEffect(() => {
+    let cancelled = false;
     setMainLoading(true);
+    setMainDistribution([]);
     dashboardApi
       .distribution(dimension)
       .then((items) => {
+        if (cancelled) {
+          return;
+        }
         setMainDistribution(dimension === 'grade' || dimension === 'cohort' ? sortByNumericName(items) : items);
+        setMainDistributionDimension(dimension);
       })
-      .catch((error: Error) => message.error(error.message || '分布数据加载失败'))
-      .finally(() => setMainLoading(false));
+      .catch((error: Error) => {
+        if (!cancelled) {
+          message.error(error.message || '分布数据加载失败');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setMainLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [dimension]);
 
   const accountRate = overview.total_alumni
@@ -362,13 +391,18 @@ export function DashboardPage() {
   const showLineChart = dimension === 'grade' || dimension === 'cohort';
   const isGraduationRateDimension = dimension === 'cohort';
   const chartDistribution = useMemo<ChartDistributionItem[]>(
-    () =>
-      isGraduationRateDimension
+    () => {
+      if (mainDistributionDimension !== dimension) {
+        return [];
+      }
+
+      return isGraduationRateDimension
         ? toGraduationRateDistribution(mainDistribution, allAlumniCache ?? alumniFeed)
-        : mainDistribution,
-    [allAlumniCache, alumniFeed, isGraduationRateDimension, mainDistribution],
+        : mainDistribution;
+    },
+    [allAlumniCache, alumniFeed, dimension, isGraduationRateDimension, mainDistribution, mainDistributionDimension],
   );
-  const chartBarData = useMemo<ChartDistributionItem[]>(
+  const chartCountData = useMemo<ChartDistributionItem[]>(
     () =>
       isGraduationRateDimension
         ? chartDistribution.map((item) => ({
@@ -379,6 +413,7 @@ export function DashboardPage() {
         : chartDistribution,
     [chartDistribution, isGraduationRateDimension],
   );
+  const chartBarData = chartCountData;
   const chartLineData = useMemo<ChartDistributionItem[]>(
     () =>
       isGraduationRateDimension
@@ -389,17 +424,7 @@ export function DashboardPage() {
         : chartDistribution,
     [chartDistribution, isGraduationRateDimension],
   );
-  const chartPieData = useMemo<ChartDistributionItem[]>(
-    () =>
-      isGraduationRateDimension
-        ? chartDistribution.map((item) => ({
-            ...item,
-            value: item.cohortTotal ?? 0,
-            graduationRate: item.graduationRate ?? item.value,
-          }))
-        : chartDistribution,
-    [chartDistribution, isGraduationRateDimension],
-  );
+  const chartPieData = chartCountData;
 
   const mainChartOption = useMemo(
     () => ({
@@ -417,10 +442,11 @@ export function DashboardPage() {
               const first = items[0] as { name?: string; data?: ChartDistributionItem } | undefined;
               const data = first?.data;
               const graduationRate = data?.graduationRate ?? data?.value ?? 0;
+              const rateText = data?.rateUnavailable ? '暂无匹配入学人数' : `${graduationRate}%`;
               return [
                 first?.name || '',
                 `该届总人数：${formatNumber(data?.cohortTotal ?? data?.value ?? 0)} 人`,
-                `毕业率：${graduationRate}%`,
+                `毕业率：${rateText}`,
                 `正常毕业人数：${formatNumber(data?.rawValue ?? 0)} 人`,
                 `对应入学年级：${data?.admissionGrade ?? '未匹配'}`,
                 `入学人数：${formatNumber(data?.admissionCount ?? 0)} 人`,
@@ -452,6 +478,7 @@ export function DashboardPage() {
             {
               type: 'value',
               name: '人数',
+              alignTicks: true,
               minInterval: 1,
               splitLine: { lineStyle: { color: splitLineColor } },
               axisLabel: { color: axisColor, fontSize: isCompactChart ? 11 : 12 },
@@ -460,6 +487,7 @@ export function DashboardPage() {
             {
               type: 'value',
               name: '毕业率',
+              alignTicks: true,
               min: 0,
               max: 100,
               splitLine: { show: false },
@@ -533,15 +561,19 @@ export function DashboardPage() {
         borderColor: '#2bcfff',
         textStyle: { color: '#e8f7ff' },
         formatter: isGraduationRateDimension
-          ? (params: { name?: string; data?: ChartDistributionItem }) =>
-              [
+          ? (params: { name?: string; data?: ChartDistributionItem }) => {
+              const rateText = params.data?.rateUnavailable
+                ? '暂无匹配入学人数'
+                : `${params.data?.graduationRate ?? 0}%`;
+              return [
                 params.name || '',
                 `该届总人数：${formatNumber(params.data?.cohortTotal ?? params.data?.value ?? 0)} 人`,
-                `毕业率：${params.data?.graduationRate ?? 0}%`,
+                `毕业率：${rateText}`,
                 `正常毕业人数：${formatNumber(params.data?.rawValue ?? 0)} 人`,
                 `对应入学年级：${params.data?.admissionGrade ?? '未匹配'}`,
                 `入学人数：${formatNumber(params.data?.admissionCount ?? 0)} 人`,
-              ].join('<br/>')
+              ].join('<br/>');
+            }
           : undefined,
       },
       legend: {
@@ -567,19 +599,10 @@ export function DashboardPage() {
             length2: isCompactChart ? 3 : 6,
             lineStyle: { color: 'rgba(195, 224, 255, 0.52)' },
           },
-          labelLayout: (params: { text?: string; labelRect?: { y: number } }) => {
-            const shouldLowerTopLabels =
-              isGraduationRateDimension &&
-              (params.text?.startsWith('2025\n') || params.text?.startsWith('2007\n'));
-
-            return {
+          labelLayout: () => ({
               hideOverlap: true,
               moveOverlap: 'shiftY',
-              ...(shouldLowerTopLabels && params.labelRect
-                ? { y: params.labelRect.y + (isCompactChart ? 8 : 12) }
-                : {}),
-            };
-          },
+          }),
           data: chartPieData,
         },
       ],
@@ -661,13 +684,8 @@ export function DashboardPage() {
       const field = dimensionFields[dimension];
       if (dimension === 'cohort') {
         const cohortYear = extractYear(value);
-        const admissionYear = cohortYear ? cohortYear - 3 : null;
         setDistributionAlumni(
-          profiles.filter(
-            (profile) =>
-              extractYear(profile.cohort) === cohortYear &&
-              extractYear(profile.grade) === admissionYear,
-          ),
+          profiles.filter((profile) => extractYear(profile.cohort) === cohortYear),
         );
         return;
       }
