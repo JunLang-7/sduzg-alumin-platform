@@ -1572,7 +1572,8 @@ button {
 }
 
 .data-screen-expanded-body .dashboard-chart-pie {
-  height: 64vh;
+  height: 58vh;
+  align-self: center;
 }
 
 .data-screen-expanded-body .alumni-feed {
