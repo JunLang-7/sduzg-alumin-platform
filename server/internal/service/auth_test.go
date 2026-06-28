@@ -12,6 +12,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -865,6 +866,86 @@ func TestAuthServiceSendVerifyCodeToEmailSuccess(t *testing.T) {
 	}
 }
 
+func TestAuthServiceSendVerifyCodeUsesMockWhenSMSDisabled(t *testing.T) {
+	verifyCode := &fakeVerifyCodeStore{}
+	svc := NewAuthService(nil, nil, nil, verifyCode, config.Config{
+		App:   config.AppConfig{Name: "test-api"},
+		Auth:  config.AuthConfig{JWTSecret: "test-secret"},
+		Email: config.EmailConfig{Enabled: true},
+	})
+
+	_, err := svc.SendVerifyCode(context.Background(), dto.VerifyCodeRequest{
+		Target:  "13800138000",
+		Purpose: "login",
+	})
+	if err != nil {
+		t.Fatalf("expected sms-disabled mock send success, got %v", err)
+	}
+	if verifyCode.savedCode != "888888" {
+		t.Fatalf("expected mock code 888888, got %q", verifyCode.savedCode)
+	}
+}
+
+func TestAuthServiceSendVerifyCodeUsesMockWhenSMSEnabledButIncomplete(t *testing.T) {
+	verifyCode := &fakeVerifyCodeStore{}
+	svc := NewAuthService(nil, nil, nil, verifyCode, config.Config{
+		App:  config.AppConfig{Name: "test-api"},
+		Auth: config.AuthConfig{JWTSecret: "test-secret"},
+		SMS:  config.SMSConfig{Enabled: true, SecretID: "secret-id"},
+	})
+
+	_, err := svc.SendVerifyCode(context.Background(), dto.VerifyCodeRequest{
+		Target:  "13800138000",
+		Purpose: "login",
+	})
+	if err != nil {
+		t.Fatalf("expected incomplete sms config to fall back to mock, got %v", err)
+	}
+	if verifyCode.savedCode != "888888" {
+		t.Fatalf("expected mock code 888888, got %q", verifyCode.savedCode)
+	}
+}
+
+func TestAuthServiceSendVerifyCodeUsesMockWhenEmailDisabled(t *testing.T) {
+	verifyCode := &fakeVerifyCodeStore{}
+	svc := NewAuthService(nil, nil, nil, verifyCode, config.Config{
+		App:  config.AppConfig{Name: "test-api"},
+		Auth: config.AuthConfig{JWTSecret: "test-secret"},
+		SMS:  config.SMSConfig{Enabled: true},
+	})
+
+	_, err := svc.SendVerifyCode(context.Background(), dto.VerifyCodeRequest{
+		Target:  "alumni@sdu.edu.cn",
+		Purpose: "login",
+	})
+	if err != nil {
+		t.Fatalf("expected email-disabled mock send success, got %v", err)
+	}
+	if verifyCode.savedCode != "888888" {
+		t.Fatalf("expected mock code 888888, got %q", verifyCode.savedCode)
+	}
+}
+
+func TestAuthServiceSendVerifyCodeUsesMockWhenEmailEnabledButIncomplete(t *testing.T) {
+	verifyCode := &fakeVerifyCodeStore{}
+	svc := NewAuthService(nil, nil, nil, verifyCode, config.Config{
+		App:   config.AppConfig{Name: "test-api"},
+		Auth:  config.AuthConfig{JWTSecret: "test-secret"},
+		Email: config.EmailConfig{Enabled: true, Host: "smtp.example.com", Port: 465},
+	})
+
+	_, err := svc.SendVerifyCode(context.Background(), dto.VerifyCodeRequest{
+		Target:  "alumni@sdu.edu.cn",
+		Purpose: "login",
+	})
+	if err != nil {
+		t.Fatalf("expected incomplete email config to fall back to mock, got %v", err)
+	}
+	if verifyCode.savedCode != "888888" {
+		t.Fatalf("expected mock code 888888, got %q", verifyCode.savedCode)
+	}
+}
+
 func TestEmailSenderMissingPasswordReturnsError(t *testing.T) {
 	sender := &EmailSender{
 		Host:     "smtp.example.com",
@@ -898,6 +979,117 @@ func TestEmailSenderInvalidPortReturnsError(t *testing.T) {
 	}
 }
 
+func TestSMSSenderMissingConfigReturnsError(t *testing.T) {
+	sender := &SMSSender{
+		SecretID: "secret-id",
+	}
+
+	err := sender.Send(context.Background(), "13800138000", "123456")
+	if err == nil {
+		t.Fatal("expected missing config error")
+	}
+	if !strings.Contains(err.Error(), "sms tencent secret key not configured") {
+		t.Fatalf("expected missing secret key error, got %v", err)
+	}
+}
+
+type fakeTencentSMSClient struct {
+	response *sms.SendSmsResponse
+	err      error
+	request  *sms.SendSmsRequest
+}
+
+func (c *fakeTencentSMSClient) SendSmsWithContext(_ context.Context, request *sms.SendSmsRequest) (*sms.SendSmsResponse, error) {
+	c.request = request
+	return c.response, c.err
+}
+
+func TestSMSSenderSendsTencentRequest(t *testing.T) {
+	client := &fakeTencentSMSClient{
+		response: &sms.SendSmsResponse{
+			Response: &sms.SendSmsResponseParams{
+				SendStatusSet: []*sms.SendStatus{
+					{Code: ptr("Ok")},
+				},
+			},
+		},
+	}
+	sender := &SMSSender{
+		SecretID:   "secret-id",
+		SecretKey:  "secret-key",
+		Region:     "ap-beijing",
+		AppID:      "1400000000",
+		SignName:   "山东大学政管学院",
+		TemplateID: "123456",
+		newClient: func() (tencentSMSClient, error) {
+			return client, nil
+		},
+	}
+
+	err := sender.Send(context.Background(), "13800138000", "654321")
+	if err != nil {
+		t.Fatalf("expected tencent sms send success, got %v", err)
+	}
+	if client.request == nil {
+		t.Fatal("expected request to be sent")
+	}
+	if got := *client.request.PhoneNumberSet[0]; got != "+8613800138000" {
+		t.Fatalf("expected normalized phone number, got %q", got)
+	}
+	if got := *client.request.TemplateParamSet[0]; got != "654321" {
+		t.Fatalf("expected template param code, got %q", got)
+	}
+}
+
+func TestSMSSenderReturnsTencentStatusError(t *testing.T) {
+	sender := &SMSSender{
+		SecretID:   "secret-id",
+		SecretKey:  "secret-key",
+		Region:     "ap-beijing",
+		AppID:      "1400000000",
+		SignName:   "山东大学政管学院",
+		TemplateID: "123456",
+		newClient: func() (tencentSMSClient, error) {
+			return &fakeTencentSMSClient{
+				response: &sms.SendSmsResponse{
+					Response: &sms.SendSmsResponseParams{
+						SendStatusSet: []*sms.SendStatus{
+							{Code: ptr("Failed"), Message: ptr("bad template")},
+						},
+					},
+				},
+			}, nil
+		},
+	}
+
+	err := sender.Send(context.Background(), "13800138000", "654321")
+	if err == nil {
+		t.Fatal("expected tencent status error")
+	}
+	if !strings.Contains(err.Error(), "Failed bad template") {
+		t.Fatalf("expected tencent status error, got %v", err)
+	}
+}
+
+func TestNormalizeChineseMainlandPhone(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"13800138000", "+8613800138000"},
+		{"+8613800138000", "+8613800138000"},
+		{"008613800138000", "+8613800138000"},
+		{" 13912345678 ", "+8613912345678"},
+		{"+85212345678", "+85212345678"},
+	}
+	for _, tc := range tests {
+		got := normalizeChineseMainlandPhone(tc.input)
+		if got != tc.expected {
+			t.Errorf("normalizeChineseMainlandPhone(%q) = %q; want %q", tc.input, got, tc.expected)
+		}
+	}
+}
+
 type failingCodeSender struct {
 	err error
 }
@@ -921,8 +1113,8 @@ func TestAuthServiceSendVerifyCodeReturnsSendError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected send error")
 	}
-	if !strings.Contains(err.Error(), "send verify code") {
-		t.Fatalf("expected send verify code error, got %v", err)
+	if !strings.Contains(err.Error(), "验证码发送失败") {
+		t.Fatalf("expected send failure message, got %v", err)
 	}
 }
 
@@ -1122,5 +1314,6 @@ func TestDetectLoginType(t *testing.T) {
 	}
 }
 
+//go:fix inline
 //go:fix inline
 func ptr[T any](v T) *T { return new(v) }
