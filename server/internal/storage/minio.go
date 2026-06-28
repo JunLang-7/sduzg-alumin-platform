@@ -17,7 +17,7 @@ import (
 type Client struct {
 	mc             *minio.Client
 	bucket         string
-	publicEndpoint string // 公开访问地址，生成预签名 URL 时替换 host；空则使用内部 endpoint
+	publicEndpoint string // 公开访问地址（仅 host[:port]，不含 scheme）；替换预签名 URL 的 host；空则使用内部 endpoint
 }
 
 // New 初始化 MinIO 客户端。如果存储未启用，返回 nil。
@@ -57,7 +57,7 @@ func New(cfg config.StorageConfig, log *zap.Logger) (*Client, error) {
 
 // PresignedPutURL 生成预签名上传 URL，客户端可用该 URL 直传文件到 MinIO。
 // expiry 为签名有效期，建议 5-15 分钟。
-// 若配置了 PublicEndpoint，URL 中的 host 会被替换为公开地址。
+// 若配置了 PublicEndpoint，URL 中的 host（含端口）会被替换为 publicEndpoint 的值。
 func (c *Client) PresignedPutURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
 	if c == nil || c.mc == nil {
 		return "", common.ErrStorageUnavailable
@@ -71,7 +71,7 @@ func (c *Client) PresignedPutURL(ctx context.Context, objectKey string, expiry t
 
 // PresignedGetURL 生成预签名下载 URL，客户端可用该 URL 直连 MinIO 下载文件。
 // expiry 为签名有效期，建议 5-15 分钟。
-// 若配置了 PublicEndpoint，URL 中的 host 会被替换为公开地址。
+// 若配置了 PublicEndpoint，URL 中的 host（含端口）会被替换为 publicEndpoint 的值。
 func (c *Client) PresignedGetURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
 	if c == nil || c.mc == nil {
 		return "", common.ErrStorageUnavailable
@@ -141,7 +141,7 @@ func (c *Client) DeleteByPrefix(ctx context.Context, prefix string) error {
 	return nil
 }
 
-// replaceEndpoint 将 URL 中的 host 替换为 publicEndpoint（完整 host[:port]）。
+// replaceEndpoint 将 URL 中的 host 替换为 publicEndpoint（仅 host[:port]，不含 scheme）。
 // publicEndpoint 为空时返回原 URL。
 func (c *Client) replaceEndpoint(rawURL string) string {
 	if c.publicEndpoint == "" {
