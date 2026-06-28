@@ -79,12 +79,13 @@ type AuthConfig struct {
 }
 
 type StorageConfig struct {
-	Enabled   bool
-	Endpoint  string
-	AccessKey string
-	SecretKey string
-	Bucket    string
-	UseSSL    bool
+	Enabled        bool
+	Endpoint       string
+	AccessKey      string
+	SecretKey      string
+	Bucket         string
+	UseSSL         bool
+	PublicEndpoint string // 浏览器可访问的公开地址，用于预签名 URL；为空时使用 Endpoint
 }
 
 type SMSConfig struct {
@@ -200,12 +201,13 @@ func Load() (Config, error) {
 			AccessTokenTTL: v.GetDuration("AUTH_ACCESS_TOKEN_TTL"),
 		},
 		Storage: StorageConfig{
-			Enabled:   v.GetBool("STORAGE_ENABLED"),
-			Endpoint:  v.GetString("STORAGE_ENDPOINT"),
-			AccessKey: v.GetString("STORAGE_ACCESS_KEY"),
-			SecretKey: v.GetString("STORAGE_SECRET_KEY"),
-			Bucket:    v.GetString("STORAGE_BUCKET"),
-			UseSSL:    v.GetBool("STORAGE_USE_SSL"),
+			Enabled:        v.GetBool("STORAGE_ENABLED"),
+			Endpoint:       v.GetString("STORAGE_ENDPOINT"),
+			AccessKey:      v.GetString("STORAGE_ACCESS_KEY"),
+			SecretKey:      v.GetString("STORAGE_SECRET_KEY"),
+			Bucket:         v.GetString("STORAGE_BUCKET"),
+			UseSSL:         v.GetBool("STORAGE_USE_SSL"),
+			PublicEndpoint: v.GetString("STORAGE_PUBLIC_ENDPOINT"),
 		},
 		SMS: SMSConfig{
 			Enabled:    v.GetBool("SMS_ENABLED"),
@@ -276,6 +278,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("STORAGE_SECRET_KEY", "minioadmin123")
 	v.SetDefault("STORAGE_BUCKET", "sdu-alumni-files")
 	v.SetDefault("STORAGE_USE_SSL", false)
+	v.SetDefault("STORAGE_PUBLIC_ENDPOINT", "")
 	v.SetDefault("SMS_ENABLED", false)
 	v.SetDefault("SMS_TENCENT_SECRET_ID", "")
 	v.SetDefault("SMS_TENCENT_SECRET_KEY", "")

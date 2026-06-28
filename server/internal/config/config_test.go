@@ -48,6 +48,9 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if cfg.SMS.Endpoint != "sms.tencentcloudapi.com" {
 		t.Fatalf("expected default sms endpoint, got %q", cfg.SMS.Endpoint)
 	}
+	if cfg.Storage.PublicEndpoint != "" {
+		t.Fatalf("expected default public endpoint to be empty, got %q", cfg.Storage.PublicEndpoint)
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -72,6 +75,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("SMS_TENCENT_SIGN_NAME", "山东大学政管学院")
 	t.Setenv("SMS_TENCENT_TEMPLATE_ID", "123456")
 	t.Setenv("SMS_TENCENT_ENDPOINT", "sms.tencentcloudapi.com")
+	t.Setenv("STORAGE_PUBLIC_ENDPOINT", "http://localhost:9000")
 
 	cfg, _ := Load()
 
@@ -116,6 +120,9 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.SMS.Region != "ap-shanghai" || cfg.SMS.AppID != "1400000000" || cfg.SMS.TemplateID != "123456" {
 		t.Fatalf("expected sms tencent overrides, got %#v", cfg.SMS)
+	}
+	if cfg.Storage.PublicEndpoint != "http://localhost:9000" {
+		t.Fatalf("expected storage public endpoint override, got %q", cfg.Storage.PublicEndpoint)
 	}
 }
 
@@ -181,6 +188,7 @@ func clearConfigEnv(t *testing.T) {
 		"STORAGE_SECRET_KEY",
 		"STORAGE_BUCKET",
 		"STORAGE_USE_SSL",
+		"STORAGE_PUBLIC_ENDPOINT",
 		"SMS_ENABLED",
 		"SMS_TENCENT_SECRET_ID",
 		"SMS_TENCENT_SECRET_KEY",
