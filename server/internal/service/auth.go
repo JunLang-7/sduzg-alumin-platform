@@ -17,6 +17,9 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/golang-jwt/jwt/v5"
+	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	"github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
+	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 	mail "github.com/wneessen/go-mail"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
@@ -44,15 +47,102 @@ type CodeSender interface {
 
 // SMSSender sends codes via SMS provider.
 type SMSSender struct {
-	APIKey       string
-	APISecret    string
-	SignName     string
-	TemplateCode string
+	SecretID   string
+	SecretKey  string
+	Region     string
+	AppID      string
+	SignName   string
+	TemplateID string
+	Endpoint   string
+
+	newClient func() (tencentSMSClient, error)
 }
 
-func (s *SMSSender) Send(_ context.Context, target, code string) error {
-	logger.Info("SMS not configured, skipping", zap.String("target", target))
+type tencentSMSClient interface {
+	SendSmsWithContext(ctx context.Context, request *sms.SendSmsRequest) (*sms.SendSmsResponse, error)
+}
+
+func (s *SMSSender) Send(ctx context.Context, target, code string) error {
+	if err := s.validate(); err != nil {
+		logger.Warn("SMS not configured", zap.String("target", target), zap.Error(err))
+		return err
+	}
+	client, err := s.client()
+	if err != nil {
+		return fmt.Errorf("create tencent sms client: %w", err)
+	}
+	request := sms.NewSendSmsRequest()
+	request.PhoneNumberSet = tccommon.StringPtrs([]string{normalizeChineseMainlandPhone(target)})
+	request.SmsSdkAppId = tccommon.StringPtr(s.AppID)
+	request.SignName = tccommon.StringPtr(s.SignName)
+	request.TemplateId = tccommon.StringPtr(s.TemplateID)
+	request.TemplateParamSet = tccommon.StringPtrs([]string{code})
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	resp, err := client.SendSmsWithContext(ctx, request)
+	if err != nil {
+		return fmt.Errorf("send tencent sms: %w", err)
+	}
+	if resp == nil || resp.Response == nil || len(resp.Response.SendStatusSet) == 0 {
+		return errors.New("send tencent sms: empty response")
+	}
+	status := resp.Response.SendStatusSet[0]
+	if status.Code == nil || *status.Code != "Ok" {
+		var message, codeValue string
+		if status.Message != nil {
+			message = *status.Message
+		}
+		if status.Code != nil {
+			codeValue = *status.Code
+		}
+		return fmt.Errorf("send tencent sms failed: %s %s", codeValue, message)
+	}
 	return nil
+}
+
+func (s *SMSSender) validate() error {
+	switch {
+	case strings.TrimSpace(s.SecretID) == "":
+		return errors.New("sms tencent secret id not configured")
+	case strings.TrimSpace(s.SecretKey) == "":
+		return errors.New("sms tencent secret key not configured")
+	case strings.TrimSpace(s.Region) == "":
+		return errors.New("sms tencent region not configured")
+	case strings.TrimSpace(s.AppID) == "":
+		return errors.New("sms tencent app id not configured")
+	case strings.TrimSpace(s.SignName) == "":
+		return errors.New("sms tencent sign name not configured")
+	case strings.TrimSpace(s.TemplateID) == "":
+		return errors.New("sms tencent template id not configured")
+	default:
+		return nil
+	}
+}
+
+func (s *SMSSender) client() (tencentSMSClient, error) {
+	if s.newClient != nil {
+		return s.newClient()
+	}
+	credential := tccommon.NewCredential(s.SecretID, s.SecretKey)
+	clientProfile := profile.NewClientProfile()
+	if strings.TrimSpace(s.Endpoint) != "" {
+		clientProfile.HttpProfile.Endpoint = strings.TrimSpace(s.Endpoint)
+	}
+	return sms.NewClient(credential, s.Region, clientProfile)
+}
+
+func normalizeChineseMainlandPhone(target string) string {
+	target = strings.TrimSpace(target)
+	target = strings.TrimPrefix(target, "00")
+	if strings.HasPrefix(target, "+") {
+		return target
+	}
+	if strings.HasPrefix(target, "86") {
+		return "+" + target
+	}
+	return "+86" + target
 }
 
 // EmailSender sends codes via SMTP.
@@ -65,19 +155,8 @@ type EmailSender struct {
 }
 
 func (s *EmailSender) Send(ctx context.Context, target, code string) error {
-	if s.Host == "" || s.Username == "" {
-		err := errors.New("email host or username not configured")
+	if err := s.validate(); err != nil {
 		logger.Warn("Email not configured", zap.String("target", target), zap.Error(err))
-		return err
-	}
-	if s.Password == "" {
-		err := errors.New("email password not configured")
-		logger.Warn("Email password not configured", zap.String("target", target), zap.Error(err))
-		return err
-	}
-	if s.Port < 1 || s.Port > 65535 {
-		err := fmt.Errorf("email port out of range: %d", s.Port)
-		logger.Warn("Email port not configured", zap.String("target", target), zap.Error(err))
 		return err
 	}
 	fromName := sanitizeMailHeader(s.FromName)
@@ -122,6 +201,21 @@ func (s *EmailSender) Send(ctx context.Context, target, code string) error {
 	return nil
 }
 
+func (s *EmailSender) validate() error {
+	switch {
+	case strings.TrimSpace(s.Host) == "":
+		return errors.New("email host not configured")
+	case strings.TrimSpace(s.Username) == "":
+		return errors.New("email username not configured")
+	case strings.TrimSpace(s.Password) == "":
+		return errors.New("email password not configured")
+	case s.Port < 1 || s.Port > 65535:
+		return fmt.Errorf("email port out of range: %d", s.Port)
+	default:
+		return nil
+	}
+}
+
 func buildEmailCodeBody(target, code string) string {
 	return fmt.Sprintf(`亲爱的 %s 先生/女士，
 
@@ -144,19 +238,80 @@ func sanitizeMailHeader(value string) string {
 type mockSender struct{}
 
 func (m *mockSender) Send(_ context.Context, target, code string) error {
-	logger.Info("Mock sender", zap.String("target", target))
+	logger.Info("Mock sender", zap.String("target", target), zap.String("code", code))
 	return nil
+}
+
+type routedCodeSender struct {
+	sms      CodeSender
+	email    CodeSender
+	fallback CodeSender
+}
+
+func (s *routedCodeSender) Send(ctx context.Context, target, code string) error {
+	switch {
+	case phoneRegex.MatchString(target):
+		if s.sms != nil {
+			return s.sms.Send(ctx, target, code)
+		}
+		if s.fallback != nil {
+			return s.fallback.Send(ctx, target, code)
+		}
+		return errors.New("sms sender not configured")
+	case emailRegex.MatchString(target):
+		if s.email != nil {
+			return s.email.Send(ctx, target, code)
+		}
+		if s.fallback != nil {
+			return s.fallback.Send(ctx, target, code)
+		}
+		return errors.New("email sender not configured")
+	default:
+		return common.ErrInvalidRequest
+	}
+}
+
+func (s *routedCodeSender) hasSender(isPhone, isEmail bool) bool {
+	switch {
+	case isPhone:
+		return s.sms != nil
+	case isEmail:
+		return s.email != nil
+	default:
+		return false
+	}
 }
 
 // resolveCodeSender returns the appropriate CodeSender based on config.
 func resolveCodeSender(cfg config.Config) CodeSender {
+	var smsSender CodeSender
+	var emailSender CodeSender
+	fallback := &mockSender{}
 	if cfg.Email.Enabled {
-		return &EmailSender{Host: cfg.Email.Host, Port: cfg.Email.Port, Username: cfg.Email.Username, Password: cfg.Email.Password, FromName: cfg.Email.FromName}
+		sender := &EmailSender{Host: cfg.Email.Host, Port: cfg.Email.Port, Username: cfg.Email.Username, Password: cfg.Email.Password, FromName: cfg.Email.FromName}
+		if err := sender.validate(); err != nil {
+			logger.Warn("Email sender disabled due to incomplete config", zap.Error(err))
+		} else {
+			emailSender = sender
+		}
 	}
 	if cfg.SMS.Enabled {
-		return &SMSSender{APIKey: cfg.SMS.APIKey, APISecret: cfg.SMS.APISecret, SignName: cfg.SMS.SignName, TemplateCode: cfg.SMS.TemplateCode}
+		sender := &SMSSender{
+			SecretID:   cfg.SMS.SecretID,
+			SecretKey:  cfg.SMS.SecretKey,
+			Region:     cfg.SMS.Region,
+			AppID:      cfg.SMS.AppID,
+			SignName:   cfg.SMS.SignName,
+			TemplateID: cfg.SMS.TemplateID,
+			Endpoint:   cfg.SMS.Endpoint,
+		}
+		if err := sender.validate(); err != nil {
+			logger.Warn("SMS sender disabled due to incomplete config", zap.Error(err))
+		} else {
+			smsSender = sender
+		}
 	}
-	return &mockSender{}
+	return &routedCodeSender{sms: smsSender, email: emailSender, fallback: fallback}
 }
 
 // AuthService handles authentication.
@@ -463,7 +618,7 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 		}
 	}
 
-	code := generateCode(s.cfg)
+	code := generateCode(s.cfg, s.codeSender, isPhone, isEmail)
 	if s.verifyCode != nil {
 		if err := s.verifyCode.Save(ctx, target, code); err != nil {
 			return nil, err
@@ -471,8 +626,8 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 	}
 
 	if err := s.codeSender.Send(ctx, target, code); err != nil {
-		logger.Warn("failed to send code", zap.Error(err))
-		return nil, fmt.Errorf("send verify code: %w", err)
+		logger.Warn("failed to send code", zap.String("target", target), zap.Error(err))
+		return nil, fmt.Errorf("验证码发送失败，请稍后重试")
 	}
 
 	return &dto.VerifyCodeResult{
@@ -481,9 +636,16 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, req dto.VerifyCodeRequ
 	}, nil
 }
 
-// generateCode returns "888888" when services are not configured, otherwise a random 6-digit code.
-func generateCode(cfg config.Config) string {
-	if !cfg.SMS.Enabled && !cfg.Email.Enabled {
+// generateCode returns "888888" when the target sender channel is not enabled,
+// otherwise a random 6-digit code.
+func generateCode(cfg config.Config, sender CodeSender, isPhone, isEmail bool) string {
+	if routed, ok := sender.(*routedCodeSender); ok && !routed.hasSender(isPhone, isEmail) {
+		return "888888"
+	}
+	if isPhone && !cfg.SMS.Enabled {
+		return "888888"
+	}
+	if isEmail && !cfg.Email.Enabled {
 		return "888888"
 	}
 	code, err := repository.GenerateRandomCode()

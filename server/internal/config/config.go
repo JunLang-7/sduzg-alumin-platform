@@ -88,11 +88,14 @@ type StorageConfig struct {
 }
 
 type SMSConfig struct {
-	Enabled      bool
-	APIKey       string
-	APISecret    string
-	SignName     string
-	TemplateCode string
+	Enabled    bool
+	SecretID   string
+	SecretKey  string
+	Region     string
+	AppID      string
+	SignName   string
+	TemplateID string
+	Endpoint   string
 }
 
 type EmailConfig struct {
@@ -205,11 +208,14 @@ func Load() (Config, error) {
 			UseSSL:    v.GetBool("STORAGE_USE_SSL"),
 		},
 		SMS: SMSConfig{
-			Enabled:      v.GetBool("SMS_ENABLED"),
-			APIKey:       v.GetString("SMS_API_KEY"),
-			APISecret:    v.GetString("SMS_API_SECRET"),
-			SignName:     v.GetString("SMS_SIGN_NAME"),
-			TemplateCode: v.GetString("SMS_TEMPLATE_CODE"),
+			Enabled:    v.GetBool("SMS_ENABLED"),
+			SecretID:   v.GetString("SMS_TENCENT_SECRET_ID"),
+			SecretKey:  v.GetString("SMS_TENCENT_SECRET_KEY"),
+			Region:     v.GetString("SMS_TENCENT_REGION"),
+			AppID:      v.GetString("SMS_TENCENT_APP_ID"),
+			SignName:   v.GetString("SMS_TENCENT_SIGN_NAME"),
+			TemplateID: v.GetString("SMS_TENCENT_TEMPLATE_ID"),
+			Endpoint:   v.GetString("SMS_TENCENT_ENDPOINT"),
 		},
 		Email: EmailConfig{
 			Enabled:  v.GetBool("EMAIL_ENABLED"),
@@ -271,10 +277,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("STORAGE_BUCKET", "sdu-alumni-files")
 	v.SetDefault("STORAGE_USE_SSL", false)
 	v.SetDefault("SMS_ENABLED", false)
-	v.SetDefault("SMS_API_KEY", "")
-	v.SetDefault("SMS_API_SECRET", "")
-	v.SetDefault("SMS_SIGN_NAME", "山东大学政管学院")
-	v.SetDefault("SMS_TEMPLATE_CODE", "")
+	v.SetDefault("SMS_TENCENT_SECRET_ID", "")
+	v.SetDefault("SMS_TENCENT_SECRET_KEY", "")
+	v.SetDefault("SMS_TENCENT_REGION", "ap-beijing")
+	v.SetDefault("SMS_TENCENT_APP_ID", "")
+	v.SetDefault("SMS_TENCENT_SIGN_NAME", "山东大学政管学院")
+	v.SetDefault("SMS_TENCENT_TEMPLATE_ID", "")
+	v.SetDefault("SMS_TENCENT_ENDPOINT", "sms.tencentcloudapi.com")
 	v.SetDefault("EMAIL_ENABLED", false)
 	v.SetDefault("EMAIL_HOST", "")
 	v.SetDefault("EMAIL_PORT", 465)

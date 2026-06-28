@@ -39,6 +39,15 @@ func TestLoadUsesDefaults(t *testing.T) {
 	if len(cfg.CORS.AllowedOrigins) != 0 {
 		t.Fatalf("expected no cors allowed origins by default, got %#v", cfg.CORS.AllowedOrigins)
 	}
+	if cfg.SMS.Enabled {
+		t.Fatal("expected sms to be disabled by default")
+	}
+	if cfg.SMS.Region != "ap-beijing" {
+		t.Fatalf("expected default sms region ap-beijing, got %q", cfg.SMS.Region)
+	}
+	if cfg.SMS.Endpoint != "sms.tencentcloudapi.com" {
+		t.Fatalf("expected default sms endpoint, got %q", cfg.SMS.Endpoint)
+	}
 }
 
 func TestLoadUsesEnvironmentOverrides(t *testing.T) {
@@ -55,6 +64,14 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("RATE_LIMIT_AUTH_RPM", "8")
 	t.Setenv("CORS_ENABLED", "true")
 	t.Setenv("CORS_ALLOWED_ORIGINS", "http://127.0.0.1:5173, https://h5.example.com")
+	t.Setenv("SMS_ENABLED", "true")
+	t.Setenv("SMS_TENCENT_SECRET_ID", "secret-id")
+	t.Setenv("SMS_TENCENT_SECRET_KEY", "secret-key")
+	t.Setenv("SMS_TENCENT_REGION", "ap-shanghai")
+	t.Setenv("SMS_TENCENT_APP_ID", "1400000000")
+	t.Setenv("SMS_TENCENT_SIGN_NAME", "山东大学政管学院")
+	t.Setenv("SMS_TENCENT_TEMPLATE_ID", "123456")
+	t.Setenv("SMS_TENCENT_ENDPOINT", "sms.tencentcloudapi.com")
 
 	cfg, _ := Load()
 
@@ -90,6 +107,15 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	}
 	if len(cfg.CORS.AllowedOrigins) != 2 || cfg.CORS.AllowedOrigins[0] != "http://127.0.0.1:5173" || cfg.CORS.AllowedOrigins[1] != "https://h5.example.com" {
 		t.Fatalf("expected cors allowed origins override, got %#v", cfg.CORS.AllowedOrigins)
+	}
+	if !cfg.SMS.Enabled {
+		t.Fatal("expected sms override to enable sms")
+	}
+	if cfg.SMS.SecretID != "secret-id" || cfg.SMS.SecretKey != "secret-key" {
+		t.Fatalf("expected sms secret overrides, got %#v", cfg.SMS)
+	}
+	if cfg.SMS.Region != "ap-shanghai" || cfg.SMS.AppID != "1400000000" || cfg.SMS.TemplateID != "123456" {
+		t.Fatalf("expected sms tencent overrides, got %#v", cfg.SMS)
 	}
 }
 
@@ -149,6 +175,26 @@ func clearConfigEnv(t *testing.T) {
 		"REDIS_WRITE_TIMEOUT",
 		"AUTH_JWT_SECRET",
 		"AUTH_ACCESS_TOKEN_TTL",
+		"STORAGE_ENABLED",
+		"STORAGE_ENDPOINT",
+		"STORAGE_ACCESS_KEY",
+		"STORAGE_SECRET_KEY",
+		"STORAGE_BUCKET",
+		"STORAGE_USE_SSL",
+		"SMS_ENABLED",
+		"SMS_TENCENT_SECRET_ID",
+		"SMS_TENCENT_SECRET_KEY",
+		"SMS_TENCENT_REGION",
+		"SMS_TENCENT_APP_ID",
+		"SMS_TENCENT_SIGN_NAME",
+		"SMS_TENCENT_TEMPLATE_ID",
+		"SMS_TENCENT_ENDPOINT",
+		"EMAIL_ENABLED",
+		"EMAIL_HOST",
+		"EMAIL_PORT",
+		"EMAIL_USERNAME",
+		"EMAIL_PASSWORD",
+		"EMAIL_FROM_NAME",
 		"RATE_LIMIT_ENABLED",
 		"RATE_LIMIT_GLOBAL_RPM",
 		"RATE_LIMIT_AUTH_RPM",
