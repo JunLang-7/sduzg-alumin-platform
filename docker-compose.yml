@@ -118,6 +118,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://localhost:80,http://127.0.0.1:80,http://localhost:5173"
     ports:
       - "${MINIO_API_HOST_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
@@ -128,20 +129,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-
-  minio-setup:
-    image: minio/mc:latest
-    container_name: sdu-alumni-minio-setup
-    depends_on:
-      minio:
-        condition: service_healthy
-    entrypoint: >
-      /bin/sh -c "
-        echo 'Configuring MinIO CORS...' &&
-        mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin123} &&
-        mc admin config set myminio api cors_allow_origin='http://localhost:80,http://127.0.0.1:80,http://localhost:5173' &&
-        echo 'CORS configured (restart minio container to apply)'
-      "
 
 volumes:
   mysql_data:

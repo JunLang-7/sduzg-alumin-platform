@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"time"
 
@@ -142,6 +143,7 @@ func (c *Client) DeleteByPrefix(ctx context.Context, prefix string) error {
 }
 
 // replaceEndpoint 将 URL 中的 host 替换为公开地址。
+// publicEndpoint 格式为 "host" 或 "host:port"；若不含端口则保留原 URL 的端口。
 // 如果 publicEndpoint 为空或 rawURL 解析失败，返回原 URL。
 func (c *Client) replaceEndpoint(rawURL string) string {
 	if c.publicEndpoint == "" {
@@ -151,6 +153,17 @@ func (c *Client) replaceEndpoint(rawURL string) string {
 	if err != nil {
 		return rawURL
 	}
-	parsed.Host = c.publicEndpoint
+	// 替换 host，保留原 URL 的端口（若 publicEndpoint 未指定端口）
+	host := c.publicEndpoint
+	if _, _, err := net.SplitHostPort(host); err != nil {
+		// publicEndpoint 不含端口，保留原 URL 的端口
+		if _, _, origErr := net.SplitHostPort(parsed.Host); origErr == nil {
+			origHost, origPort, _ := net.SplitHostPort(parsed.Host)
+			if origHost != "" {
+				host = net.JoinHostPort(host, origPort)
+			}
+		}
+	}
+	parsed.Host = host
 	return parsed.String()
 }
