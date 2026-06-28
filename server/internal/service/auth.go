@@ -73,9 +73,9 @@ func (s *SMSSender) Send(ctx context.Context, target, code string) error {
 	}
 	request := sms.NewSendSmsRequest()
 	request.PhoneNumberSet = tccommon.StringPtrs([]string{normalizeChineseMainlandPhone(target)})
-	request.SmsSdkAppId = tccommon.StringPtr(s.AppID)
-	request.SignName = tccommon.StringPtr(s.SignName)
-	request.TemplateId = tccommon.StringPtr(s.TemplateID)
+	request.SmsSdkAppId = new(s.AppID)
+	request.SignName = new(s.SignName)
+	request.TemplateId = new(s.TemplateID)
 	request.TemplateParamSet = tccommon.StringPtrs([]string{code})
 
 	if ctx == nil {
