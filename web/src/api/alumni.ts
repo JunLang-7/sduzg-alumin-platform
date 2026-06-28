@@ -12,6 +12,11 @@ import type {
   MyProfilePayload,
 } from '../types/alumni';
 
+const toSameOriginStorageURL = (presignedURL: string) => {
+  const url = new URL(presignedURL, window.location.origin);
+  return `${url.pathname}${url.search}`;
+};
+
 export const alumniApi = {
   list(params: AlumniQuery) {
     return request<PageResult<AlumniProfile>>({
@@ -104,8 +109,8 @@ export const alumniApi = {
       },
     });
 
-    // 2. 客户端直传 MinIO
-    const putResp = await fetch(upload_url, {
+    // 2. 通过当前站点的 Nginx 代理直传 MinIO，避免公开地址和 CORS 配置不一致
+    const putResp = await fetch(toSameOriginStorageURL(upload_url), {
       method: 'PUT',
       body: file,
       headers: { 'Content-Type': file.type || 'application/octet-stream' },
@@ -143,7 +148,7 @@ export const alumniApi = {
       url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
     });
     // 通过 fetch 获取文件再创建 blob URL 下载，绕过弹窗拦截且保证下载行为
-    const fileResp = await fetch(download_url);
+    const fileResp = await fetch(toSameOriginStorageURL(download_url));
     if (!fileResp.ok) {
       throw new Error(`下载失败: ${fileResp.status}`);
     }
@@ -161,7 +166,7 @@ export const alumniApi = {
       method: 'GET',
       url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
     });
-    return download_url;
+    return toSameOriginStorageURL(download_url);
   },
 
   exportData(params: AlumniQuery & { format?: string }) {
