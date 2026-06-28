@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -14,8 +15,9 @@ import (
 
 // Client 封装 MinIO 客户端，提供文件的上传、下载、删除操作。
 type Client struct {
-	mc     *minio.Client
-	bucket string
+	mc             *minio.Client
+	bucket         string
+	publicEndpoint string // 公开访问地址（仅 host[:port]，不含 scheme）；替换预签名 URL 的 host；空则使用内部 endpoint
 }
 
 // New 初始化 MinIO 客户端。如果存储未启用，返回 nil。
@@ -50,33 +52,35 @@ func New(cfg config.StorageConfig, log *zap.Logger) (*Client, error) {
 		zap.String("endpoint", cfg.Endpoint),
 		zap.String("bucket", cfg.Bucket),
 	)
-	return &Client{mc: mc, bucket: cfg.Bucket}, nil
+	return &Client{mc: mc, bucket: cfg.Bucket, publicEndpoint: cfg.PublicEndpoint}, nil
 }
 
 // PresignedPutURL 生成预签名上传 URL，客户端可用该 URL 直传文件到 MinIO。
 // expiry 为签名有效期，建议 5-15 分钟。
+// 若配置了 PublicEndpoint，URL 中的 host（含端口）会被替换为 publicEndpoint 的值。
 func (c *Client) PresignedPutURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
 	if c == nil || c.mc == nil {
 		return "", common.ErrStorageUnavailable
 	}
-	url, err := c.mc.PresignedPutObject(ctx, c.bucket, objectKey, expiry)
+	u, err := c.mc.PresignedPutObject(ctx, c.bucket, objectKey, expiry)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned put url: %w", err)
 	}
-	return url.String(), nil
+	return c.replaceEndpoint(u.String()), nil
 }
 
 // PresignedGetURL 生成预签名下载 URL，客户端可用该 URL 直连 MinIO 下载文件。
 // expiry 为签名有效期，建议 5-15 分钟。
+// 若配置了 PublicEndpoint，URL 中的 host（含端口）会被替换为 publicEndpoint 的值。
 func (c *Client) PresignedGetURL(ctx context.Context, objectKey string, expiry time.Duration) (string, error) {
 	if c == nil || c.mc == nil {
 		return "", common.ErrStorageUnavailable
 	}
-	url, err := c.mc.PresignedGetObject(ctx, c.bucket, objectKey, expiry, nil)
+	u, err := c.mc.PresignedGetObject(ctx, c.bucket, objectKey, expiry, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate presigned get url: %w", err)
 	}
-	return url.String(), nil
+	return c.replaceEndpoint(u.String()), nil
 }
 
 // StatObject 获取 MinIO 对象元信息，用于确认上传确实完成。
@@ -135,4 +139,18 @@ func (c *Client) DeleteByPrefix(ctx context.Context, prefix string) error {
 		}
 	}
 	return nil
+}
+
+// replaceEndpoint 将 URL 中的 host 替换为 publicEndpoint（仅 host[:port]，不含 scheme）。
+// publicEndpoint 为空时返回原 URL。
+func (c *Client) replaceEndpoint(rawURL string) string {
+	if c.publicEndpoint == "" {
+		return rawURL
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+	parsed.Host = c.publicEndpoint
+	return parsed.String()
 }

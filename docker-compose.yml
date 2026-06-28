@@ -74,6 +74,7 @@ services:
       STORAGE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       STORAGE_BUCKET: sdu-alumni-files
       STORAGE_USE_SSL: "false"
+      STORAGE_PUBLIC_ENDPOINT: localhost
       SMS_ENABLED: ${SMS_ENABLED:-false}
       SMS_TENCENT_SECRET_ID: ${SMS_TENCENT_SECRET_ID:-}
       SMS_TENCENT_SECRET_KEY: ${SMS_TENCENT_SECRET_KEY:-}
@@ -117,6 +118,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+      MINIO_API_CORS_ALLOW_ORIGIN: "http://localhost,http://127.0.0.1,http://localhost:5173"
     ports:
       - "${MINIO_API_HOST_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"
