@@ -98,6 +98,10 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat('zh-CN').format(value);
 }
 
+function formatPercentValue(value?: number) {
+  return (Number.isFinite(value) ? Number(value).toFixed(2) : '0.00') + '%';
+}
+
 function formatText(value?: string) {
   return value && value.trim() ? value : '未填';
 }
@@ -149,7 +153,7 @@ function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniP
       const admissionCount = admissionYear ? admissionCounts.get(admissionYear) || 0 : 0;
       const normalGraduates = cohortYear ? normalGraduationCounts.get(cohortYear) || 0 : 0;
 
-      const graduationRate = admissionCount ? Number(((normalGraduates / admissionCount) * 100).toFixed(1)) : 0;
+      const graduationRate = admissionCount ? Number(((normalGraduates / admissionCount) * 100).toFixed(2)) : 0;
       const rateUnavailable = !admissionCount;
 
       return {
@@ -442,7 +446,7 @@ export function DashboardPage() {
               const first = items[0] as { name?: string; data?: ChartDistributionItem } | undefined;
               const data = first?.data;
               const graduationRate = data?.graduationRate ?? data?.value ?? 0;
-              const rateText = data?.rateUnavailable ? '暂无匹配入学人数' : `${graduationRate}%`;
+              const rateText = data?.rateUnavailable ? '暂无匹配入学人数' : formatPercentValue(graduationRate);
               return [
                 first?.name || '',
                 `该届总人数：${formatNumber(data?.cohortTotal ?? data?.value ?? 0)} 人`,
@@ -494,7 +498,7 @@ export function DashboardPage() {
               axisLabel: {
                 color: axisColor,
                 fontSize: isCompactChart ? 11 : 12,
-                formatter: '{value}%',
+                formatter: (value: number) => formatPercentValue(value),
               },
               nameTextStyle: { color: axisColor, fontSize: isCompactChart ? 10 : 11 },
             },
@@ -564,7 +568,7 @@ export function DashboardPage() {
           ? (params: { name?: string; data?: ChartDistributionItem }) => {
               const rateText = params.data?.rateUnavailable
                 ? '暂无匹配入学人数'
-                : `${params.data?.graduationRate ?? 0}%`;
+                : formatPercentValue(params.data?.graduationRate ?? 0);
               return [
                 params.name || '',
                 `该届总人数：${formatNumber(params.data?.cohortTotal ?? params.data?.value ?? 0)} 人`,
@@ -589,7 +593,7 @@ export function DashboardPage() {
           label: {
             color: '#eaf7ff',
             formatter: (params: { name: string; percent?: number; value?: number }) =>
-              (params.percent || 0) >= 2 ? `${params.name}\n${params.percent}%` : '',
+              (params.percent || 0) >= 2 ? `${params.name}\n${formatPercentValue(params.percent ?? 0)}` : '',
             fontWeight: 800,
             fontSize: isCompactChart ? 9 : 10,
             distanceToLabelLine: 3,
