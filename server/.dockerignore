@@ -1,0 +1,31 @@
+# Local configuration and secrets
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+secrets/
+**/secrets/
+credentials/
+**/credentials/
+*.pem
+**/*.pem
+*.key
+**/*.key
+*.p12
+**/*.p12
+*.pfx
+**/*.pfx
+
+# Local and generated files
+.DS_Store
+tmp/
+bin/
+coverage/
+coverage.out
+*.log
+
+# Repository metadata
+.git/
+.gitignore
