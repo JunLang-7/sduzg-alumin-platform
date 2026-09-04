@@ -194,7 +194,7 @@ func TestAlumniServiceUpdateNormalizesAndMapsDetail(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil, nil)
 
-	detail, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
+	detail, err := svc.Update(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleAdmin}, 9, dto.AdminAlumniUpdateRequest{
 		Name:      " 张三 ",
 		Grade:     " 2020级 ",
 		ClassName: &className,
@@ -236,7 +236,7 @@ func TestAlumniServiceUpdatePreservesEmptyOptionalFields(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil, nil)
 
-	_, err := svc.Update(context.Background(), 7, 9, dto.AdminAlumniUpdateRequest{
+	_, err := svc.Update(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleAdmin}, 9, dto.AdminAlumniUpdateRequest{
 		Name:      "张三",
 		Grade:     "2020级",
 		ClassName: &className,
@@ -474,17 +474,9 @@ func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 			Status: "active",
 		},
 	}
-	users := &fakeUserStore{
-		user: &model.User{
-			ID:       3,
-			Role:     common.RoleAlumni,
-			AlumniID: &alumniID,
-			Status:   common.UserStatusActive,
-		},
-	}
-	svc := NewAlumniService(store, users, nil)
+	svc := NewAlumniService(store, nil, nil)
 
-	detail, err := svc.GetMe(context.Background(), 3)
+	detail, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni, AlumniID: &alumniID})
 	if err != nil {
 		t.Fatalf("expected me success, got %v", err)
 	}
@@ -496,37 +488,21 @@ func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 	}
 }
 
-func TestAlumniServiceGetMeRejectsNonAlumniUser(t *testing.T) {
-	users := &fakeUserStore{
-		user: &model.User{
-			ID:     3,
-			Role:   common.RoleAdmin,
-			Status: common.UserStatusActive,
-		},
-	}
-	svc := NewAlumniService(&fakeAlumniStore{}, users, nil)
+func TestAlumniServiceGetMeRejectsNonAlumniAccess(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil, nil)
 
-	_, err := svc.GetMe(context.Background(), 3)
+	_, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAdmin})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected permission denied, got %v", err)
 	}
 }
 
-func TestAlumniServiceGetMeRejectsDisabledUser(t *testing.T) {
-	alumniID := uint64(9)
-	users := &fakeUserStore{
-		user: &model.User{
-			ID:       3,
-			Role:     common.RoleAlumni,
-			AlumniID: &alumniID,
-			Status:   "disabled",
-		},
-	}
-	svc := NewAlumniService(&fakeAlumniStore{}, users, nil)
+func TestAlumniServiceGetMeRejectsUnboundAlumniAccess(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil, nil)
 
-	_, err := svc.GetMe(context.Background(), 3)
-	if err != common.ErrAccountDisabled {
-		t.Fatalf("expected account disabled, got %v", err)
+	_, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni})
+	if err != common.ErrAlumniProfileUnbound {
+		t.Fatalf("expected alumni profile unbound, got %v", err)
 	}
 }
 
@@ -543,17 +519,9 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 			Status: "active",
 		},
 	}
-	users := &fakeUserStore{
-		user: &model.User{
-			ID:       3,
-			Role:     common.RoleAlumni,
-			AlumniID: &alumniID,
-			Status:   common.UserStatusActive,
-		},
-	}
-	svc := NewAlumniService(store, users, nil)
+	svc := NewAlumniService(store, nil, nil)
 
-	_, err := svc.UpdateMe(context.Background(), 3, dto.AlumniProfileUpdateRequest{
+	_, err := svc.UpdateMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni, AlumniID: &alumniID}, dto.AlumniProfileUpdateRequest{
 		WorkUnit: &workUnit,
 		Position: &position,
 		Mobile:   &mobile,
