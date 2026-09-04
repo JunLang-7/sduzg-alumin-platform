@@ -301,13 +301,18 @@ func (r *AlumniRepository) defaultMPADataDomainID(ctx context.Context) (uint64, 
 		Where(qs.Code.Eq(common.DataDomainMPA), qs.Status.Eq(common.DataDomainStatusActive)).
 		First(&domain).
 		Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return 0, common.ErrInvalidRequest
-	}
 	if err != nil {
-		return 0, err
+		return 0, mapDataDomainLookupError(err)
 	}
 	return domain.ID, nil
+}
+
+// mapDataDomainLookupError 将缺失的数据域转换为明确的系统配置错误。
+func mapDataDomainLookupError(err error) error {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return common.ErrDataDomainNotFound
+	}
+	return err
 }
 
 // FindExistingByDedupKey 批量查询已存在的 (姓名, 年级, 班级, 届数, 手机号) 组合，返回 key 集合用于去重。
