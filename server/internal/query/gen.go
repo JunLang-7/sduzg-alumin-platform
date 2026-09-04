@@ -17,32 +17,41 @@ import (
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:            db,
-		AlumniFile:    newAlumniFile(db, opts...),
-		AlumniProfile: newAlumniProfile(db, opts...),
-		OperationLog:  newOperationLog(db, opts...),
-		User:          newUser(db, opts...),
+		db:              db,
+		AdminDataScope:  newAdminDataScope(db, opts...),
+		AdminPermission: newAdminPermission(db, opts...),
+		AlumniFile:      newAlumniFile(db, opts...),
+		AlumniProfile:   newAlumniProfile(db, opts...),
+		DataDomain:      newDataDomain(db, opts...),
+		OperationLog:    newOperationLog(db, opts...),
+		User:            newUser(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	AlumniFile    alumniFile
-	AlumniProfile alumniProfile
-	OperationLog  operationLog
-	User          user
+	AdminDataScope  adminDataScope
+	AdminPermission adminPermission
+	AlumniFile      alumniFile
+	AlumniProfile   alumniProfile
+	DataDomain      dataDomain
+	OperationLog    operationLog
+	User            user
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:            db,
-		AlumniFile:    q.AlumniFile.clone(db),
-		AlumniProfile: q.AlumniProfile.clone(db),
-		OperationLog:  q.OperationLog.clone(db),
-		User:          q.User.clone(db),
+		db:              db,
+		AdminDataScope:  q.AdminDataScope.clone(db),
+		AdminPermission: q.AdminPermission.clone(db),
+		AlumniFile:      q.AlumniFile.clone(db),
+		AlumniProfile:   q.AlumniProfile.clone(db),
+		DataDomain:      q.DataDomain.clone(db),
+		OperationLog:    q.OperationLog.clone(db),
+		User:            q.User.clone(db),
 	}
 }
 
@@ -56,27 +65,36 @@ func (q *Query) WriteDB() *Query {
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:            db,
-		AlumniFile:    q.AlumniFile.replaceDB(db),
-		AlumniProfile: q.AlumniProfile.replaceDB(db),
-		OperationLog:  q.OperationLog.replaceDB(db),
-		User:          q.User.replaceDB(db),
+		db:              db,
+		AdminDataScope:  q.AdminDataScope.replaceDB(db),
+		AdminPermission: q.AdminPermission.replaceDB(db),
+		AlumniFile:      q.AlumniFile.replaceDB(db),
+		AlumniProfile:   q.AlumniProfile.replaceDB(db),
+		DataDomain:      q.DataDomain.replaceDB(db),
+		OperationLog:    q.OperationLog.replaceDB(db),
+		User:            q.User.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	AlumniFile    *alumniFileDo
-	AlumniProfile *alumniProfileDo
-	OperationLog  *operationLogDo
-	User          *userDo
+	AdminDataScope  *adminDataScopeDo
+	AdminPermission *adminPermissionDo
+	AlumniFile      *alumniFileDo
+	AlumniProfile   *alumniProfileDo
+	DataDomain      *dataDomainDo
+	OperationLog    *operationLogDo
+	User            *userDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		AlumniFile:    q.AlumniFile.WithContext(ctx),
-		AlumniProfile: q.AlumniProfile.WithContext(ctx),
-		OperationLog:  q.OperationLog.WithContext(ctx),
-		User:          q.User.WithContext(ctx),
+		AdminDataScope:  q.AdminDataScope.WithContext(ctx),
+		AdminPermission: q.AdminPermission.WithContext(ctx),
+		AlumniFile:      q.AlumniFile.WithContext(ctx),
+		AlumniProfile:   q.AlumniProfile.WithContext(ctx),
+		DataDomain:      q.DataDomain.WithContext(ctx),
+		OperationLog:    q.OperationLog.WithContext(ctx),
+		User:            q.User.WithContext(ctx),
 	}
 }
 

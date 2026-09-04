@@ -214,8 +214,13 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 	if profile == nil {
 		return nil, common.ErrInvalidRequest
 	}
+	dataDomainID, err := r.defaultMPADataDomainID(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	item := &model.AlumniProfile{
+		DataDomainID:   dataDomainID,
 		Name:           profile.Name,
 		Grade:          profile.Grade,
 		ClassName:      profile.ClassName,
@@ -252,11 +257,16 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	if len(profiles) == 0 {
 		return nil
 	}
+	dataDomainID, err := r.defaultMPADataDomainID(ctx)
+	if err != nil {
+		return err
+	}
 
 	items := make([]*model.AlumniProfile, 0, len(profiles))
 	for i := range profiles {
 		p := profiles[i]
 		items = append(items, &model.AlumniProfile{
+			DataDomainID:   dataDomainID,
 			Name:           p.Name,
 			Grade:          p.Grade,
 			ClassName:      p.ClassName,
@@ -280,6 +290,29 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	}
 
 	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
+}
+
+// defaultMPADataDomainID 为当前尚未传入数据域的历史写入路径提供兼容默认值。
+// 后续数据域授权功能会在调用仓储前显式校验并传入目标数据域。
+func (r *AlumniRepository) defaultMPADataDomainID(ctx context.Context) (uint64, error) {
+	qs := query.Use(r.db).DataDomain
+	var domain model.DataDomain
+	err := r.db.WithContext(ctx).
+		Where(qs.Code.Eq(common.DataDomainMPA), qs.Status.Eq(common.DataDomainStatusActive)).
+		First(&domain).
+		Error
+	if err != nil {
+		return 0, mapDataDomainLookupError(err)
+	}
+	return domain.ID, nil
+}
+
+// mapDataDomainLookupError 将不可用的数据域转换为明确的系统配置错误。
+func mapDataDomainLookupError(err error) error {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return common.ErrDataDomainUnavailable
+	}
+	return err
 }
 
 // FindExistingByDedupKey 批量查询已存在的 (姓名, 年级, 班级, 届数, 手机号) 组合，返回 key 集合用于去重。

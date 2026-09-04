@@ -28,6 +28,7 @@ func newAlumniProfile(db *gorm.DB, opts ...gen.DOOption) alumniProfile {
 	tableName := _alumniProfile.alumniProfileDo.TableName()
 	_alumniProfile.ALL = field.NewAsterisk(tableName)
 	_alumniProfile.ID = field.NewUint64(tableName, "id")
+	_alumniProfile.DataDomainID = field.NewUint64(tableName, "data_domain_id")
 	_alumniProfile.Name = field.NewString(tableName, "name")
 	_alumniProfile.Grade = field.NewString(tableName, "grade")
 	_alumniProfile.ClassName = field.NewString(tableName, "class_name")
@@ -62,6 +63,7 @@ type alumniProfile struct {
 
 	ALL            field.Asterisk
 	ID             field.Uint64
+	DataDomainID   field.Uint64 // alumni data domain id
 	Name           field.String // name
 	Grade          field.String // grade
 	ClassName      field.String // class
@@ -101,6 +103,7 @@ func (a alumniProfile) As(alias string) *alumniProfile {
 func (a *alumniProfile) updateTableName(table string) *alumniProfile {
 	a.ALL = field.NewAsterisk(table)
 	a.ID = field.NewUint64(table, "id")
+	a.DataDomainID = field.NewUint64(table, "data_domain_id")
 	a.Name = field.NewString(table, "name")
 	a.Grade = field.NewString(table, "grade")
 	a.ClassName = field.NewString(table, "class_name")
@@ -151,8 +154,9 @@ func (a *alumniProfile) GetFieldByName(fieldName string) (field.OrderExpr, bool)
 }
 
 func (a *alumniProfile) fillFieldMap() {
-	a.fieldMap = make(map[string]field.Expr, 23)
+	a.fieldMap = make(map[string]field.Expr, 24)
 	a.fieldMap["id"] = a.ID
+	a.fieldMap["data_domain_id"] = a.DataDomainID
 	a.fieldMap["name"] = a.Name
 	a.fieldMap["grade"] = a.Grade
 	a.fieldMap["class_name"] = a.ClassName
