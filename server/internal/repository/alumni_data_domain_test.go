@@ -11,8 +11,8 @@ import (
 func TestMapDataDomainLookupError(t *testing.T) {
 	t.Parallel()
 
-	if err := mapDataDomainLookupError(gorm.ErrRecordNotFound); !errors.Is(err, common.ErrDataDomainNotFound) {
-		t.Fatalf("mapDataDomainLookupError(record not found) = %v, want ErrDataDomainNotFound", err)
+	if err := mapDataDomainLookupError(gorm.ErrRecordNotFound); !errors.Is(err, common.ErrDataDomainUnavailable) {
+		t.Fatalf("mapDataDomainLookupError(record not found) = %v, want ErrDataDomainUnavailable", err)
 	}
 
 	databaseErr := errors.New("database query failed")

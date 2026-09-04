@@ -307,10 +307,10 @@ func (r *AlumniRepository) defaultMPADataDomainID(ctx context.Context) (uint64, 
 	return domain.ID, nil
 }
 
-// mapDataDomainLookupError 将缺失的数据域转换为明确的系统配置错误。
+// mapDataDomainLookupError 将不可用的数据域转换为明确的系统配置错误。
 func mapDataDomainLookupError(err error) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return common.ErrDataDomainNotFound
+		return common.ErrDataDomainUnavailable
 	}
 	return err
 }
