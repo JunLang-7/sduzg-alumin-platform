@@ -63,7 +63,7 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -93,7 +93,7 @@ func TestImportKeepsRowsWithDifferentMobile(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -120,7 +120,7 @@ func TestImportDeduplicatesRowsWithSameMobile(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestImportDeduplicatesRowsWithPaddedMobile(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -174,7 +174,7 @@ func TestImportDeduplicatesRowsWithEmptyMobile(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -202,7 +202,7 @@ func TestImportPartialErrors(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {
@@ -227,7 +227,7 @@ func TestImportEmptyFile(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	_, err = svc.Import(context.Background(), 1, reader)
 	if err == nil {
@@ -243,7 +243,7 @@ func TestImportHeaderMismatch(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	_, err = svc.Import(context.Background(), 1, reader)
 	if err == nil {
@@ -259,7 +259,7 @@ func TestImportDatabaseUnavailable(t *testing.T) {
 		t.Fatalf("failed to build xlsx: %v", err)
 	}
 
-	svc := NewAlumniService(nil, nil, nil)
+	svc := NewAlumniService(nil, nil)
 
 	_, err = svc.Import(context.Background(), 1, reader)
 	if err != common.ErrDatabaseUnavailable {
@@ -333,7 +333,7 @@ func TestImportResultErrorsIncludeRowNumbers(t *testing.T) {
 	}
 
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Import(context.Background(), 1, reader)
 	if err != nil {

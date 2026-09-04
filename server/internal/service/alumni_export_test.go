@@ -29,7 +29,7 @@ func TestExportXlsxFormat(t *testing.T) {
 			},
 		},
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "xlsx"})
 	if err != nil {
@@ -67,7 +67,7 @@ func TestExportCsvFormat(t *testing.T) {
 			{ID: 1, Name: "张三", Grade: "2020级", WorkUnit: &workUnit, Status: "active"},
 		},
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"})
 	if err != nil {
@@ -104,7 +104,7 @@ func TestExportDefaultFormatIsXlsx(t *testing.T) {
 			{ID: 1, Name: "李四", Grade: "2021级", Status: "active"},
 		},
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{})
 	if err != nil {
@@ -119,7 +119,7 @@ func TestExportEmptyData(t *testing.T) {
 	store := &fakeAlumniStore{
 		items: nil,
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{})
 	if err != nil {
@@ -149,7 +149,7 @@ func TestExportFilterPropagation(t *testing.T) {
 			{ID: 1, Name: "王五", Grade: "2023级", Status: "active"},
 		},
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{
 		Grade:    "2023级",
@@ -186,7 +186,7 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 			},
 		},
 	}
-	svc := NewAlumniService(store, nil, nil)
+	svc := NewAlumniService(store, nil)
 
 	// Test CSV format
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"})
@@ -244,4 +244,3 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 		t.Fatalf("expected xlsx work unit to be escaped, got %q", rows[1][9])
 	}
 }
-

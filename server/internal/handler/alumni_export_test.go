@@ -81,7 +81,7 @@ func TestExportHandlerXlsxSuccess(t *testing.T) {
 			{ID: 1, Name: "张三", Grade: "2020级", Status: common.AlumniStatusActive},
 		},
 	}
-	h := NewAlumniHandler(service.NewAlumniService(store, nil, nil))
+	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
 	engine.GET("/admin/alumni/export", h.Export)
@@ -115,7 +115,7 @@ func TestExportHandlerCsvSuccess(t *testing.T) {
 			{ID: 1, Name: "李四", Grade: "2021级", Status: common.AlumniStatusActive},
 		},
 	}
-	h := NewAlumniHandler(service.NewAlumniService(store, nil, nil))
+	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
 	engine.GET("/admin/alumni/export", h.Export)
@@ -140,7 +140,7 @@ func TestExportHandlerDatabaseUnavailable(t *testing.T) {
 	store := &fakeExportStore{
 		err: common.ErrDatabaseUnavailable,
 	}
-	h := NewAlumniHandler(service.NewAlumniService(store, nil, nil))
+	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
 	engine.GET("/admin/alumni/export", h.Export)

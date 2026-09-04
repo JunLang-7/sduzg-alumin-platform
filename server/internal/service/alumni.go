@@ -75,14 +75,13 @@ func sanitizeExportValue(v string) string {
 
 type AlumniService struct {
 	alumni      repository.AlumniStore
-	users       repository.UserStore
 	files       AlumniFileCleaner
 	countCache  *cache.CountCache
 	exportCache *cache.ExportCache
 }
 
-func NewAlumniService(alumni repository.AlumniStore, users repository.UserStore, files AlumniFileCleaner) *AlumniService {
-	return &AlumniService{alumni: alumni, users: users, files: files}
+func NewAlumniService(alumni repository.AlumniStore, files AlumniFileCleaner) *AlumniService {
+	return &AlumniService{alumni: alumni, files: files}
 }
 
 // WithCountCache 注入主动缓存计数器，用于优化无过滤条件时的 COUNT 查询。
@@ -257,17 +256,16 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrInvalidRequest
 	}
 
-	operatorID := operator.UserID
-	if err := s.alumni.Update(ctx, id, operatorID, profile); err != nil {
+	if err := s.alumni.Update(ctx, id, operator.UserID, profile); err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
-			logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return nil, common.ErrDatabaseUnavailable
 		}
 		if errors.Is(err, common.ErrAlumniNotFound) {
-			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operatorID))
+			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operator.UserID))
 			return nil, common.ErrAlumniNotFound
 		}
-		logger.Error("failed to update alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+		logger.Error("failed to update alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return nil, err
 	}
 
