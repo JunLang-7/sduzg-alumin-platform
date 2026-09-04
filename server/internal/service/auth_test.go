@@ -12,6 +12,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	"github.com/golang-jwt/jwt/v5"
 	sms "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms/v20210111"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -451,6 +452,17 @@ func TestAuthServiceParseAccessToken(t *testing.T) {
 	}
 	if uid != 1 {
 		t.Fatalf("expected uid 1, got %d", uid)
+	}
+
+	claims := jwt.MapClaims{}
+	if _, _, err := new(jwt.Parser).ParseUnverified(token, claims); err != nil {
+		t.Fatalf("failed to inspect token claims: %v", err)
+	}
+	if _, ok := claims["role"]; ok {
+		t.Fatalf("access token must not contain role: %+v", claims)
+	}
+	if _, ok := claims["account"]; ok {
+		t.Fatalf("access token must not contain account: %+v", claims)
 	}
 }
 

@@ -29,13 +29,13 @@ func (h *AlumniHandler) List(c *gin.Context) {
 		return
 	}
 
-	viewerID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.alumni.List(c.Request.Context(), req, viewerID)
+	result, err := h.alumni.List(c.Request.Context(), req, *access)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -56,13 +56,13 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 		return
 	}
 
-	viewerID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.alumni.GetByID(c.Request.Context(), id, viewerID)
+	result, err := h.alumni.GetByID(c.Request.Context(), id, *access)
 	if err == nil {
 		response.Success(c, result)
 		return

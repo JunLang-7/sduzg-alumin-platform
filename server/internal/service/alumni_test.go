@@ -280,7 +280,7 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 		Page:     0,
 		PageSize: 1000,
 		Keyword:  " 张三 ",
-	}, 3)
+	}, common.AccessContext{Role: common.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("expected list success, got %v", err)
 	}
@@ -326,7 +326,7 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil, nil)
 
-	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleAlumni})
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}
@@ -368,7 +368,7 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 	}
 	svc := NewAlumniService(store, users, nil)
 
-	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleAlumni, AlumniID: &viewerAlumniID})
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}
@@ -409,7 +409,7 @@ func TestAlumniServiceGetByIDShowsAllFieldsForAlumniViewingSelf(t *testing.T) {
 	}
 	svc := NewAlumniService(store, users, nil)
 
-	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleAlumni, AlumniID: &alumniID})
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}
@@ -449,7 +449,7 @@ func TestAlumniServiceGetByIDShowsAllFieldsForAdmin(t *testing.T) {
 	}
 	svc := NewAlumniService(store, users, nil)
 
-	detail, err := svc.GetByID(context.Background(), alumniID, 3)
+	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleAdmin})
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}

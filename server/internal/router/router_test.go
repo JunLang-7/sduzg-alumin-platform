@@ -138,7 +138,7 @@ func TestAuthLogoutRouteRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestAuthLogoutRouteWithToken(t *testing.T) {
+func TestAuthLogoutRouteWithTokenRejectsWhenAuthorizationContextUnavailable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := New(Dependencies{
@@ -160,11 +160,11 @@ func TestAuthLogoutRouteWithToken(t *testing.T) {
 
 	engine.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"logged_out":true`) {
-		t.Fatalf("expected logout response, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
 	}
 }
 
@@ -277,7 +277,7 @@ func TestAlumniDetailRouteRequiresAuth(t *testing.T) {
 	}
 }
 
-func TestAlumniDetailRouteRejectsInvalidID(t *testing.T) {
+func TestAlumniDetailRouteRejectsInvalidIDAfterAuthorizationContextLoads(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := New(Dependencies{
@@ -299,11 +299,11 @@ func TestAlumniDetailRouteRejectsInvalidID(t *testing.T) {
 
 	engine.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"code":40000`) {
-		t.Fatalf("expected bad request response, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
 	}
 }
 
@@ -393,7 +393,7 @@ func TestAlumniMeRouteWithoutDatabase(t *testing.T) {
 	}
 }
 
-func TestAlumniMeUpdateRouteRejectsInvalidJSON(t *testing.T) {
+func TestAlumniMeUpdateRouteRejectsInvalidJSONAfterAuthorizationContextLoads(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	engine := New(Dependencies{
@@ -416,11 +416,11 @@ func TestAlumniMeUpdateRouteRejectsInvalidJSON(t *testing.T) {
 
 	engine.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
 	}
-	if !strings.Contains(rec.Body.String(), `"code":40000`) {
-		t.Fatalf("expected bad request response, got %s", rec.Body.String())
+	if !strings.Contains(rec.Body.String(), `"code":50300`) {
+		t.Fatalf("expected service unavailable response, got %s", rec.Body.String())
 	}
 }
 

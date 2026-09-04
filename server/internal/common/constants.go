@@ -5,8 +5,9 @@ const (
 	RoleAdmin      = "admin"
 	RoleSuperAdmin = "super_admin"
 
-	UserStatusActive  = "active"
-	UserStatusDeleted = "deleted"
+	UserStatusActive   = "active"
+	UserStatusDisabled = "disabled"
+	UserStatusDeleted  = "deleted"
 
 	AlumniStatusActive  = "active"
 	AlumniStatusDeleted = "deleted"
