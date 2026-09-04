@@ -29,9 +29,12 @@ func TestAlumniRepositoryCreateAndBatchCreateDefaultToMPADataDomain(t *testing.T
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	var mpa model.DataDomain
+	var mpa, academic model.DataDomain
 	if err := db.Where("code = ?", common.DataDomainMPA).First(&mpa).Error; err != nil {
 		t.Fatalf("find MPA data domain: %v", err)
+	}
+	if err := db.Where("code = ?", common.DataDomainAcademicGraduate).First(&academic).Error; err != nil {
+		t.Fatalf("find academic graduate data domain: %v", err)
 	}
 
 	rollback := errors.New("rollback test transaction")
@@ -68,6 +71,35 @@ func TestAlumniRepositoryCreateAndBatchCreateDefaultToMPADataDomain(t *testing.T
 		}
 		if count != 2 {
 			t.Errorf("BatchCreate() created %d MPA records, want 2", count)
+		}
+
+		if err := repo.BatchCreate(ctx, []do.AlumniCreateProfile{{
+			DataDomainID: &academic.ID,
+			Name:         "数据域批量指定学硕测试",
+			Grade:        "2026级",
+			Status:       common.AlumniStatusActive,
+		}}, 1); err != nil {
+			return err
+		}
+		if err := tx.Model(&model.AlumniProfile{}).
+			Where("data_domain_id = ?", academic.ID).
+			Where("name = ?", "数据域批量指定学硕测试").
+			Count(&count).
+			Error; err != nil {
+			return err
+		}
+		if count != 1 {
+			t.Errorf("BatchCreate() created %d academic profiles, want 1", count)
+		}
+
+		unknownDomainID := uint64(999999999)
+		if _, err := repo.Create(ctx, &do.AlumniCreateProfile{
+			DataDomainID: &unknownDomainID,
+			Name:         "不存在的数据域测试",
+			Grade:        "2026级",
+			Status:       common.AlumniStatusActive,
+		}, 1); !errors.Is(err, common.ErrInvalidDataDomain) {
+			t.Errorf("Create() invalid domain error = %v, want ErrInvalidDataDomain", err)
 		}
 
 		return rollback

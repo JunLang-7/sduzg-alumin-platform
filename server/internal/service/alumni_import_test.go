@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -49,6 +50,10 @@ func buildXLSXReader(headers []string, rows [][]string) (*bytes.Reader, error) {
 	return bytes.NewReader(buf.Bytes()), nil
 }
 
+func importAsSuperAdmin(svc *AlumniService, reader *bytes.Reader) (*dto.AlumniImportResult, error) {
+	return svc.Import(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, nil, reader)
+}
+
 func TestImportAllValidRows(t *testing.T) {
 	headers := alumniColumnHeaders
 	rows := [][]string{
@@ -65,7 +70,7 @@ func TestImportAllValidRows(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -77,6 +82,40 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected 0 errors, got %+v", result.Errors)
+	}
+}
+
+func TestImportForcesAssignedDataDomainAndRejectsSensitiveWrite(t *testing.T) {
+	reader, err := buildXLSXReader(alumniColumnHeaders, [][]string{{"张三", "2020级"}})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+	assignedDomainID := uint64(2)
+	_, err = svc.Import(context.Background(), common.AccessContext{
+		UserID:    7,
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{assignedDomainID},
+	}, new(uint64), reader)
+	if err != nil {
+		t.Fatalf("expected import success, got %v", err)
+	}
+	if len(store.batchProfiles) != 1 || store.batchProfiles[0].DataDomainID == nil || *store.batchProfiles[0].DataDomainID != assignedDomainID {
+		t.Fatalf("expected imported profile to use assigned domain %d, got %+v", assignedDomainID, store.batchProfiles)
+	}
+
+	reader, err = buildXLSXReader(alumniColumnHeaders, [][]string{{"李四", "2020级", "", "", "", "", "", "", "", "", "主任"}})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	_, err = svc.Import(context.Background(), common.AccessContext{
+		UserID:    7,
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{assignedDomainID},
+	}, nil, reader)
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected sensitive import to be rejected, got %v", err)
 	}
 }
 
@@ -95,7 +134,7 @@ func TestImportKeepsRowsWithDifferentMobile(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -122,7 +161,7 @@ func TestImportDeduplicatesRowsWithSameMobile(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -149,7 +188,7 @@ func TestImportDeduplicatesRowsWithPaddedMobile(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -176,7 +215,7 @@ func TestImportDeduplicatesRowsWithEmptyMobile(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -204,7 +243,7 @@ func TestImportPartialErrors(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success (partial), got %v", err)
 	}
@@ -229,7 +268,7 @@ func TestImportEmptyFile(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	_, err = svc.Import(context.Background(), 1, reader)
+	_, err = importAsSuperAdmin(svc, reader)
 	if err == nil {
 		t.Fatal("expected error for empty file")
 	}
@@ -245,7 +284,7 @@ func TestImportHeaderMismatch(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	_, err = svc.Import(context.Background(), 1, reader)
+	_, err = importAsSuperAdmin(svc, reader)
 	if err == nil {
 		t.Fatal("expected error for header mismatch")
 	}
@@ -261,7 +300,7 @@ func TestImportDatabaseUnavailable(t *testing.T) {
 
 	svc := NewAlumniService(nil, nil)
 
-	_, err = svc.Import(context.Background(), 1, reader)
+	_, err = importAsSuperAdmin(svc, reader)
 	if err != common.ErrDatabaseUnavailable {
 		t.Fatalf("expected database unavailable, got %v", err)
 	}
@@ -335,7 +374,7 @@ func TestImportResultErrorsIncludeRowNumbers(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Import(context.Background(), 1, reader)
+	result, err := importAsSuperAdmin(svc, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}

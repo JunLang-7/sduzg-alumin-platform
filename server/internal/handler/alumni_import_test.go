@@ -121,7 +121,7 @@ func TestImportHandlerSuccess(t *testing.T) {
 
 	engine := gin.New()
 	engine.POST("/admin/alumni/import", func(c *gin.Context) {
-		c.Set(middleware.CurrentUserIDKey, uint64(1))
+		c.Set(middleware.AccessContextKey, &common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
 		h.Import(c)
 	})
 
@@ -188,7 +188,7 @@ func TestImportHandlerBadFile(t *testing.T) {
 
 	engine := gin.New()
 	engine.POST("/admin/alumni/import", func(c *gin.Context) {
-		c.Set(middleware.CurrentUserIDKey, uint64(1))
+		c.Set(middleware.AccessContextKey, &common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
 		h.Import(c)
 	})
 

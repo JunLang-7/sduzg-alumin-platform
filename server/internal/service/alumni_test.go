@@ -37,6 +37,9 @@ type fakeAlumniStore struct {
 	deleteUserID    uint64
 	deleteDomainIDs []uint64
 	deleteErr       error
+	batchProfiles   []do.AlumniCreateProfile
+	batchOperatorID uint64
+	batchErr        error
 }
 
 func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
@@ -106,7 +109,9 @@ func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, upd
 }
 
 func (s *fakeAlumniStore) BatchCreate(_ context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
-	return nil
+	s.batchProfiles = slices.Clone(profiles)
+	s.batchOperatorID = operatorID
+	return s.batchErr
 }
 
 func (s *fakeAlumniStore) CountActive(_ context.Context) (int64, error) {

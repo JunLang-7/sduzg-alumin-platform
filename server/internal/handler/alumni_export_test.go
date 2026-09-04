@@ -8,6 +8,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -84,7 +85,7 @@ func TestExportHandlerXlsxSuccess(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export", nil)
 	rec := httptest.NewRecorder()
@@ -118,7 +119,7 @@ func TestExportHandlerCsvSuccess(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export?format=csv", nil)
 	rec := httptest.NewRecorder()
@@ -143,7 +144,7 @@ func TestExportHandlerDatabaseUnavailable(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export", nil)
 	rec := httptest.NewRecorder()
@@ -152,5 +153,12 @@ func TestExportHandlerDatabaseUnavailable(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}
+
+func withExportAccess(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &common.AccessContext{Role: common.RoleSuperAdmin})
+		handler(c)
 	}
 }

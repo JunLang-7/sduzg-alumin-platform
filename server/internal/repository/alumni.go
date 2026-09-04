@@ -226,6 +226,9 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 	dataDomainID := uint64(0)
 	if profile.DataDomainID != nil {
 		dataDomainID = *profile.DataDomainID
+		if err := r.validateActiveDataDomainIDs(ctx, []uint64{dataDomainID}); err != nil {
+			return nil, err
+		}
 	} else {
 		var err error
 		dataDomainID, err = r.defaultMPADataDomainID(ctx)
@@ -272,8 +275,27 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	if len(profiles) == 0 {
 		return nil
 	}
-	dataDomainID, err := r.defaultMPADataDomainID(ctx)
-	if err != nil {
+	dataDomainIDs := make([]uint64, len(profiles))
+	needsDefaultDomain := false
+	for i, profile := range profiles {
+		if profile.DataDomainID == nil {
+			needsDefaultDomain = true
+			continue
+		}
+		dataDomainIDs[i] = *profile.DataDomainID
+	}
+	if needsDefaultDomain {
+		defaultDomainID, err := r.defaultMPADataDomainID(ctx)
+		if err != nil {
+			return err
+		}
+		for i := range dataDomainIDs {
+			if dataDomainIDs[i] == 0 {
+				dataDomainIDs[i] = defaultDomainID
+			}
+		}
+	}
+	if err := r.validateActiveDataDomainIDs(ctx, dataDomainIDs); err != nil {
 		return err
 	}
 
@@ -281,7 +303,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	for i := range profiles {
 		p := profiles[i]
 		items = append(items, &model.AlumniProfile{
-			DataDomainID:   dataDomainID,
+			DataDomainID:   dataDomainIDs[i],
 			Name:           p.Name,
 			Grade:          p.Grade,
 			ClassName:      p.ClassName,
@@ -305,6 +327,37 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	}
 
 	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
+}
+
+// validateActiveDataDomainIDs 校验目标数据域存在且处于可用状态。
+func (r *AlumniRepository) validateActiveDataDomainIDs(ctx context.Context, ids []uint64) error {
+	uniqueIDs := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			return common.ErrInvalidDataDomain
+		}
+		uniqueIDs[id] = struct{}{}
+	}
+	if len(uniqueIDs) == 0 {
+		return common.ErrInvalidDataDomain
+	}
+
+	uniqueIDList := make([]uint64, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		uniqueIDList = append(uniqueIDList, id)
+	}
+	qs := query.Use(r.db).DataDomain
+	var domains []model.DataDomain
+	if err := r.db.WithContext(ctx).
+		Where(qs.ID.In(uniqueIDList...), qs.Status.Eq(common.DataDomainStatusActive)).
+		Find(&domains).
+		Error; err != nil {
+		return err
+	}
+	if len(domains) != len(uniqueIDList) {
+		return common.ErrInvalidDataDomain
+	}
+	return nil
 }
 
 // defaultMPADataDomainID 为当前尚未传入数据域的历史写入路径提供兼容默认值。

@@ -388,13 +388,26 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 }
 
 // Export 导出校友数据为 xlsx 或 csv 格式。
-func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest) (*ExportResult, error) {
+func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest, operator common.AccessContext) (*ExportResult, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
 	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
 
 	query := req.ToQuery().Normalize()
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+		return nil, common.ErrPermissionDenied
+	}
+	if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
+		if len(domainIDs) == 0 {
+			return s.buildExport(nil, req.FormatOrDefault())
+		}
+		query.DataDomainIDs = domainIDs
+	}
+	query.CanReadSensitive = operator.HasPermission(common.PermissionAlumniSensitiveRead)
 	format := req.FormatOrDefault()
 
 	// 优先读缓存，避免全表扫描
@@ -402,12 +415,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 		if cached, err := s.exportCache.Get(ctx, query); err == nil {
 			var items []*model.AlumniProfile
 			if json.Unmarshal(cached, &items) == nil {
-				switch format {
-				case "csv":
-					return buildCSV(items)
-				default:
-					return buildXLSX(items)
-				}
+				return s.buildExport(maskExportItems(items, operator), format)
 			}
 		}
 	}
@@ -429,12 +437,36 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 		}
 	}
 
+	return s.buildExport(maskExportItems(items, operator), format)
+}
+
+func (s *AlumniService) buildExport(items []*model.AlumniProfile, format string) (*ExportResult, error) {
 	switch format {
 	case "csv":
 		return buildCSV(items)
 	default:
 		return buildXLSX(items)
 	}
+}
+
+// maskExportItems 为无敏感字段权限的导出请求清空受保护字段，且不修改缓存或仓储返回对象。
+func maskExportItems(items []*model.AlumniProfile, operator common.AccessContext) []*model.AlumniProfile {
+	if operator.HasPermission(common.PermissionAlumniSensitiveRead) {
+		return items
+	}
+	masked := make([]*model.AlumniProfile, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		copyItem := *item
+		copyItem.Mobile = nil
+		copyItem.Email = nil
+		copyItem.Position = nil
+		copyItem.MailingAddress = nil
+		masked = append(masked, &copyItem)
+	}
+	return masked
 }
 
 // ExportTemplate 生成导入模板 Excel 文件，包含表头行和一条示例空行。
@@ -568,10 +600,17 @@ func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
 }
 
 // Import 从上传的 xlsx 文件批量导入校友档案。逐行校验，姓名和年级为必填。
-func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.Reader) (*dto.AlumniImportResult, error) {
+func (s *AlumniService) Import(ctx context.Context, operator common.AccessContext, dataDomainID *uint64, file io.Reader) (*dto.AlumniImportResult, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
+	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	targetProfile := do.AlumniCreateProfile{DataDomainID: dataDomainID}
+	if err := assignCreateDataDomain(&targetProfile, operator); err != nil {
+		return nil, err
 	}
 
 	data, err := io.ReadAll(file)
@@ -626,6 +665,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 
 		profile := parseRowToProfile(row)
 		profile = profile.Normalize()
+		profile.DataDomainID = targetProfile.DataDomainID
 
 		if profile.Name == "" {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "姓名为空"})
@@ -634,6 +674,9 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		if profile.Grade == "" {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "年级为空"})
 			continue
+		}
+		if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
+			return nil, common.ErrPermissionDenied
 		}
 
 		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})
@@ -647,7 +690,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 
 		existing, err := s.alumni.FindExistingByDedupKey(ctx, dedupKeys)
 		if err != nil {
-			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operatorID), zap.Error(err))
+			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 			return nil, err
 		}
 
@@ -669,8 +712,8 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		}
 
 		if len(validProfiles) > 0 {
-			if err := s.alumni.BatchCreate(ctx, validProfiles, operatorID); err != nil {
-				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operatorID), zap.Error(err))
+			if err := s.alumni.BatchCreate(ctx, validProfiles, operator.UserID); err != nil {
+				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 				return nil, err
 			}
 			result.Success = len(validProfiles)

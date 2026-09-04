@@ -13,6 +13,7 @@ var (
 	ErrCannotDeleteSuper     = errors.New("cannot delete super admin")
 	ErrAlumniNotFound        = errors.New("alumni not found")
 	ErrDataDomainUnavailable = errors.New("data domain unavailable")
+	ErrInvalidDataDomain     = errors.New("invalid data domain")
 	ErrPermissionDenied      = errors.New("permission denied")
 	ErrAlumniProfileUnbound  = errors.New("alumni profile unbound")
 

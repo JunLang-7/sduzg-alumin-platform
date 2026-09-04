@@ -106,6 +106,10 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrInvalidDataDomain):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain")
+	case errors.Is(err, common.ErrDataDomainUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "data domain unavailable")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -184,13 +188,19 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Export(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	var req dto.AlumniExportRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 		return
 	}
 
-	result, err := h.alumni.Export(c.Request.Context(), req)
+	result, err := h.alumni.Export(c.Request.Context(), req, *access)
 	if err == nil {
 		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", result.Filename))
 		c.Data(http.StatusOK, result.ContentType, result.Data)
@@ -198,6 +208,8 @@ func (h *AlumniHandler) Export(c *gin.Context) {
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -218,10 +230,19 @@ func (h *AlumniHandler) ExportTemplate(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Import(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
+	}
+	var dataDomainID *uint64
+	if value, exists := c.GetPostForm("data_domain_id"); exists {
+		id, err := strconv.ParseUint(value, 10, 64)
+		if err != nil || id == 0 {
+			response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain id")
+			return
+		}
+		dataDomainID = &id
 	}
 
 	fileHeader, err := c.FormFile("file")
@@ -243,13 +264,19 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	}
 	defer file.Close()
 
-	result, err := h.alumni.Import(c.Request.Context(), userID, file)
+	result, err := h.alumni.Import(c.Request.Context(), *access, dataDomainID, file)
 	if err == nil {
 		response.Success(c, result)
 		return
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+	case errors.Is(err, common.ErrDataDomainUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "data domain unavailable")
+	case errors.Is(err, common.ErrInvalidDataDomain):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	case errors.Is(err, common.ErrInvalidRequest):
