@@ -29,13 +29,13 @@ func (h *AlumniHandler) List(c *gin.Context) {
 		return
 	}
 
-	viewerID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.alumni.List(c.Request.Context(), req, viewerID)
+	result, err := h.alumni.List(c.Request.Context(), req, *access)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -56,13 +56,13 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 		return
 	}
 
-	viewerID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.alumni.GetByID(c.Request.Context(), id, viewerID)
+	result, err := h.alumni.GetByID(c.Request.Context(), id, *access)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -108,7 +108,7 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Update(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -126,7 +126,7 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.Update(c.Request.Context(), userID, id, req)
+	result, err := h.alumni.Update(c.Request.Context(), *access, id, req)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -250,13 +250,13 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Me(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.alumni.GetMe(c.Request.Context(), userID)
+	result, err := h.alumni.GetMe(c.Request.Context(), *access)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -266,7 +266,7 @@ func (h *AlumniHandler) Me(c *gin.Context) {
 }
 
 func (h *AlumniHandler) UpdateMe(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -278,7 +278,7 @@ func (h *AlumniHandler) UpdateMe(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.UpdateMe(c.Request.Context(), userID, req)
+	result, err := h.alumni.UpdateMe(c.Request.Context(), *access, req)
 	if err == nil {
 		response.Success(c, result)
 		return

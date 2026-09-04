@@ -832,9 +832,7 @@ func (s *AuthService) SetupPassword(ctx context.Context, req dto.SetupPasswordRe
 
 type customClaims struct {
 	jwt.RegisteredClaims
-	UID     uint64 `json:"uid"`
-	Account string `json:"account"`
-	Role    string `json:"role"`
+	UID uint64 `json:"uid"`
 }
 
 type registrationClaims struct {
@@ -878,9 +876,7 @@ func (s *AuthService) issueAccessToken(user *model.User, issuedAt, expiresAt tim
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
-		UID:     user.ID,
-		Account: user.Account,
-		Role:    user.Role,
+		UID: user.ID,
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(s.jwtSecret)
 	if err != nil {

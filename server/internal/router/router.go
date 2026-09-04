@@ -51,6 +51,10 @@ func New(deps Dependencies) *gin.Engine {
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
 	// 用户仓库
 	userRepository := repository.NewUserRepository(deps.DB)
+	// 管理员数据域和功能权限仓库
+	accessControlRepository := repository.NewAccessControlRepository(deps.DB)
+	// 请求级授权上下文加载器
+	accessContextLoader := middleware.NewAccessContextLoader(userRepository, accessControlRepository)
 	// 校友仓库
 	alumniRepository := repository.NewAlumniRepository(deps.DB)
 	// 登录尝试仓库
@@ -72,7 +76,7 @@ func New(deps Dependencies) *gin.Engine {
 		alumniFileCleaner = alumniFileService
 	}
 	// 校友服务和处理器（注入文件服务以支持级联删除）
-	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner).
+	alumniService := service.NewAlumniService(alumniRepository, alumniFileCleaner).
 		WithCountCache(cache.NewCountCache(deps.RedisClient)).
 		WithExportCache(cache.NewExportCache(deps.RedisClient))
 	alumniHandler := handler.NewAlumniHandler(alumniService)
@@ -93,7 +97,10 @@ func New(deps Dependencies) *gin.Engine {
 	}
 
 	api := engine.Group("/api/v1")
-	api.Use(middleware.Auth(authService, whiteList...))
+	api.Use(
+		middleware.Auth(authService, whiteList...),
+		middleware.LoadAccessContext(accessContextLoader, whiteList...),
+	)
 	{
 		// 健康检查
 		api.GET("/health/live", healthHandler.Live)
@@ -115,7 +122,7 @@ func New(deps Dependencies) *gin.Engine {
 
 		// 管理员专用接口
 		admin := api.Group("/admin")
-		admin.Use(middleware.RequireRoles(userRepository, common.RoleAdmin, common.RoleSuperAdmin))
+		admin.Use(middleware.RequireRoles(common.RoleAdmin, common.RoleSuperAdmin))
 		{
 			// 管理校友信息
 			admin.POST("/alumni", alumniHandler.Create)
@@ -141,7 +148,7 @@ func New(deps Dependencies) *gin.Engine {
 
 		// 超级管理员专用接口
 		superAdmin := api.Group("/super-admin")
-		superAdmin.Use(middleware.RequireRoles(userRepository, common.RoleSuperAdmin))
+		superAdmin.Use(middleware.RequireRoles(common.RoleSuperAdmin))
 		{
 			// 管理员账号管理
 			superAdmin.GET("/admins", adminHandler.List)
