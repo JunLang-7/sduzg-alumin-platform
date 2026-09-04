@@ -43,7 +43,7 @@ func (h *AlumniHandler) List(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -72,7 +72,7 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -103,13 +103,13 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrInvalidDataDomain):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain")
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDataDomainUnavailable):
-		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "data domain unavailable")
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "数据域不可用")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -144,7 +144,7 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrAlumniNotFound):
@@ -177,7 +177,7 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -209,7 +209,7 @@ func (h *AlumniHandler) Export(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -239,7 +239,7 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	if value, exists := c.GetPostForm("data_domain_id"); exists {
 		id, err := strconv.ParseUint(value, 10, 64)
 		if err != nil || id == 0 {
-			response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain id")
+			response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域 ID 无效")
 			return
 		}
 		dataDomainID = &id
@@ -272,11 +272,11 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
-		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrDataDomainUnavailable):
-		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "data domain unavailable")
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "数据域不可用")
 	case errors.Is(err, common.ErrInvalidDataDomain):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid data domain")
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	case errors.Is(err, common.ErrInvalidRequest):

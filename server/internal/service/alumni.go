@@ -107,7 +107,7 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	}
 	if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
 		if len(domainIDs) == 0 {
-			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), nil
+			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 		}
 		query.DataDomainIDs = domainIDs
 	}
@@ -403,7 +403,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 	}
 	if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
 		if len(domainIDs) == 0 {
-			return s.buildExport(nil, req.FormatOrDefault())
+			return nil, common.ErrPermissionDenied
 		}
 		query.DataDomainIDs = domainIDs
 	}

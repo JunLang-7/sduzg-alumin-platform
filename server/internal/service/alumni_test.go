@@ -588,6 +588,14 @@ func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
 	}
 }
 
+func TestAlumniServiceListRejectsAdminWithoutDataDomain(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+	_, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{Role: common.RoleAdmin})
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected empty data-domain scope to be rejected, got %v", err)
+	}
+}
+
 func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 	mobile := "13800000000"
 	email := "zhangsan@example.com"

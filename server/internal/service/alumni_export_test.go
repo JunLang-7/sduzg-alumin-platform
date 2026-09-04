@@ -223,6 +223,14 @@ func TestExportRejectsSensitiveFilterWithoutPermission(t *testing.T) {
 	}
 }
 
+func TestExportRejectsAdminWithoutDataDomain(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{}, common.AccessContext{Role: common.RoleAdmin})
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected empty data-domain scope to be rejected, got %v", err)
+	}
+}
+
 func TestExportSanitizesFormulaInjection(t *testing.T) {
 	formulaWorkUnit := "=HYPERLINK(\"http://evil.com\")"
 	plusValue := "+SUM(A1:A10)"
