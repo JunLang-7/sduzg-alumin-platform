@@ -67,7 +67,7 @@ func (s *AlumniFileService) GenerateUploadURL(ctx context.Context, operatorID ui
 	}
 
 	// 3. 校验校友存在
-	alumni, err := s.alumni.GetByID(ctx, alumniID)
+	alumni, err := s.alumni.GetByID(ctx, alumniID, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (s *AlumniFileService) ConfirmUpload(ctx context.Context, operatorID uint64
 	}
 
 	// 5. 记录操作日志
-	alumni, _ := s.alumni.GetByID(ctx, alumniID)
+	alumni, _ := s.alumni.GetByID(ctx, alumniID, nil)
 	s.writeOpLog(ctx, operatorID, "confirm_upload", fileID, alumni, record.FileType, record.OriginalName)
 
 	return &dto.AlumniFileUploadResponse{
@@ -261,7 +261,7 @@ func (s *AlumniFileService) DeleteFile(ctx context.Context, operatorID uint64, a
 	}
 
 	// 记录操作日志
-	alumni, _ := s.alumni.GetByID(ctx, alumniID)
+	alumni, _ := s.alumni.GetByID(ctx, alumniID, nil)
 	s.writeOpLog(ctx, operatorID, "delete_alumni_file", fileID, alumni, record.FileType, record.OriginalName)
 
 	return nil

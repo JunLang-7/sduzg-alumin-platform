@@ -42,6 +42,8 @@ func (h *AlumniHandler) List(c *gin.Context) {
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -69,6 +71,8 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -79,7 +83,7 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Create(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -91,13 +95,15 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 		return
 	}
 
-	result, err := h.alumni.Create(c.Request.Context(), userID, req)
+	result, err := h.alumni.Create(c.Request.Context(), *access, req)
 	if err == nil {
 		response.JSON(c, http.StatusCreated, response.CodeSuccess, "success", result)
 		return
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -133,6 +139,8 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrAlumniNotFound):
@@ -145,7 +153,7 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 }
 
 func (h *AlumniHandler) Delete(c *gin.Context) {
-	userID, ok := middleware.CurrentUserID(c)
+	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -157,13 +165,15 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.alumni.Delete(c.Request.Context(), userID, id)
+	err = h.alumni.Delete(c.Request.Context(), *access, id)
 	if err == nil {
 		response.Success(c, gin.H{"deleted": true})
 		return
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):

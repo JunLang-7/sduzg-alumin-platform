@@ -26,7 +26,7 @@ func (s *fakeExportStore) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*m
 	return s.items, s.err
 }
 
-func (s *fakeExportStore) GetByID(_ context.Context, _ uint64) (*model.AlumniProfile, error) {
+func (s *fakeExportStore) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
 	return nil, common.ErrAlumniNotFound
 }
 
@@ -45,11 +45,11 @@ func (s *fakeExportStore) Create(_ context.Context, _ *do.AlumniCreateProfile, _
 	return nil, nil
 }
 
-func (s *fakeExportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile) error {
+func (s *fakeExportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
 	return nil
 }
 
-func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64) error {
+func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error {
 	return nil
 }
 

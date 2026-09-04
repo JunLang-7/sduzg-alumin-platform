@@ -80,7 +80,7 @@ func (s *fakeImportStore) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*m
 	return nil, nil
 }
 
-func (s *fakeImportStore) GetByID(_ context.Context, _ uint64) (*model.AlumniProfile, error) {
+func (s *fakeImportStore) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
 	return nil, common.ErrAlumniNotFound
 }
 
@@ -96,11 +96,11 @@ func (s *fakeImportStore) FindExistingByDedupKey(_ context.Context, _ []do.Alumn
 	return make(map[string]bool), nil
 }
 
-func (s *fakeImportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile) error {
+func (s *fakeImportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
 	return nil
 }
 
-func (s *fakeImportStore) Delete(_ context.Context, _ uint64, _ uint64) error { return nil }
+func (s *fakeImportStore) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error { return nil }
 
 func (s *fakeImportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
 	return nil

@@ -531,7 +531,7 @@ func (s *AuthService) createUserForAlumni(ctx context.Context, mobile, email str
 
 	var realName *string
 	if s.alumni != nil {
-		if profile, err := s.alumni.GetByID(ctx, alumniID); err == nil {
+		if profile, err := s.alumni.GetByID(ctx, alumniID, nil); err == nil {
 			realName = &profile.Name
 		}
 	}
