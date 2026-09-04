@@ -9,15 +9,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// AccessControlStore reads the data ranges and permission codes assigned to administrators.
-// Mutation methods are deliberately added with the administrator-management feature.
+// AccessControlStore 查询管理员已分配的数据范围和权限码。
+// 写入能力将在管理员授权管理功能中补充。
 type AccessControlStore interface {
 	ListActiveDataDomains(ctx context.Context) ([]*model.DataDomain, error)
 	ListAdminDataDomainIDs(ctx context.Context, userID uint64) ([]uint64, error)
 	ListAdminPermissionCodes(ctx context.Context, userID uint64) ([]string, error)
 }
 
-// AccessControlRepository persists administrator data scopes and permission codes.
+// AccessControlRepository 负责管理员数据范围和权限码的数据访问。
 type AccessControlRepository struct {
 	db *gorm.DB
 }
@@ -26,7 +26,7 @@ func NewAccessControlRepository(db *gorm.DB) *AccessControlRepository {
 	return &AccessControlRepository{db: db}
 }
 
-// ListActiveDataDomains returns assignable alumni data domains in display order.
+// ListActiveDataDomains 按展示顺序返回可分配的校友数据域。
 func (r *AccessControlRepository) ListActiveDataDomains(ctx context.Context) ([]*model.DataDomain, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
@@ -45,7 +45,7 @@ func (r *AccessControlRepository) ListActiveDataDomains(ctx context.Context) ([]
 	return domains, nil
 }
 
-// ListAdminDataDomainIDs returns every domain assigned to one administrator.
+// ListAdminDataDomainIDs 返回某管理员被分配的全部数据域 ID。
 func (r *AccessControlRepository) ListAdminDataDomainIDs(ctx context.Context, userID uint64) ([]uint64, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
@@ -70,7 +70,7 @@ func (r *AccessControlRepository) ListAdminDataDomainIDs(ctx context.Context, us
 	return ids, nil
 }
 
-// ListAdminPermissionCodes returns every permission code assigned to one administrator.
+// ListAdminPermissionCodes 返回某管理员被分配的全部权限码。
 func (r *AccessControlRepository) ListAdminPermissionCodes(ctx context.Context, userID uint64) ([]string, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
