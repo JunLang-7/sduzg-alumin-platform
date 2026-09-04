@@ -7,6 +7,9 @@ database:
     - alumni_profiles
     - operation_logs
     - alumni_files
+    - data_domains
+    - admin_data_scopes
+    - admin_permissions
   # 是否只生成 model，不生成 query
   onlyModel: false
   # 指定生成的查询代码文件的输出目录
