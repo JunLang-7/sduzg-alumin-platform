@@ -11,7 +11,7 @@ import (
 )
 
 type DashboardStore interface {
-	Overview(ctx context.Context) (do.DashboardOverviewStats, error)
+	Overview(ctx context.Context, dataDomainIDs []uint64) (do.DashboardOverviewStats, error)
 	Distribution(ctx context.Context, query do.DashboardDistributionQuery) ([]do.DashboardDistributionItem, error)
 }
 
@@ -24,14 +24,14 @@ func NewDashboardRepository(db *gorm.DB) *DashboardRepository {
 }
 
 // Overview 获取数据大屏总览统计。
-func (r *DashboardRepository) Overview(ctx context.Context) (do.DashboardOverviewStats, error) {
+func (r *DashboardRepository) Overview(ctx context.Context, dataDomainIDs []uint64) (do.DashboardOverviewStats, error) {
 	if r.db == nil {
 		return do.DashboardOverviewStats{}, common.ErrDatabaseUnavailable
 	}
 
 	qs := query.Use(r.db).AlumniProfile
 	var stats do.DashboardOverviewStats
-	if err := r.db.WithContext(ctx).
+	alumniStatsQuery := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
 		Select(`
 			COUNT(*) AS total_alumni,
@@ -40,25 +40,29 @@ func (r *DashboardRepository) Overview(ctx context.Context) (do.DashboardOvervie
 			COALESCE(SUM(CASE WHEN mentor IS NOT NULL AND TRIM(mentor) <> '' THEN 1 ELSE 0 END), 0) AS mentor_complete
 		`).
 		Where(qs.DeletedAt.IsNull()).
-		Where(qs.Status.Eq(common.AlumniStatusActive)).
-		Scan(&stats).
-		Error; err != nil {
+		Where(qs.Status.Eq(common.AlumniStatusActive))
+	if len(dataDomainIDs) > 0 {
+		alumniStatsQuery = alumniStatsQuery.Where(qs.DataDomainID.In(dataDomainIDs...))
+	}
+	if err := alumniStatsQuery.Scan(&stats).Error; err != nil {
 		return do.DashboardOverviewStats{}, err
 	}
 
-	if err := r.db.WithContext(ctx).
-		Table("users AS u").
+	accountStatsQuery := r.db.WithContext(ctx).
+		Model(&model.AlumniProfile{}).
 		Joins(
-			"JOIN alumni_profiles AS a ON a.id = u.alumni_id AND a.deleted_at IS NULL AND a.status = ?",
-			common.AlumniStatusActive,
+			"JOIN users AS u ON u.alumni_id = alumni_profiles.id AND u.deleted_at IS NULL AND u.status = ? AND u.role = ?",
+			common.UserStatusActive,
+			common.RoleAlumni,
 		).
-		Where("u.deleted_at IS NULL").
-		Where("u.status = ?", common.UserStatusActive).
-		Where("u.role = ?", common.RoleAlumni).
+		Where(qs.DeletedAt.IsNull()).
+		Where(qs.Status.Eq(common.AlumniStatusActive)).
 		Where("u.alumni_id IS NOT NULL").
-		Distinct("u.alumni_id").
-		Count(&stats.TotalAccounts).
-		Error; err != nil {
+		Distinct("u.alumni_id")
+	if len(dataDomainIDs) > 0 {
+		accountStatsQuery = accountStatsQuery.Where(qs.DataDomainID.In(dataDomainIDs...))
+	}
+	if err := accountStatsQuery.Count(&stats.TotalAccounts).Error; err != nil {
 		return do.DashboardOverviewStats{}, err
 	}
 
@@ -80,16 +84,18 @@ func (r *DashboardRepository) Distribution(ctx context.Context, dashboardQuery d
 	nameExpr := "COALESCE(NULLIF(TRIM(" + column + "), ''), '未填')"
 	qs := query.Use(r.db).AlumniProfile
 	var items []do.DashboardDistributionItem
-	if err := r.db.WithContext(ctx).
+	distributionQuery := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
 		Select(nameExpr + " AS name, COUNT(*) AS value").
 		Where(qs.DeletedAt.IsNull()).
 		Where(qs.Status.Eq(common.AlumniStatusActive)).
 		Group(nameExpr).
 		Order("value DESC").
-		Order("name ASC").
-		Scan(&items).
-		Error; err != nil {
+		Order("name ASC")
+	if len(dashboardQuery.DataDomainIDs) > 0 {
+		distributionQuery = distributionQuery.Where(qs.DataDomainID.In(dashboardQuery.DataDomainIDs...))
+	}
+	if err := distributionQuery.Scan(&items).Error; err != nil {
 		return nil, err
 	}
 

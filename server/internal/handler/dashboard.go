@@ -6,6 +6,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -20,13 +21,21 @@ func NewDashboardHandler(dashboard *service.DashboardService) *DashboardHandler 
 }
 
 func (h *DashboardHandler) Overview(c *gin.Context) {
-	result, err := h.dashboard.Overview(c.Request.Context())
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
+	result, err := h.dashboard.Overview(c.Request.Context(), *access)
 	if err == nil {
 		response.Success(c, result)
 		return
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	default:
@@ -35,19 +44,27 @@ func (h *DashboardHandler) Overview(c *gin.Context) {
 }
 
 func (h *DashboardHandler) Distribution(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+
 	var req dto.DashboardDistributionRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 		return
 	}
 
-	result, err := h.dashboard.Distribution(c.Request.Context(), req)
+	result, err := h.dashboard.Distribution(c.Request.Context(), req, *access)
 	if err == nil {
 		response.Success(c, result)
 		return
 	}
 
 	switch {
+	case errors.Is(err, common.ErrPermissionDenied):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid dimension")
 	case errors.Is(err, common.ErrDatabaseUnavailable):

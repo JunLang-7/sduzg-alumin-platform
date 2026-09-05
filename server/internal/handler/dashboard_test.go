@@ -7,7 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
 )
@@ -16,8 +18,15 @@ type fakeDashboardStore struct {
 	distributionItems []do.DashboardDistributionItem
 }
 
-func (s *fakeDashboardStore) Overview(_ context.Context) (do.DashboardOverviewStats, error) {
+func (s *fakeDashboardStore) Overview(_ context.Context, _ []uint64) (do.DashboardOverviewStats, error) {
 	return do.DashboardOverviewStats{}, nil
+}
+
+func dashboardAccess(access common.AccessContext) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &access)
+		c.Next()
+	}
 }
 
 func (s *fakeDashboardStore) Distribution(_ context.Context, _ do.DashboardDistributionQuery) ([]do.DashboardDistributionItem, error) {
@@ -29,7 +38,7 @@ func TestDashboardDistributionRejectsMissingDimension(t *testing.T) {
 
 	engine := gin.New()
 	handler := NewDashboardHandler(service.NewDashboardService(&fakeDashboardStore{}))
-	engine.GET("/dashboard/distribution", handler.Distribution)
+	engine.GET("/dashboard/distribution", dashboardAccess(common.AccessContext{Role: common.RoleSuperAdmin}), handler.Distribution)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard/distribution", nil)
 	rec := httptest.NewRecorder()
@@ -49,7 +58,7 @@ func TestDashboardDistributionRejectsInvalidDimension(t *testing.T) {
 
 	engine := gin.New()
 	handler := NewDashboardHandler(service.NewDashboardService(&fakeDashboardStore{}))
-	engine.GET("/dashboard/distribution", handler.Distribution)
+	engine.GET("/dashboard/distribution", dashboardAccess(common.AccessContext{Role: common.RoleSuperAdmin}), handler.Distribution)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard/distribution?dimension=name", nil)
 	rec := httptest.NewRecorder()
@@ -73,7 +82,7 @@ func TestDashboardDistributionReturnsItems(t *testing.T) {
 			{Name: "2020级", Value: 12},
 		},
 	}))
-	engine.GET("/dashboard/distribution", handler.Distribution)
+	engine.GET("/dashboard/distribution", dashboardAccess(common.AccessContext{Role: common.RoleSuperAdmin}), handler.Distribution)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard/distribution?dimension=grade", nil)
 	rec := httptest.NewRecorder()
@@ -85,5 +94,21 @@ func TestDashboardDistributionReturnsItems(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"name":"2020级"`) || !strings.Contains(rec.Body.String(), `"value":12`) {
 		t.Fatalf("expected distribution response, got %s", rec.Body.String())
+	}
+}
+
+func TestDashboardOverviewRequiresAccessContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	engine := gin.New()
+	handler := NewDashboardHandler(service.NewDashboardService(&fakeDashboardStore{}))
+	engine.GET("/dashboard/overview", handler.Overview)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard/overview", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
 	}
 }

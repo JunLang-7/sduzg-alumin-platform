@@ -1,6 +1,9 @@
 package do
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 const (
 	DashboardDistributionDimensionGrade        = "grade"
@@ -21,11 +24,15 @@ type DashboardOverviewStats struct {
 }
 
 type DashboardDistributionQuery struct {
-	Dimension string
+	Dimension     string
+	DataDomainIDs []uint64
 }
 
 func (q DashboardDistributionQuery) Normalize() DashboardDistributionQuery {
 	q.Dimension = strings.ToLower(strings.TrimSpace(q.Dimension))
+	q.DataDomainIDs = slices.Clone(q.DataDomainIDs)
+	slices.Sort(q.DataDomainIDs)
+	q.DataDomainIDs = slices.Compact(q.DataDomainIDs)
 	return q
 }
 
