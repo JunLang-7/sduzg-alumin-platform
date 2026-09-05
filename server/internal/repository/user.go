@@ -262,7 +262,8 @@ func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, doma
 			return err
 		}
 		var user model.User
-		if err := tx.Where("id = ? AND deleted_at IS NULL", id).First(&user).Error; err != nil {
+		userQuery := query.Use(tx).User
+		if err := tx.Where(userQuery.ID.Eq(id), userQuery.DeletedAt.IsNull()).First(&user).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return common.ErrUserNotFound
 			}
@@ -299,8 +300,9 @@ func validateActiveDataDomains(tx *gorm.DB, domainIDs []uint64) error {
 		return common.ErrInvalidDataDomain
 	}
 	var count int64
+	dataDomainQuery := query.Use(tx).DataDomain
 	if err := tx.Model(&model.DataDomain{}).
-		Where("id IN ? AND status = ?", domainIDs, common.DataDomainStatusActive).
+		Where(dataDomainQuery.ID.In(domainIDs...), dataDomainQuery.Status.Eq(common.DataDomainStatusActive)).
 		Count(&count).
 		Error; err != nil {
 		return err
@@ -312,10 +314,12 @@ func validateActiveDataDomains(tx *gorm.DB, domainIDs []uint64) error {
 }
 
 func replaceAdminAccessRecords(tx *gorm.DB, userID uint64, domainIDs []uint64, permissions []string) error {
-	if err := tx.Where("user_id = ?", userID).Delete(&model.AdminDataScope{}).Error; err != nil {
+	dataScopeQuery := query.Use(tx).AdminDataScope
+	if err := tx.Where(dataScopeQuery.UserID.Eq(userID)).Delete(&model.AdminDataScope{}).Error; err != nil {
 		return err
 	}
-	if err := tx.Where("user_id = ?", userID).Delete(&model.AdminPermission{}).Error; err != nil {
+	permissionQuery := query.Use(tx).AdminPermission
+	if err := tx.Where(permissionQuery.UserID.Eq(userID)).Delete(&model.AdminPermission{}).Error; err != nil {
 		return err
 	}
 	for _, domainID := range domainIDs {
@@ -334,14 +338,16 @@ func replaceAdminAccessRecords(tx *gorm.DB, userID uint64, domainIDs []uint64, p
 func loadAdminAccessSnapshot(tx *gorm.DB, userID uint64) (adminAccessSnapshot, error) {
 	snapshot := adminAccessSnapshot{DomainIDs: []uint64{}, Permissions: []string{}}
 	var scopes []model.AdminDataScope
-	if err := tx.Where("user_id = ?", userID).Order("data_domain_id ASC").Find(&scopes).Error; err != nil {
+	dataScopeQuery := query.Use(tx).AdminDataScope
+	if err := tx.Where(dataScopeQuery.UserID.Eq(userID)).Order(dataScopeQuery.DataDomainID.Asc()).Find(&scopes).Error; err != nil {
 		return snapshot, err
 	}
 	for _, scope := range scopes {
 		snapshot.DomainIDs = append(snapshot.DomainIDs, scope.DataDomainID)
 	}
 	var permissions []model.AdminPermission
-	if err := tx.Where("user_id = ?", userID).Order("permission_code ASC").Find(&permissions).Error; err != nil {
+	permissionQuery := query.Use(tx).AdminPermission
+	if err := tx.Where(permissionQuery.UserID.Eq(userID)).Order(permissionQuery.PermissionCode.Asc()).Find(&permissions).Error; err != nil {
 		return snapshot, err
 	}
 	for _, permission := range permissions {

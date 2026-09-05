@@ -10,6 +10,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -30,16 +31,18 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
 	var undergraduate, mpa model.DataDomain
-	if err := db.Where("code = ?", common.DataDomainUndergraduate).First(&undergraduate).Error; err != nil {
+	dataDomainQuery := query.Use(db).DataDomain
+	if err := db.Where(dataDomainQuery.Code.Eq(common.DataDomainUndergraduate)).First(&undergraduate).Error; err != nil {
 		t.Fatalf("find undergraduate data domain: %v", err)
 	}
-	if err := db.Where("code = ?", common.DataDomainMPA).First(&mpa).Error; err != nil {
+	if err := db.Where(dataDomainQuery.Code.Eq(common.DataDomainMPA)).First(&mpa).Error; err != nil {
 		t.Fatalf("find MPA data domain: %v", err)
 	}
 
 	rollback := errors.New("rollback test transaction")
 	err = db.Transaction(func(tx *gorm.DB) error {
 		repo := NewUserRepository(tx)
+		queries := query.Use(tx)
 		ctx := context.Background()
 		passwordHash := "bcrypt-hash-not-plaintext"
 		created, err := repo.CreateAdminWithAccess(ctx, do.AdminCreateProfile{Account: "admin_access_test"}, passwordHash,
@@ -49,14 +52,14 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		}
 
 		var scopes []model.AdminDataScope
-		if err := tx.Where("user_id = ?", created.ID).Find(&scopes).Error; err != nil {
+		if err := tx.Where(queries.AdminDataScope.UserID.Eq(created.ID)).Find(&scopes).Error; err != nil {
 			return err
 		}
 		if len(scopes) != 1 || scopes[0].DataDomainID != mpa.ID {
 			t.Errorf("created scopes = %+v, want MPA %d", scopes, mpa.ID)
 		}
 		var permissions []model.AdminPermission
-		if err := tx.Where("user_id = ?", created.ID).Find(&permissions).Error; err != nil {
+		if err := tx.Where(queries.AdminPermission.UserID.Eq(created.ID)).Find(&permissions).Error; err != nil {
 			return err
 		}
 		if len(permissions) != 1 || permissions[0].PermissionCode != common.PermissionAlumniSensitiveRead {
@@ -71,13 +74,13 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		if updated.ID != created.ID {
 			t.Errorf("updated id = %d, want %d", updated.ID, created.ID)
 		}
-		if err := tx.Where("user_id = ?", created.ID).Order("data_domain_id ASC").Find(&scopes).Error; err != nil {
+		if err := tx.Where(queries.AdminDataScope.UserID.Eq(created.ID)).Order(queries.AdminDataScope.DataDomainID.Asc()).Find(&scopes).Error; err != nil {
 			return err
 		}
 		if len(scopes) != 2 || scopes[0].DataDomainID != undergraduate.ID || scopes[1].DataDomainID != mpa.ID {
 			t.Errorf("replaced scopes = %+v", scopes)
 		}
-		if err := tx.Where("user_id = ?", created.ID).Find(&permissions).Error; err != nil {
+		if err := tx.Where(queries.AdminPermission.UserID.Eq(created.ID)).Find(&permissions).Error; err != nil {
 			return err
 		}
 		if len(permissions) != 1 || permissions[0].PermissionCode != common.PermissionAlumniFilesManage {
@@ -85,7 +88,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		}
 
 		var logs []model.OperationLog
-		if err := tx.Where("target_type = ? AND target_id = ?", "admin_access", created.ID).Order("id ASC").Find(&logs).Error; err != nil {
+		if err := tx.Where(queries.OperationLog.TargetType.Eq("admin_access"), queries.OperationLog.TargetID.Eq(created.ID)).Order(queries.OperationLog.ID.Asc()).Find(&logs).Error; err != nil {
 			return err
 		}
 		if len(logs) != 2 || logs[0].Action != "create_admin_access" || logs[1].Action != "replace_admin_access" {
@@ -103,7 +106,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 			t.Error("expected duplicate permission write to fail")
 		}
 		var rolledBackCount int64
-		if err := tx.Model(&model.User{}).Where("account = ?", "admin_access_rollback_test").Count(&rolledBackCount).Error; err != nil {
+		if err := tx.Model(&model.User{}).Where(queries.User.Account.Eq("admin_access_rollback_test")).Count(&rolledBackCount).Error; err != nil {
 			return err
 		}
 		if rolledBackCount != 0 {
