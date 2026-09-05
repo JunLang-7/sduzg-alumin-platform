@@ -8,36 +8,38 @@ import (
 )
 
 type AlumniListRequest struct {
-	Page         int    `form:"page"`
-	PageSize     int    `form:"page_size"`
-	Keyword      string `form:"keyword"`
-	Grade        string `form:"grade"`
-	ClassName    string `form:"class_name"`
-	Cohort       string `form:"cohort"`
-	Counselor    string `form:"counselor"`
-	Mentor       string `form:"mentor"`
-	Major        string `form:"major"`
-	TrainingMode string `form:"training_mode"`
-	Industry     string `form:"industry"`
-	WorkUnit     string `form:"work_unit"`
-	Position     string `form:"position"`
-	Mobile       string `form:"mobile"`
+	Page         int     `form:"page"`
+	PageSize     int     `form:"page_size"`
+	Keyword      string  `form:"keyword"`
+	Grade        string  `form:"grade"`
+	ClassName    string  `form:"class_name"`
+	Cohort       string  `form:"cohort"`
+	Counselor    string  `form:"counselor"`
+	Mentor       string  `form:"mentor"`
+	Major        string  `form:"major"`
+	TrainingMode string  `form:"training_mode"`
+	Industry     string  `form:"industry"`
+	WorkUnit     string  `form:"work_unit"`
+	Position     string  `form:"position"`
+	Mobile       string  `form:"mobile"`
+	DataDomainID *uint64 `form:"data_domain_id"`
 }
 
 type AlumniExportRequest struct {
-	Format       string `form:"format"`
-	Keyword      string `form:"keyword"`
-	Grade        string `form:"grade"`
-	ClassName    string `form:"class_name"`
-	Cohort       string `form:"cohort"`
-	Counselor    string `form:"counselor"`
-	Mentor       string `form:"mentor"`
-	Major        string `form:"major"`
-	TrainingMode string `form:"training_mode"`
-	Industry     string `form:"industry"`
-	WorkUnit     string `form:"work_unit"`
-	Position     string `form:"position"`
-	Mobile       string `form:"mobile"`
+	Format       string  `form:"format"`
+	Keyword      string  `form:"keyword"`
+	Grade        string  `form:"grade"`
+	ClassName    string  `form:"class_name"`
+	Cohort       string  `form:"cohort"`
+	Counselor    string  `form:"counselor"`
+	Mentor       string  `form:"mentor"`
+	Major        string  `form:"major"`
+	TrainingMode string  `form:"training_mode"`
+	Industry     string  `form:"industry"`
+	WorkUnit     string  `form:"work_unit"`
+	Position     string  `form:"position"`
+	Mobile       string  `form:"mobile"`
+	DataDomainID *uint64 `form:"data_domain_id"`
 }
 
 func (r AlumniExportRequest) FormatOrDefault() string {
@@ -65,6 +67,7 @@ func (r AlumniExportRequest) ToQuery() do.AlumniListQuery {
 		WorkUnit:     r.WorkUnit,
 		Position:     r.Position,
 		Mobile:       r.Mobile,
+		DataDomainID: r.DataDomainID,
 	}
 }
 
@@ -86,6 +89,7 @@ func (r AlumniListRequest) ToQuery() do.AlumniListQuery {
 		WorkUnit:     r.WorkUnit,
 		Position:     r.Position,
 		Mobile:       r.Mobile,
+		DataDomainID: r.DataDomainID,
 	}
 }
 
@@ -189,6 +193,7 @@ func (r AdminAlumniUpdateRequest) ToProfile() do.AlumniUpdateProfile {
 
 type AlumniListItem struct {
 	ID           uint64    `json:"id"`
+	DataDomainID uint64    `json:"data_domain_id"`
 	Name         string    `json:"name"`
 	Grade        string    `json:"grade"`
 	ClassName    *string   `json:"class_name"`
@@ -220,6 +225,7 @@ type AlumniRowError struct {
 
 type AlumniDetail struct {
 	ID             uint64    `json:"id"`
+	DataDomainID   uint64    `json:"data_domain_id"`
 	Name           string    `json:"name"`
 	Grade          string    `json:"grade"`
 	ClassName      *string   `json:"class_name"`

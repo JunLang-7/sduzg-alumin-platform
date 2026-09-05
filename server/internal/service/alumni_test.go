@@ -650,6 +650,28 @@ func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
 	}
 }
 
+func TestAlumniServiceListHonorsRequestedDataDomain(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+	requestedDomainID := uint64(3)
+	viewer := common.AccessContext{
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{2, 3},
+	}
+
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{DataDomainID: &requestedDomainID}, viewer); err != nil {
+		t.Fatalf("expected requested domain list success, got %v", err)
+	}
+	if !slices.Equal(store.query.DataDomainIDs, []uint64{3}) {
+		t.Fatalf("expected query to be limited to requested domain, got %v", store.query.DataDomainIDs)
+	}
+
+	forbiddenDomainID := uint64(4)
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{DataDomainID: &forbiddenDomainID}, viewer); err != common.ErrPermissionDenied {
+		t.Fatalf("expected forbidden requested domain to be rejected, got %v", err)
+	}
+}
+
 func TestAlumniServiceListRejectsAdminWithoutDataDomain(t *testing.T) {
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
 	_, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{Role: common.RoleAdmin})

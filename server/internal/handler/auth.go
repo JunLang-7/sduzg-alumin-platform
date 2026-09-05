@@ -68,6 +68,30 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	response.Success(c, result)
 }
 
+// Me 返回当前用户及本请求实时加载的授权能力。
+func (h *AuthHandler) Me(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	result, err := h.auth.CurrentUser(c.Request.Context(), *access)
+	if err == nil {
+		response.Success(c, result)
+		return
+	}
+	switch {
+	case errors.Is(err, common.ErrAccountDisabled):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "account is disabled")
+	case errors.Is(err, common.ErrUserNotFound):
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	default:
+		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
+	}
+}
+
 func (h *AuthHandler) ChangePassword(c *gin.Context) {
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

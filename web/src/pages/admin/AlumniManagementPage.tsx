@@ -20,6 +20,7 @@ import {
   Select,
   Space,
   Table,
+  Tag,
   message,
 } from 'antd';
 import type { MenuProps } from 'antd';
@@ -28,12 +29,17 @@ import { useSearchParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
+import { useAuthStore } from '../../store/authStore';
 import type { AlumniImportResult, AlumniProfile, AlumniProfilePayload, AlumniQuery } from '../../types/alumni';
+import { canReadSensitive } from '../../utils/access';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
 
 export function AlumniManagementPage() {
+  const user = useAuthStore((state) => state.user);
+  const domains = user?.domains || [];
+  const sensitiveReadable = canReadSensitive(user);
   const [searchForm] = Form.useForm<AlumniQuery>();
   const [modalForm] = Form.useForm<AlumniProfilePayload>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -52,6 +58,7 @@ export function AlumniManagementPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<AlumniImportResult | null>(null);
   const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importDomainID, setImportDomainID] = useState<number>();
   const dataRequestIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +104,7 @@ export function AlumniManagementPage() {
   const openCreateModal = () => {
     setEditing(null);
     modalForm.resetFields();
+    if (domains.length === 1) modalForm.setFieldValue('data_domain_id', domains[0].id);
     setModalOpen(true);
   };
 
@@ -158,6 +166,12 @@ export function AlumniManagementPage() {
         width: 110,
       },
       {
+        title: '所属领域',
+        dataIndex: 'data_domain_id',
+        width: 170,
+        render: (value: number) => <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>,
+      },
+      {
         title: '班级',
         dataIndex: 'class_name',
         width: 180,
@@ -212,7 +226,7 @@ export function AlumniManagementPage() {
         ),
       },
     ],
-    [handleRemove, openEditModal],
+    [domains, handleRemove, openEditModal],
   );
 
   const handleSearch = (values: AlumniQuery) => {
@@ -296,7 +310,7 @@ export function AlumniManagementPage() {
 
     setImporting(true);
     try {
-      const result = await alumniApi.importData(file);
+      const result = await alumniApi.importData(file, importDomainID);
       setImportResult(result);
       setImportModalOpen(true);
       await loadData(query);
@@ -320,7 +334,7 @@ export function AlumniManagementPage() {
     <>
       <PageHeader
         title="校友管理"
-        description="管理员维护 MPA 校友基础档案"
+        description="管理员维护已授权领域内的校友基础档案"
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             新增校友
@@ -348,6 +362,9 @@ export function AlumniManagementPage() {
               options={industryOptions.map((value) => ({ label: value, value }))}
             />
           </Form.Item>
+          <Form.Item name="data_domain_id">
+            <Select allowClear placeholder="所属领域" options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+          </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
               查询
@@ -355,6 +372,7 @@ export function AlumniManagementPage() {
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
             </Button>
+            <Select value={importDomainID} onChange={setImportDomainID} allowClear placeholder="导入目标领域" style={{ width: 170 }} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
             <Button icon={<UploadOutlined />} loading={importing} onClick={handleImportClick}>
               导入 Excel
             </Button>
@@ -422,6 +440,9 @@ export function AlumniManagementPage() {
           >
             <Input maxLength={50} />
           </Form.Item>
+          <Form.Item label="所属领域" name="data_domain_id" rules={[{ required: true, message: '请选择所属领域' }]}>
+            <Select disabled={Boolean(editing) || domains.length === 1} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+          </Form.Item>
           <Form.Item label="班级" name="class_name">
             <Input maxLength={100} />
           </Form.Item>
@@ -434,12 +455,8 @@ export function AlumniManagementPage() {
               options={genderOptions.map((value) => ({ label: value, value }))}
             />
           </Form.Item>
-          <Form.Item label="手机号" name="mobile">
-            <Input maxLength={30} />
-          </Form.Item>
-          <Form.Item label="邮箱" name="email">
-            <Input maxLength={255} />
-          </Form.Item>
+          {sensitiveReadable ? <Form.Item label="手机号" name="mobile"><Input maxLength={30} /></Form.Item> : null}
+          {sensitiveReadable ? <Form.Item label="邮箱" name="email"><Input maxLength={255} /></Form.Item> : null}
           <Form.Item label="专业" name="major">
             <Input maxLength={100} />
           </Form.Item>
@@ -464,12 +481,8 @@ export function AlumniManagementPage() {
           <Form.Item label="工作单位" name="work_unit">
             <Input maxLength={255} />
           </Form.Item>
-          <Form.Item label="职务" name="position">
-            <Input maxLength={100} />
-          </Form.Item>
-          <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide">
-            <Input.TextArea rows={3} maxLength={255} showCount />
-          </Form.Item>
+          {sensitiveReadable ? <Form.Item label="职务" name="position"><Input maxLength={100} /></Form.Item> : null}
+          {sensitiveReadable ? <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide"><Input.TextArea rows={3} maxLength={255} showCount /></Form.Item> : null}
           <Form.Item label="管理员备注" name="remark" className="modal-grid-wide">
             <Input.TextArea rows={3} />
           </Form.Item>

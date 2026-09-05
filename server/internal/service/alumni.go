@@ -125,7 +125,12 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 	}
-	if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
+	if query.DataDomainID != nil {
+		if !viewer.IsSuperAdmin() && !viewer.CanAccessDomain(*query.DataDomainID) {
+			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = []uint64{*query.DataDomainID}
+	} else if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
 		if len(domainIDs) == 0 {
 			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 		}
@@ -422,7 +427,12 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
 		return nil, common.ErrPermissionDenied
 	}
-	if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
+	if query.DataDomainID != nil {
+		if !operator.IsSuperAdmin() && !operator.CanAccessDomain(*query.DataDomainID) {
+			return nil, common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = []uint64{*query.DataDomainID}
+	} else if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
 		if len(domainIDs) == 0 {
 			return nil, common.ErrPermissionDenied
 		}
@@ -956,6 +966,7 @@ func mapAlumniListItems(items []*model.AlumniProfile) []dto.AlumniListItem {
 		}
 		result = append(result, dto.AlumniListItem{
 			ID:           item.ID,
+			DataDomainID: item.DataDomainID,
 			Name:         item.Name,
 			Grade:        item.Grade,
 			ClassName:    item.ClassName,
@@ -984,6 +995,7 @@ func mapAlumniDetail(item *model.AlumniProfile) *dto.AlumniDetail {
 
 	return &dto.AlumniDetail{
 		ID:             item.ID,
+		DataDomainID:   item.DataDomainID,
 		Name:           item.Name,
 		Grade:          item.Grade,
 		ClassName:      item.ClassName,

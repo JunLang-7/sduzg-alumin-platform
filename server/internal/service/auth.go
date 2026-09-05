@@ -6,6 +6,7 @@ import (
 	"fmt"
 	stdmail "net/mail"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -320,6 +321,7 @@ type AuthService struct {
 	alumni        repository.AlumniStore
 	loginAttempts repository.LoginAttemptStore
 	verifyCode    repository.VerifyCodeStore
+	access        repository.AccessControlStore
 	codeSender    CodeSender
 	cfg           config.Config
 	jwtSecret     []byte
@@ -334,8 +336,9 @@ func NewAuthService(
 	loginAttempts repository.LoginAttemptStore,
 	verifyCode repository.VerifyCodeStore,
 	cfg config.Config,
+	access ...repository.AccessControlStore,
 ) *AuthService {
-	return &AuthService{
+	service := &AuthService{
 		users:         users,
 		alumni:        alumni,
 		loginAttempts: loginAttempts,
@@ -347,6 +350,10 @@ func NewAuthService(
 		issuer:        cfg.App.Name,
 		now:           time.Now,
 	}
+	if len(access) > 0 {
+		service.access = access[0]
+	}
+	return service
 }
 
 // detectLoginType classifies an identifier string.
@@ -370,6 +377,55 @@ func (s *AuthService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Log
 	default:
 		return s.loginWithPassword(ctx, req)
 	}
+}
+
+// CurrentUser 返回当前请求的用户资料与已生效授权能力。
+func (s *AuthService) CurrentUser(ctx context.Context, access common.AccessContext) (*dto.UserDTO, error) {
+	if s.users == nil || s.access == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	user, err := s.users.FindByID(ctx, access.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if user.Status != common.UserStatusActive {
+		return nil, common.ErrAccountDisabled
+	}
+
+	result := userDTOFromModel(user)
+	result.Domains = []dto.AdminDataDomain{}
+	result.Permissions = []string{}
+	if !access.IsAdministrator() {
+		return &result, nil
+	}
+
+	activeDomains, err := s.access.ListActiveDataDomains(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if access.IsSuperAdmin() {
+		result.Domains = mapAdminDataDomains(activeDomains)
+		result.Permissions = allAdminPermissions()
+		return &result, nil
+	}
+	allowed := make(map[uint64]struct{}, len(access.DomainIDs))
+	for _, id := range access.DomainIDs {
+		allowed[id] = struct{}{}
+	}
+	for _, domain := range activeDomains {
+		if domain != nil {
+			if _, ok := allowed[domain.ID]; ok {
+				result.Domains = append(result.Domains, dto.AdminDataDomain{ID: domain.ID, Code: domain.Code, Name: domain.Name})
+			}
+		}
+	}
+	for permission := range access.Permissions {
+		if common.IsKnownAdminPermission(permission) {
+			result.Permissions = append(result.Permissions, permission)
+		}
+	}
+	sort.Strings(result.Permissions)
+	return &result, nil
 }
 
 func (s *AuthService) loginWithPassword(ctx context.Context, req dto.LoginRequest) (*dto.LoginResult, error) {
@@ -579,15 +635,12 @@ func (s *AuthService) completeLogin(ctx context.Context, user *model.User, ident
 		AccessToken: token,
 		TokenType:   "Bearer",
 		ExpiresAt:   expiresAt,
-		User: dto.UserDTO{
-			ID:       user.ID,
-			Account:  user.Account,
-			Role:     user.Role,
-			RealName: user.RealName,
-			AlumniID: user.AlumniID,
-			Mobile:   user.Mobile,
-		},
+		User:        userDTOFromModel(user),
 	}, nil
+}
+
+func userDTOFromModel(user *model.User) dto.UserDTO {
+	return dto.UserDTO{ID: user.ID, Account: user.Account, Role: user.Role, RealName: user.RealName, AlumniID: user.AlumniID, Mobile: user.Mobile, Domains: []dto.AdminDataDomain{}, Permissions: []string{}}
 }
 
 // SendVerifyCode sends a verification code.

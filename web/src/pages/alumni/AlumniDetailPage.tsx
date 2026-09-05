@@ -6,6 +6,7 @@ import { alumniApi } from '../../api/alumni';
 import { AlumniFilesCard } from '../../components/AlumniFilesCard';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
+import { canReadSensitive } from '../../utils/access';
 import type { AlumniProfile } from '../../types/alumni';
 
 function isHidden(value: unknown, isRestrictedViewer: boolean): boolean {
@@ -19,8 +20,11 @@ export function AlumniDetailPage() {
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<AlumniProfile | null>(null);
 
-  const isRestrictedViewer =
-    user?.role === 'alumni' && user.alumni_id !== undefined && String(user.alumni_id) !== id;
+  const isOwnAlumniProfile =
+    user?.role === 'alumni' && user.alumni_id !== undefined && String(user.alumni_id) === id;
+  const isRestrictedViewer = user?.role === 'alumni'
+    ? !isOwnAlumniProfile
+    : !canReadSensitive(user);
 
   useEffect(() => {
     if (!id) {

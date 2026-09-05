@@ -79,9 +79,10 @@ export const alumniApi = {
     });
   },
 
-  importData(file: File) {
-    const formData = new FormData();
-    formData.append('file', file);
+  importData(file: File, dataDomainID?: number) {
+	const formData = new FormData();
+	formData.append('file', file);
+	if (dataDomainID) formData.append('data_domain_id', String(dataDomainID));
 
     return request<AlumniImportResult>({
       method: 'POST',

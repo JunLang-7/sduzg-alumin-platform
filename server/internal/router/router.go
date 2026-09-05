@@ -62,7 +62,7 @@ func New(deps Dependencies) *gin.Engine {
 	// 验证码仓库
 	verifyCodeRepository := repository.NewVerifyCodeStore(deps.RedisClient)
 	// 认证服务和处理器
-	authService := service.NewAuthService(userRepository, alumniRepository, loginAttemptRepository, verifyCodeRepository, deps.Config)
+	authService := service.NewAuthService(userRepository, alumniRepository, loginAttemptRepository, verifyCodeRepository, deps.Config, accessControlRepository)
 	authHandler := handler.NewAuthHandler(authService)
 	// 操作日志写入器
 	opLogger := service.NewOperationLogger(deps.DB)
@@ -109,6 +109,7 @@ func New(deps Dependencies) *gin.Engine {
 
 		// 用户认证
 		api.POST("/auth/login", authHandler.Login)
+		api.GET("/auth/me", authHandler.Me)
 		api.POST("/auth/logout", authHandler.Logout)
 		api.POST("/auth/change-password", authHandler.ChangePassword)
 		api.POST("/auth/setup-password", authHandler.SetupPassword)

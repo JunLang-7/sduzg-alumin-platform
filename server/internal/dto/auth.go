@@ -36,12 +36,14 @@ type LogoutResult struct {
 }
 
 type UserDTO struct {
-	ID       uint64  `json:"id"`
-	Account  string  `json:"account"`
-	Role     string  `json:"role"`
-	RealName *string `json:"real_name,omitempty"`
-	AlumniID *uint64 `json:"alumni_id,omitempty"`
-	Mobile   *string `json:"mobile,omitempty"`
+	ID          uint64            `json:"id"`
+	Account     string            `json:"account"`
+	Role        string            `json:"role"`
+	RealName    *string           `json:"real_name,omitempty"`
+	AlumniID    *uint64           `json:"alumni_id,omitempty"`
+	Mobile      *string           `json:"mobile,omitempty"`
+	Domains     []AdminDataDomain `json:"domains"`
+	Permissions []string          `json:"permissions"`
 }
 
 type ChangePasswordRequest struct {
@@ -57,10 +59,10 @@ type SetupPasswordRequest struct {
 }
 
 type SetupPasswordResult struct {
-	AccessToken string  `json:"access_token"`
-	TokenType   string  `json:"token_type"`
+	AccessToken string    `json:"access_token"`
+	TokenType   string    `json:"token_type"`
 	ExpiresAt   time.Time `json:"expires_at"`
-	User        UserDTO `json:"user"`
+	User        UserDTO   `json:"user"`
 }
 
 type VerifyCodeRequest struct {
