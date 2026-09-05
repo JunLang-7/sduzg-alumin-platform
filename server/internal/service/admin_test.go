@@ -15,9 +15,11 @@ type fakeAdminAccessStore struct {
 	domainsByID map[uint64][]uint64
 	permissions map[uint64][]string
 	err         error
+	domainCalls int
 }
 
 func (s *fakeAdminAccessStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
+	s.domainCalls++
 	return s.domains, s.err
 }
 
@@ -75,6 +77,35 @@ func TestAdminServiceListMapsPagerAndItems(t *testing.T) {
 	}
 	if pager.Items[0].ID != 1 || pager.Items[0].Account != "admin" || pager.Items[0].Role != common.RoleSuperAdmin {
 		t.Fatalf("unexpected admin item: %+v", pager.Items[0])
+	}
+	if access.domainCalls != 1 {
+		t.Fatalf("active data domains queried %d times, want 1", access.domainCalls)
+	}
+}
+
+func TestAdminServiceListReusesActiveDomainsForMultipleAdmins(t *testing.T) {
+	store := &fakeUserStore{
+		users: []*model.User{
+			{ID: 2, Account: "admin01", Role: common.RoleAdmin, Status: common.UserStatusActive},
+			{ID: 3, Account: "admin02", Role: common.RoleAdmin, Status: common.UserStatusActive},
+		},
+		total: 2,
+	}
+	access := &fakeAdminAccessStore{
+		domains:     activeAdminDomains(),
+		domainsByID: map[uint64][]uint64{2: {1}, 3: {2}},
+		permissions: map[uint64][]string{2: {}, 3: {common.PermissionAlumniSensitiveRead}},
+	}
+
+	pager, err := NewAdminService(store, access).List(context.Background(), dto.AdminListRequest{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(pager.Items) != 2 {
+		t.Fatalf("items = %d, want 2", len(pager.Items))
+	}
+	if access.domainCalls != 1 {
+		t.Fatalf("active data domains queried %d times, want 1", access.domainCalls)
 	}
 }
 

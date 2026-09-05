@@ -45,7 +45,11 @@ func (s *AdminService) List(ctx context.Context, req dto.AdminListRequest) (comm
 		return common.NewPager[dto.AdminListItem](nil, query.Page, 0), err
 	}
 
-	items, err := s.mapAdminListItems(ctx, users)
+	activeDomains, err := s.access.ListActiveDataDomains(ctx)
+	if err != nil {
+		return common.NewPager[dto.AdminListItem](nil, query.Page, 0), err
+	}
+	items, err := s.mapAdminListItems(ctx, users, activeDomains)
 	if err != nil {
 		return common.NewPager[dto.AdminListItem](nil, query.Page, 0), err
 	}
@@ -186,14 +190,14 @@ func (s *AdminService) Delete(ctx context.Context, operatorID uint64, id uint64)
 	return nil
 }
 
-// mapAdminListItems 将 User 模型列表转换为 AdminListItem 列表
-func (s *AdminService) mapAdminListItems(ctx context.Context, users []*model.User) ([]dto.AdminListItem, error) {
+// mapAdminListItems 将 User 模型列表转换为 AdminListItem 列表，并复用同一批活跃数据域。
+func (s *AdminService) mapAdminListItems(ctx context.Context, users []*model.User, activeDomains []*model.DataDomain) ([]dto.AdminListItem, error) {
 	result := make([]dto.AdminListItem, 0, len(users))
 	for _, user := range users {
 		if user == nil {
 			continue
 		}
-		domains, permissions, err := s.resolveAccess(ctx, user)
+		domains, permissions, err := s.resolveAccessWithActiveDomains(ctx, user, activeDomains)
 		if err != nil {
 			return nil, err
 		}
@@ -244,6 +248,10 @@ func (s *AdminService) resolveAccess(ctx context.Context, user *model.User) ([]d
 	if err != nil {
 		return nil, nil, err
 	}
+	return s.resolveAccessWithActiveDomains(ctx, user, activeDomains)
+}
+
+func (s *AdminService) resolveAccessWithActiveDomains(ctx context.Context, user *model.User, activeDomains []*model.DataDomain) ([]dto.AdminDataDomain, []string, error) {
 	if user.Role == common.RoleSuperAdmin {
 		return mapAdminDataDomains(activeDomains), allAdminPermissions(), nil
 	}

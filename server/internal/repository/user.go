@@ -297,13 +297,21 @@ func replaceAdminAccessRecords(tx *gorm.DB, userID uint64, domainIDs []uint64, p
 	if err := tx.Where(permissionQuery.UserID.Eq(userID)).Delete(&model.AdminPermission{}).Error; err != nil {
 		return err
 	}
+	dataScopes := make([]*model.AdminDataScope, 0, len(domainIDs))
 	for _, domainID := range domainIDs {
-		if err := tx.Create(&model.AdminDataScope{UserID: userID, DataDomainID: domainID}).Error; err != nil {
+		dataScopes = append(dataScopes, &model.AdminDataScope{UserID: userID, DataDomainID: domainID})
+	}
+	if len(dataScopes) > 0 {
+		if err := tx.CreateInBatches(dataScopes, len(dataScopes)).Error; err != nil {
 			return err
 		}
 	}
+	adminPermissions := make([]*model.AdminPermission, 0, len(permissions))
 	for _, permission := range permissions {
-		if err := tx.Create(&model.AdminPermission{UserID: userID, PermissionCode: permission}).Error; err != nil {
+		adminPermissions = append(adminPermissions, &model.AdminPermission{UserID: userID, PermissionCode: permission})
+	}
+	if len(adminPermissions) > 0 {
+		if err := tx.CreateInBatches(adminPermissions, len(adminPermissions)).Error; err != nil {
 			return err
 		}
 	}
