@@ -22,21 +22,36 @@ func (r AdminListRequest) ToQuery() do.AdminListQuery {
 }
 
 type AdminListItem struct {
-	ID          uint64     `json:"id"`
-	Account     string     `json:"account"`
-	Role        string     `json:"role"`
-	RealName    *string    `json:"real_name"`
-	Mobile      *string    `json:"mobile"`
-	Status      string     `json:"status"`
-	LastLoginAt *time.Time `json:"last_login_at"`
-	CreatedAt   time.Time  `json:"created_at"`
+	ID          uint64            `json:"id"`
+	Account     string            `json:"account"`
+	Role        string            `json:"role"`
+	RealName    *string           `json:"real_name"`
+	Mobile      *string           `json:"mobile"`
+	Status      string            `json:"status"`
+	LastLoginAt *time.Time        `json:"last_login_at"`
+	CreatedAt   time.Time         `json:"created_at"`
+	Domains     []AdminDataDomain `json:"domains"`
+	Permissions []string          `json:"permissions"`
 }
 
 type AdminCreateRequest struct {
-	Account  string  `json:"account" binding:"required"`
-	Password string  `json:"password" binding:"required,min=8"`
-	RealName *string `json:"real_name"`
-	Mobile   *string `json:"mobile"`
+	Account     string   `json:"account" binding:"required"`
+	Password    string   `json:"password" binding:"required,min=8"`
+	RealName    *string  `json:"real_name"`
+	Mobile      *string  `json:"mobile"`
+	DomainIDs   []uint64 `json:"domain_ids"`
+	Permissions []string `json:"permissions"`
+}
+
+type AdminAccessUpdateRequest struct {
+	DomainIDs   []uint64 `json:"domain_ids"`
+	Permissions []string `json:"permissions"`
+}
+
+type AdminDataDomain struct {
+	ID   uint64 `json:"id"`
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
 
 func (r AdminCreateRequest) ToProfile() do.AdminCreateProfile {
@@ -48,12 +63,14 @@ func (r AdminCreateRequest) ToProfile() do.AdminCreateProfile {
 }
 
 type AdminDetail struct {
-	ID        uint64    `json:"id"`
-	Account   string    `json:"account"`
-	Role      string    `json:"role"`
-	RealName  *string   `json:"real_name"`
-	Mobile    *string   `json:"mobile"`
-	Status    string    `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID          uint64            `json:"id"`
+	Account     string            `json:"account"`
+	Role        string            `json:"role"`
+	RealName    *string           `json:"real_name"`
+	Mobile      *string           `json:"mobile"`
+	Status      string            `json:"status"`
+	CreatedAt   time.Time         `json:"created_at"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+	Domains     []AdminDataDomain `json:"domains"`
+	Permissions []string          `json:"permissions"`
 }

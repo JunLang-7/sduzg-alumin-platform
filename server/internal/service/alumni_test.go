@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"slices"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	"github.com/xuri/excelize/v2"
 )
 
 type fakeAlumniStore struct {
@@ -132,6 +134,66 @@ func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64,
 	s.deleteUserID = updaterID
 	s.deleteDomainIDs = slices.Clone(dataDomainIDs)
 	return s.deleteErr
+}
+
+func buildAlumniImportWorkbook(t *testing.T, rows [][]string) *bytes.Buffer {
+	t.Helper()
+
+	f := excelize.NewFile()
+	defer f.Close()
+	for column, header := range alumniColumnHeaders {
+		cell, err := excelize.CoordinatesToCellName(column+1, 1)
+		if err != nil {
+			t.Fatalf("header cell: %v", err)
+		}
+		if err := f.SetCellValue("Sheet1", cell, header); err != nil {
+			t.Fatalf("set header: %v", err)
+		}
+	}
+	for rowIndex, row := range rows {
+		for column, value := range row {
+			cell, err := excelize.CoordinatesToCellName(column+1, rowIndex+2)
+			if err != nil {
+				t.Fatalf("data cell: %v", err)
+			}
+			if err := f.SetCellValue("Sheet1", cell, value); err != nil {
+				t.Fatalf("set data: %v", err)
+			}
+		}
+	}
+
+	var data bytes.Buffer
+	if err := f.Write(&data); err != nil {
+		t.Fatalf("write workbook: %v", err)
+	}
+	return &data
+}
+
+func TestAlumniServiceImportPartiallySucceedsWhenRowContainsUnauthorizedSensitiveFields(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+	workbook := buildAlumniImportWorkbook(t, [][]string{
+		{"敏感行", "2020级", "", "", "", "", "", "", "", "", "", "", "", "13800000000"},
+		{"正常行", "2020级"},
+	})
+
+	result, err := svc.Import(context.Background(), common.AccessContext{
+		UserID:    7,
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{2},
+	}, nil, workbook)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Total != 2 || result.Success != 1 || len(result.Errors) != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if rowError := result.Errors[0]; rowError.Row != 2 || rowError.Name != "敏感行" || rowError.Message != "无权导入敏感字段" {
+		t.Fatalf("unexpected row error: %+v", rowError)
+	}
+	if len(store.batchProfiles) != 1 || store.batchProfiles[0].Name != "正常行" {
+		t.Fatalf("expected only valid row to be imported, got %+v", store.batchProfiles)
+	}
 }
 
 func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
@@ -80,13 +81,28 @@ func (l *AccessContextLoader) Load(ctx context.Context, userID uint64) (*common.
 		}
 	}
 
-	domainIDs, err := l.accessControl.ListAdminDataDomainIDs(ctx, userID)
-	if err != nil {
-		return nil, err
+	var (
+		domainIDs       []uint64
+		permissionCodes []string
+		domainErr       error
+		permissionErr   error
+		wg              sync.WaitGroup
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		domainIDs, domainErr = l.accessControl.ListAdminDataDomainIDs(ctx, userID)
+	}()
+	go func() {
+		defer wg.Done()
+		permissionCodes, permissionErr = l.accessControl.ListAdminPermissionCodes(ctx, userID)
+	}()
+	wg.Wait()
+	if domainErr != nil {
+		return nil, domainErr
 	}
-	permissionCodes, err := l.accessControl.ListAdminPermissionCodes(ctx, userID)
-	if err != nil {
-		return nil, err
+	if permissionErr != nil {
+		return nil, permissionErr
 	}
 
 	for _, domainID := range domainIDs {

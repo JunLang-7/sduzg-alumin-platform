@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -20,13 +21,24 @@ type UserStore interface {
 	FindByAlumniID(ctx context.Context, alumniID uint64) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
-	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
+	CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
+	ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
 	DeleteAdmin(ctx context.Context, id uint64) error
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
 	UpdateMobile(ctx context.Context, id uint64, mobile string) error
 	UpdateEmail(ctx context.Context, id uint64, email string) error
 	CreateUser(ctx context.Context, user *model.User) error
+}
+
+type adminAccessAuditDetail struct {
+	Before *adminAccessSnapshot `json:"before,omitempty"`
+	After  adminAccessSnapshot  `json:"after"`
+}
+
+type adminAccessSnapshot struct {
+	DomainIDs   []uint64 `json:"domain_ids"`
+	Permissions []string `json:"permissions"`
 }
 
 type UserRepository struct {
@@ -173,28 +185,174 @@ func (r *UserRepository) ListAdmins(ctx context.Context, listQuery do.AdminListQ
 	return items, total, nil
 }
 
-// CreateAdmin 创建管理员账号。
-func (r *UserRepository) CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error) {
+// CreateAdminWithAccess 在同一事务中创建管理员、写入授权映射和审计日志。
+func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
 
-	item := &model.User{
-		Account:      profile.Account,
-		PasswordHash: passwordHash,
-		Role:         common.RoleAdmin,
-		RealName:     profile.RealName,
-		Mobile:       profile.Mobile,
-		Status:       common.UserStatusActive,
-	}
-	if err := r.db.WithContext(ctx).Create(item).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
-			return nil, common.ErrAccountAlreadyExists
+	var created *model.User
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := validateActiveDataDomains(tx, domainIDs); err != nil {
+			return err
 		}
+		item := &model.User{
+			Account:      profile.Account,
+			PasswordHash: passwordHash,
+			Role:         common.RoleAdmin,
+			RealName:     profile.RealName,
+			Mobile:       profile.Mobile,
+			Status:       common.UserStatusActive,
+		}
+		if err := tx.Create(item).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+				return common.ErrAccountAlreadyExists
+			}
+			return err
+		}
+		if err := replaceAdminAccessRecords(tx, item.ID, domainIDs, permissions); err != nil {
+			return err
+		}
+		if err := writeAdminAccessAuditLog(tx, operatorID, "create_admin_access", item.ID, nil, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+			return err
+		}
+		created = item
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
+	return created, nil
+}
 
-	return item, nil
+// ReplaceAdminAccess 整体替换普通管理员的数据域和权限，并记录变更前后快照。
+func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var updated *model.User
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := validateActiveDataDomains(tx, domainIDs); err != nil {
+			return err
+		}
+		var user model.User
+		userQuery := query.Use(tx).User
+		if err := tx.Where(userQuery.ID.Eq(id), userQuery.DeletedAt.IsNull()).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrUserNotFound
+			}
+			return err
+		}
+		if user.Role == common.RoleSuperAdmin {
+			return common.ErrCannotModifySuper
+		}
+		if user.Role != common.RoleAdmin {
+			return common.ErrUserNotFound
+		}
+
+		before, err := loadAdminAccessSnapshot(tx, id)
+		if err != nil {
+			return err
+		}
+		if err := replaceAdminAccessRecords(tx, id, domainIDs, permissions); err != nil {
+			return err
+		}
+		if err := writeAdminAccessAuditLog(tx, operatorID, "replace_admin_access", id, &before, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+			return err
+		}
+		updated = &user
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+func validateActiveDataDomains(tx *gorm.DB, domainIDs []uint64) error {
+	if len(domainIDs) == 0 {
+		return common.ErrInvalidDataDomain
+	}
+	var count int64
+	dataDomainQuery := query.Use(tx).DataDomain
+	if err := tx.Model(&model.DataDomain{}).
+		Where(dataDomainQuery.ID.In(domainIDs...), dataDomainQuery.Status.Eq(common.DataDomainStatusActive)).
+		Count(&count).
+		Error; err != nil {
+		return err
+	}
+	if count != int64(len(domainIDs)) {
+		return common.ErrInvalidDataDomain
+	}
+	return nil
+}
+
+func replaceAdminAccessRecords(tx *gorm.DB, userID uint64, domainIDs []uint64, permissions []string) error {
+	dataScopeQuery := query.Use(tx).AdminDataScope
+	if err := tx.Where(dataScopeQuery.UserID.Eq(userID)).Delete(&model.AdminDataScope{}).Error; err != nil {
+		return err
+	}
+	permissionQuery := query.Use(tx).AdminPermission
+	if err := tx.Where(permissionQuery.UserID.Eq(userID)).Delete(&model.AdminPermission{}).Error; err != nil {
+		return err
+	}
+	dataScopes := make([]*model.AdminDataScope, 0, len(domainIDs))
+	for _, domainID := range domainIDs {
+		dataScopes = append(dataScopes, &model.AdminDataScope{UserID: userID, DataDomainID: domainID})
+	}
+	if len(dataScopes) > 0 {
+		if err := tx.CreateInBatches(dataScopes, len(dataScopes)).Error; err != nil {
+			return err
+		}
+	}
+	adminPermissions := make([]*model.AdminPermission, 0, len(permissions))
+	for _, permission := range permissions {
+		adminPermissions = append(adminPermissions, &model.AdminPermission{UserID: userID, PermissionCode: permission})
+	}
+	if len(adminPermissions) > 0 {
+		if err := tx.CreateInBatches(adminPermissions, len(adminPermissions)).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadAdminAccessSnapshot(tx *gorm.DB, userID uint64) (adminAccessSnapshot, error) {
+	snapshot := adminAccessSnapshot{DomainIDs: []uint64{}, Permissions: []string{}}
+	var scopes []model.AdminDataScope
+	dataScopeQuery := query.Use(tx).AdminDataScope
+	if err := tx.Where(dataScopeQuery.UserID.Eq(userID)).Order(dataScopeQuery.DataDomainID.Asc()).Find(&scopes).Error; err != nil {
+		return snapshot, err
+	}
+	for _, scope := range scopes {
+		snapshot.DomainIDs = append(snapshot.DomainIDs, scope.DataDomainID)
+	}
+	var permissions []model.AdminPermission
+	permissionQuery := query.Use(tx).AdminPermission
+	if err := tx.Where(permissionQuery.UserID.Eq(userID)).Order(permissionQuery.PermissionCode.Asc()).Find(&permissions).Error; err != nil {
+		return snapshot, err
+	}
+	for _, permission := range permissions {
+		snapshot.Permissions = append(snapshot.Permissions, permission.PermissionCode)
+	}
+	return snapshot, nil
+}
+
+func writeAdminAccessAuditLog(tx *gorm.DB, operatorID uint64, action string, targetID uint64, before *adminAccessSnapshot, after adminAccessSnapshot) error {
+	detail, err := json.Marshal(adminAccessAuditDetail{Before: before, After: after})
+	if err != nil {
+		return err
+	}
+	detailText := string(detail)
+	return tx.Create(&model.OperationLog{
+		OperatorID:   operatorID,
+		OperatorRole: common.RoleSuperAdmin,
+		Action:       action,
+		TargetType:   "admin_access",
+		TargetID:     &targetID,
+		Detail:       &detailText,
+	}).Error
 }
 
 // DeleteAdmin 软删除管理员账号。

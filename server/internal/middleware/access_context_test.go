@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
@@ -33,6 +34,9 @@ type fakeAccessContextStore struct {
 	activeDomainCalls int
 	domainCalls       int
 	permissionCalls   int
+	domainStarted     chan struct{}
+	permissionStarted chan struct{}
+	release           <-chan struct{}
 }
 
 func (s *fakeAccessContextStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
@@ -42,11 +46,23 @@ func (s *fakeAccessContextStore) ListActiveDataDomains(context.Context) ([]*mode
 
 func (s *fakeAccessContextStore) ListAdminDataDomainIDs(context.Context, uint64) ([]uint64, error) {
 	s.domainCalls++
+	if s.domainStarted != nil {
+		close(s.domainStarted)
+	}
+	if s.release != nil {
+		<-s.release
+	}
 	return s.domainIDs, s.domainErr
 }
 
 func (s *fakeAccessContextStore) ListAdminPermissionCodes(context.Context, uint64) ([]string, error) {
 	s.permissionCalls++
+	if s.permissionStarted != nil {
+		close(s.permissionStarted)
+	}
+	if s.release != nil {
+		<-s.release
+	}
 	return s.permissionCodes, s.permissionErr
 }
 
@@ -71,6 +87,68 @@ func TestAccessContextLoaderLoadsAdminAssignments(t *testing.T) {
 	}
 	if users.calls != 1 || accessControl.activeDomainCalls != 1 || accessControl.domainCalls != 1 || accessControl.permissionCalls != 1 {
 		t.Fatalf("unexpected load calls: users=%d active_domains=%d scopes=%d permissions=%d", users.calls, accessControl.activeDomainCalls, accessControl.domainCalls, accessControl.permissionCalls)
+	}
+}
+
+func TestAccessContextLoaderReflectsUpdatedAssignmentsOnNextRequest(t *testing.T) {
+	users := &fakeAccessContextUserStore{user: &model.User{ID: 7, Role: common.RoleAdmin, Status: common.UserStatusActive}}
+	accessControl := &fakeAccessContextStore{
+		activeDomains:   []*model.DataDomain{{ID: 2}, {ID: 5}},
+		domainIDs:       []uint64{2},
+		permissionCodes: []string{common.PermissionAlumniSensitiveRead},
+	}
+	loader := NewAccessContextLoader(users, accessControl)
+
+	first, err := loader.Load(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("first Load() error = %v", err)
+	}
+	if !first.CanAccessDomain(2) || !first.HasPermission(common.PermissionAlumniSensitiveRead) {
+		t.Fatalf("unexpected first access context: %+v", first)
+	}
+
+	accessControl.domainIDs = []uint64{5}
+	accessControl.permissionCodes = []string{common.PermissionAlumniFilesManage}
+	next, err := loader.Load(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("next Load() error = %v", err)
+	}
+	if next.CanAccessDomain(2) || !next.CanAccessDomain(5) || next.HasPermission(common.PermissionAlumniSensitiveRead) || !next.HasPermission(common.PermissionAlumniFilesManage) {
+		t.Fatalf("next request did not reflect updated assignments: %+v", next)
+	}
+}
+
+func TestAccessContextLoaderLoadsAssignmentsConcurrently(t *testing.T) {
+	release := make(chan struct{})
+	accessControl := &fakeAccessContextStore{
+		activeDomains:     []*model.DataDomain{{ID: 2}},
+		domainIDs:         []uint64{2},
+		permissionCodes:   []string{common.PermissionAlumniSensitiveRead},
+		domainStarted:     make(chan struct{}),
+		permissionStarted: make(chan struct{}),
+		release:           release,
+	}
+	loader := NewAccessContextLoader(
+		&fakeAccessContextUserStore{user: &model.User{ID: 7, Role: common.RoleAdmin, Status: common.UserStatusActive}},
+		accessControl,
+	)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := loader.Load(context.Background(), 7)
+		done <- err
+	}()
+
+	for _, started := range []<-chan struct{}{accessControl.domainStarted, accessControl.permissionStarted} {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("independent authorization queries were not started concurrently")
+		}
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatalf("Load() error = %v", err)
 	}
 }
 
