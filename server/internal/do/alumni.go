@@ -21,6 +21,7 @@ type AlumniListQuery struct {
 	WorkUnit         string
 	Position         string
 	Mobile           string
+	DataDomainID     *uint64
 	DataDomainIDs    []uint64
 	CanReadSensitive bool
 }

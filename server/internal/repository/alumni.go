@@ -50,12 +50,11 @@ func applyFilters(db *gorm.DB, listQuery do.AlumniListQuery) *gorm.DB {
 		like := "%" + listQuery.Keyword + "%"
 		conditions := []field.Expr{
 			qs.Name.Like(like),
-			qs.WorkUnit.Like(like),
 			qs.Mentor.Like(like),
 			qs.Counselor.Like(like),
 		}
 		if listQuery.CanReadSensitive {
-			conditions = append(conditions, qs.Position.Like(like), qs.Mobile.Like(like))
+			conditions = append(conditions, qs.WorkUnit.Like(like), qs.Position.Like(like), qs.Mobile.Like(like))
 		}
 		db = db.Where(field.Or(conditions...))
 	}
@@ -83,7 +82,7 @@ func applyFilters(db *gorm.DB, listQuery do.AlumniListQuery) *gorm.DB {
 	if listQuery.Industry != "" {
 		db = db.Where(qs.Industry.Eq(listQuery.Industry))
 	}
-	if listQuery.WorkUnit != "" {
+	if listQuery.CanReadSensitive && listQuery.WorkUnit != "" {
 		db = db.Where(qs.WorkUnit.Like("%" + listQuery.WorkUnit + "%"))
 	}
 	if listQuery.CanReadSensitive && listQuery.Position != "" {

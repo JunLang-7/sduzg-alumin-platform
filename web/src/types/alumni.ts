@@ -2,6 +2,7 @@ export type AlumniStatus = 'active' | 'deleted';
 
 export interface AlumniProfile {
   id: number;
+  data_domain_id: number;
   name: string;
   grade: string;
   class_name?: string;
@@ -36,6 +37,7 @@ export interface AlumniQuery {
   work_unit?: string;
   position?: string;
   mobile?: string;
+  data_domain_id?: number;
 }
 
 export interface AlumniImportRowError {

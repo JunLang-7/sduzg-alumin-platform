@@ -6,6 +6,7 @@ import { alumniApi } from '../../api/alumni';
 import { AlumniFilesCard } from '../../components/AlumniFilesCard';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
+import { canReadSensitive } from '../../utils/access';
 import type { AlumniProfile } from '../../types/alumni';
 
 function isHidden(value: unknown, isRestrictedViewer: boolean): boolean {
@@ -19,8 +20,11 @@ export function AlumniDetailPage() {
   const [loading, setLoading] = useState(false);
   const [profile, setProfile] = useState<AlumniProfile | null>(null);
 
-  const isRestrictedViewer =
-    user?.role === 'alumni' && user.alumni_id !== undefined && String(user.alumni_id) !== id;
+  const isOwnAlumniProfile =
+    user?.role === 'alumni' && user.alumni_id !== undefined && String(user.alumni_id) === id;
+  const isRestrictedViewer = user?.role === 'alumni'
+    ? !isOwnAlumniProfile
+    : !canReadSensitive(user);
 
   useEffect(() => {
     if (!id) {
@@ -61,7 +65,7 @@ export function AlumniDetailPage() {
               <Descriptions.Item label="辅导员">{profile.counselor || '-'}</Descriptions.Item>
               <Descriptions.Item label="导师">{profile.mentor || '-'}</Descriptions.Item>
               <Descriptions.Item label="行业">{profile.industry || '-'}</Descriptions.Item>
-              <Descriptions.Item label="工作单位">{profile.work_unit || '-'}</Descriptions.Item>
+              <Descriptions.Item label="工作单位">{isHidden(profile.work_unit, isRestrictedViewer) ? '***' : (profile.work_unit || '-')}</Descriptions.Item>
               <Descriptions.Item label="职务">{isHidden(profile.position, isRestrictedViewer) ? '***' : (profile.position || '-')}</Descriptions.Item>
               <Descriptions.Item label="通讯地址" span={3}>
                 {isHidden(profile.mailing_address, isRestrictedViewer) ? '***' : (profile.mailing_address || '-')}

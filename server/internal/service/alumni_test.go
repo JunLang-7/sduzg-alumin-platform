@@ -422,6 +422,7 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 
 func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testing.T) {
 	mobile := "13800000000"
+	workUnit := "山东大学"
 	position := "主任"
 	mailingAddress := "济南市"
 	alumniID := uint64(9)
@@ -432,6 +433,7 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 			Name:           "张三",
 			Grade:          "2020级",
 			Mobile:         &mobile,
+			WorkUnit:       &workUnit,
 			Position:       &position,
 			MailingAddress: &mailingAddress,
 			Status:         "active",
@@ -445,6 +447,9 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 	}
 	if detail.Mobile != nil {
 		t.Fatalf("expected mobile to be nil, got %v", *detail.Mobile)
+	}
+	if detail.WorkUnit != nil {
+		t.Fatalf("expected work unit to be nil, got %v", *detail.WorkUnit)
 	}
 	if detail.Position != nil {
 		t.Fatalf("expected position to be nil, got %v", *detail.Position)
@@ -648,6 +653,33 @@ func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive position filter to be rejected, got %v", err)
 	}
+
+	_, err = svc.List(context.Background(), dto.AlumniListRequest{WorkUnit: "山东大学"}, viewer)
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected sensitive work-unit filter to be rejected, got %v", err)
+	}
+}
+
+func TestAlumniServiceListHonorsRequestedDataDomain(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil)
+	requestedDomainID := uint64(3)
+	viewer := common.AccessContext{
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{2, 3},
+	}
+
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{DataDomainID: &requestedDomainID}, viewer); err != nil {
+		t.Fatalf("expected requested domain list success, got %v", err)
+	}
+	if !slices.Equal(store.query.DataDomainIDs, []uint64{3}) {
+		t.Fatalf("expected query to be limited to requested domain, got %v", store.query.DataDomainIDs)
+	}
+
+	forbiddenDomainID := uint64(4)
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{DataDomainID: &forbiddenDomainID}, viewer); err != common.ErrPermissionDenied {
+		t.Fatalf("expected forbidden requested domain to be rejected, got %v", err)
+	}
 }
 
 func TestAlumniServiceListRejectsAdminWithoutDataDomain(t *testing.T) {
@@ -661,6 +693,7 @@ func TestAlumniServiceListRejectsAdminWithoutDataDomain(t *testing.T) {
 func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 	mobile := "13800000000"
 	email := "zhangsan@example.com"
+	workUnit := "山东大学"
 	position := "主任"
 	store := &fakeAlumniStore{
 		items: []*model.AlumniProfile{{
@@ -669,6 +702,7 @@ func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 			Grade:    "2020级",
 			Mobile:   &mobile,
 			Email:    &email,
+			WorkUnit: &workUnit,
 			Position: &position,
 		}},
 		total: 1,
@@ -683,7 +717,7 @@ func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 		t.Fatalf("expected list success, got %v", err)
 	}
 	item := pager.Items[0]
-	if item.Mobile != nil || item.Email != nil || item.Position != nil {
+	if item.Mobile != nil || item.Email != nil || item.WorkUnit != nil || item.Position != nil {
 		t.Fatalf("expected sensitive fields to be masked, got %+v", item)
 	}
 }
@@ -721,7 +755,7 @@ func TestAlumniServiceDetailUpdateAndDeletePassDomainScope(t *testing.T) {
 func TestAlumniServiceCreateEnforcesOperatorDomainAndSensitiveWritePermission(t *testing.T) {
 	allowedDomainID := uint64(2)
 	forbiddenDomainID := uint64(1)
-	mobile := "13800000000"
+	workUnit := "山东大学"
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
@@ -749,7 +783,7 @@ func TestAlumniServiceCreateEnforcesOperatorDomainAndSensitiveWritePermission(t 
 		DataDomainID: &forbiddenDomainID,
 		Name:         "李四",
 		Grade:        "2020级",
-		Mobile:       &mobile,
+		WorkUnit:     &workUnit,
 	})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive write to be rejected, got %v", err)
@@ -774,7 +808,7 @@ func TestAlumniServiceCreateEnforcesOperatorDomainAndSensitiveWritePermission(t 
 }
 
 func TestAlumniServiceRejectsSensitiveUpdateWithoutPermission(t *testing.T) {
-	position := "主任"
+	workUnit := "山东大学"
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
 
 	_, err := svc.Update(context.Background(), common.AccessContext{
@@ -784,7 +818,7 @@ func TestAlumniServiceRejectsSensitiveUpdateWithoutPermission(t *testing.T) {
 	}, 9, dto.AdminAlumniUpdateRequest{
 		Name:     "张三",
 		Grade:    "2020级",
-		Position: &position,
+		WorkUnit: &workUnit,
 	})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive update to be rejected, got %v", err)

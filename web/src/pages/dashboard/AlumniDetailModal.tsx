@@ -24,6 +24,8 @@ import type {
   AlumniFileListResponse,
   AlumniProfile,
 } from '../../types/alumni';
+import { useAuthStore } from '../../store/authStore';
+import { canManageFiles, canReadSensitive } from '../../utils/access';
 
 interface AlumniDetailModalProps {
   profile: AlumniProfile | null;
@@ -36,6 +38,10 @@ type ArchiveType = 'academic_record' | 'degree_archive';
 
 function displayValue(value?: string) {
   return value?.trim() || '未填';
+}
+
+function displaySensitiveValue(value: string | undefined, readable: boolean) {
+  return readable ? displayValue(value) : '***';
 }
 
 function displayTime(value?: string) {
@@ -73,6 +79,9 @@ export function AlumniDetailModal({
   open,
   onClose,
 }: AlumniDetailModalProps) {
+  const user = useAuthStore((state) => state.user);
+  const filesManageable = canManageFiles(user);
+  const sensitiveReadable = canReadSensitive(user);
   const [files, setFiles] = useState<AlumniFileListResponse | null>(null);
   const [filesLoading, setFilesLoading] = useState(false);
   const [activeArchive, setActiveArchive] = useState<ArchiveType | null>(null);
@@ -92,7 +101,7 @@ export function AlumniDetailModal({
   };
 
   useEffect(() => {
-    if (!open || !profile?.id) {
+    if (!open || !profile?.id || !filesManageable) {
       setFiles(null);
       setActiveArchive(null);
       closePreview();
@@ -124,7 +133,7 @@ export function AlumniDetailModal({
     return () => {
       active = false;
     };
-  }, [open, profile?.id]);
+  }, [filesManageable, open, profile?.id]);
 
   const downloadFile = async (item: AlumniFileItem) => {
     if (!profile) return;
@@ -328,8 +337,8 @@ export function AlumniDetailModal({
               <Descriptions bordered column={{ xs: 1, sm: 2, lg: 3 }} size="small">
                 <Descriptions.Item label="姓名">{displayValue(profile.name)}</Descriptions.Item>
                 <Descriptions.Item label="性别">{displayValue(profile.gender)}</Descriptions.Item>
-                <Descriptions.Item label="联系电话">{displayValue(profile.mobile)}</Descriptions.Item>
-                <Descriptions.Item label="邮箱">{displayValue(profile.email)}</Descriptions.Item>
+                <Descriptions.Item label="联系电话">{displaySensitiveValue(profile.mobile, sensitiveReadable)}</Descriptions.Item>
+                <Descriptions.Item label="邮箱">{displaySensitiveValue(profile.email, sensitiveReadable)}</Descriptions.Item>
                 <Descriptions.Item label="年级">{displayValue(profile.grade)}</Descriptions.Item>
                 <Descriptions.Item label="班级">{displayValue(profile.class_name)}</Descriptions.Item>
                 <Descriptions.Item label="届数">{displayValue(profile.cohort)}</Descriptions.Item>
@@ -338,9 +347,9 @@ export function AlumniDetailModal({
                 <Descriptions.Item label="辅导员">{displayValue(profile.counselor)}</Descriptions.Item>
                 <Descriptions.Item label="导师">{displayValue(profile.mentor)}</Descriptions.Item>
                 <Descriptions.Item label="行业">{displayValue(profile.industry)}</Descriptions.Item>
-                <Descriptions.Item label="职务">{displayValue(profile.position)}</Descriptions.Item>
-                <Descriptions.Item label="工作单位" span={3}>{displayValue(profile.work_unit)}</Descriptions.Item>
-                <Descriptions.Item label="通讯地址" span={3}>{displayValue(profile.mailing_address)}</Descriptions.Item>
+                <Descriptions.Item label="职务">{displaySensitiveValue(profile.position, sensitiveReadable)}</Descriptions.Item>
+                <Descriptions.Item label="工作单位" span={3}>{displaySensitiveValue(profile.work_unit, sensitiveReadable)}</Descriptions.Item>
+                <Descriptions.Item label="通讯地址" span={3}>{displaySensitiveValue(profile.mailing_address, sensitiveReadable)}</Descriptions.Item>
                 {profile.remark !== undefined ? (
                   <Descriptions.Item label="备注" span={3}>{displayValue(profile.remark)}</Descriptions.Item>
                 ) : null}
@@ -351,7 +360,7 @@ export function AlumniDetailModal({
                 <Descriptions.Item label="更新时间">{displayTime(profile.updated_at)}</Descriptions.Item>
               </Descriptions>
 
-              <Spin spinning={filesLoading}>
+              {filesManageable ? <Spin spinning={filesLoading}>
                 <div className="dashboard-archive-actions">
                   <Button
                     icon={<IdcardOutlined />}
@@ -384,7 +393,7 @@ export function AlumniDetailModal({
                 {activeArchive === 'degree_archive'
                   ? renderFiles('学位档案', files?.degree_archive || [], 'degree_archive')
                   : null}
-              </Spin>
+              </Spin> : null}
             </div>
           ) : (
             <div className="dashboard-detail-placeholder">正在读取校友完整信息...</div>

@@ -1,17 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { EyeOutlined, SearchOutlined, UndoOutlined } from '@ant-design/icons';
-import { Button, Card, Form, Input, Select, Space, Table, message } from 'antd';
+import { Button, Card, Form, Input, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
+import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile, AlumniQuery } from '../../types/alumni';
+import { canReadSensitive } from '../../utils/access';
 import { industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
 
 export function AlumniListPage() {
   const [form] = Form.useForm<AlumniQuery>();
+  const user = useAuthStore((state) => state.user);
+  const domains = user?.domains || [];
+  const sensitiveReadable = canReadSensitive(user);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlKeyword = searchParams.get('keyword') || undefined;
@@ -61,6 +66,12 @@ export function AlumniListPage() {
         width: 110,
       },
       {
+        title: '培养类别',
+        dataIndex: 'data_domain_id',
+        width: 170,
+        render: (value: number) => <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>,
+      },
+      {
         title: '班级',
         dataIndex: 'class_name',
         width: 180,
@@ -85,17 +96,18 @@ export function AlumniListPage() {
         dataIndex: 'industry',
         width: 140,
       },
-      {
-        title: '工作单位',
-        dataIndex: 'work_unit',
-        width: 220,
-        ellipsis: true,
-      },
-      {
-        title: '职务',
-        dataIndex: 'position',
-        width: 140,
-      },
+      ...(sensitiveReadable
+        ? [{
+            title: '工作单位',
+            dataIndex: 'work_unit',
+            width: 220,
+            ellipsis: true,
+          }, {
+            title: '职务',
+            dataIndex: 'position',
+            width: 140,
+          }]
+        : []),
       {
         title: '操作',
         key: 'action',
@@ -112,7 +124,7 @@ export function AlumniListPage() {
         ),
       },
     ],
-    [navigate],
+    [domains, navigate, sensitiveReadable],
   );
 
   const handleSearch = (values: AlumniQuery) => {
@@ -134,11 +146,11 @@ export function AlumniListPage() {
 
   return (
     <>
-      <PageHeader title="校友列表" description="按基础信息、学习经历和职业信息检索校友档案" />
+      <PageHeader title="校友列表" description="按培养类别、基础信息、学习经历和职业信息检索校友档案" />
       <Card className="tool-card">
         <Form form={form} layout="inline" onFinish={handleSearch} className="search-form">
           <Form.Item name="keyword">
-            <Input allowClear placeholder="姓名、单位、导师" />
+          <Input allowClear placeholder={sensitiveReadable ? '姓名、单位、导师' : '姓名、导师'} />
           </Form.Item>
           <Form.Item name="grade">
             <Input allowClear placeholder="年级" />
@@ -148,6 +160,13 @@ export function AlumniListPage() {
           </Form.Item>
           <Form.Item name="cohort">
             <Input allowClear placeholder="届数" />
+          </Form.Item>
+          <Form.Item name="data_domain_id">
+            <Select
+              allowClear
+              placeholder="培养类别"
+              options={domains.map((domain) => ({ label: domain.name, value: domain.id }))}
+            />
           </Form.Item>
           <Form.Item name="major">
             <Input allowClear placeholder="专业" />
@@ -182,7 +201,7 @@ export function AlumniListPage() {
           loading={loading}
           columns={columns}
           dataSource={items}
-          scroll={{ x: 1450 }}
+          scroll={{ x: 1620 }}
           pagination={{
             current: query.page,
             pageSize: query.page_size,

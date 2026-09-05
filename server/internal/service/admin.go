@@ -81,7 +81,7 @@ func (s *AdminService) Create(ctx context.Context, operator common.AccessContext
 		return nil, err
 	}
 
-	created, err := s.users.CreateAdminWithAccess(ctx, profile, string(passwordHash), domainIDs, permissions, operator.UserID)
+	created, err := s.users.CreateAdminWithAccess(ctx, profile, string(passwordHash), domainIDs, permissions, operator)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
@@ -99,7 +99,10 @@ func (s *AdminService) Create(ctx context.Context, operator common.AccessContext
 }
 
 // Get 获取单个管理员及其当前数据域和权限。
-func (s *AdminService) Get(ctx context.Context, id uint64) (*dto.AdminDetail, error) {
+func (s *AdminService) Get(ctx context.Context, operator common.AccessContext, id uint64) (*dto.AdminDetail, error) {
+	if !operator.IsSuperAdmin() {
+		return nil, common.ErrPermissionDenied
+	}
 	if s.users == nil || s.access == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
@@ -125,7 +128,7 @@ func (s *AdminService) ReplaceAccess(ctx context.Context, operator common.Access
 	if err != nil {
 		return nil, err
 	}
-	updated, err := s.users.ReplaceAdminAccess(ctx, id, domainIDs, permissions, operator.UserID)
+	updated, err := s.users.ReplaceAdminAccess(ctx, id, domainIDs, permissions, operator)
 	if err != nil {
 		return nil, err
 	}
@@ -145,12 +148,15 @@ func (s *AdminService) ListDataDomains(ctx context.Context) ([]dto.AdminDataDoma
 }
 
 // Delete 由超级管理员删除管理员账号。
-func (s *AdminService) Delete(ctx context.Context, operatorID uint64, id uint64) error {
+func (s *AdminService) Delete(ctx context.Context, operator common.AccessContext, id uint64) error {
+	if !operator.IsSuperAdmin() {
+		return common.ErrPermissionDenied
+	}
 	if s.users == nil {
 		logger.Error("user repository is not initialized")
 		return common.ErrDatabaseUnavailable
 	}
-	if operatorID == id {
+	if operator.UserID == id {
 		return common.ErrCannotDeleteSelf
 	}
 

@@ -8,6 +8,7 @@ interface DistributionAlumniModalProps {
   loading: boolean;
   title: string;
   items: AlumniProfile[];
+  sensitiveReadable: boolean;
   onClose: () => void;
   onSelect: (profile: AlumniProfile) => void;
 }
@@ -21,6 +22,7 @@ export function DistributionAlumniModal({
   loading,
   title,
   items,
+  sensitiveReadable,
   onClose,
   onSelect,
 }: DistributionAlumniModalProps) {
@@ -46,14 +48,12 @@ export function DistributionAlumniModal({
         item.cohort,
         item.major,
         item.industry,
-        item.work_unit,
-        item.position,
+        ...(sensitiveReadable ? [item.work_unit, item.position, item.mobile] : []),
         item.mentor,
         item.counselor,
-        item.mobile,
       ].some((value) => value?.toLowerCase().includes(normalized)),
     );
-  }, [items, keyword]);
+  }, [items, keyword, sensitiveReadable]);
 
   return (
     <Modal
@@ -72,7 +72,7 @@ export function DistributionAlumniModal({
             allowClear
             prefix={<SearchOutlined />}
             value={keyword}
-            placeholder="在当前筛选结果中检索姓名、单位、行业、导师等..."
+            placeholder={sensitiveReadable ? '在当前筛选结果中检索姓名、单位、行业、导师等...' : '在当前筛选结果中检索姓名、行业、导师等...'}
             onChange={(event) => setKeyword(event.target.value)}
           />
           <span>
@@ -85,7 +85,7 @@ export function DistributionAlumniModal({
               <strong>{item.name}</strong>
               <span>{displayValue(item.grade)}</span>
               <span>{displayValue(item.industry)}</span>
-              <em>{displayValue(item.work_unit)}</em>
+              <em>{sensitiveReadable ? displayValue(item.work_unit) : '无权限查看'}</em>
               <small>{displayValue(item.mentor)}</small>
             </button>
           ))}

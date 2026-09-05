@@ -1,4 +1,4 @@
-import type { UserRole, UserStatus } from './auth';
+import type { DataDomain, UserRole, UserStatus } from './auth';
 
 export interface AdminUser {
   id: number;
@@ -9,6 +9,8 @@ export interface AdminUser {
   status?: UserStatus;
   last_login_at?: string;
   created_at?: string;
+  domains: DataDomain[];
+  permissions: string[];
 }
 
 export interface AdminQuery {
@@ -21,4 +23,11 @@ export interface CreateAdminPayload {
   password: string;
   real_name: string;
   mobile?: string;
+  domain_ids: number[];
+  permissions: string[];
+}
+
+export interface UpdateAdminAccessPayload {
+  domain_ids: number[];
+  permissions: string[];
 }

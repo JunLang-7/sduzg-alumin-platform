@@ -10,6 +10,14 @@ export interface CurrentUser {
   mobile?: string;
   status?: UserStatus;
   alumni_id?: number;
+  domains: DataDomain[];
+  permissions: string[];
+}
+
+export interface DataDomain {
+  id: number;
+  code: string;
+  name: string;
 }
 
 export interface LoginRequest {

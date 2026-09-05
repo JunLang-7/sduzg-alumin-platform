@@ -291,7 +291,7 @@ func TestAdminServiceDeleteSuccess(t *testing.T) {
 	}
 	svc := NewAdminService(store)
 
-	err := svc.Delete(context.Background(), 1, 2)
+	err := svc.Delete(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, 2)
 	if err != nil {
 		t.Fatalf("expected delete success, got %v", err)
 	}
@@ -302,7 +302,7 @@ func TestAdminServiceDeleteSuccess(t *testing.T) {
 
 func TestAdminServiceDeleteRejectsSelfDelete(t *testing.T) {
 	svc := NewAdminService(&fakeUserStore{})
-	err := svc.Delete(context.Background(), 1, 1)
+	err := svc.Delete(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, 1)
 	if err != common.ErrCannotDeleteSelf {
 		t.Fatalf("expected cannot delete self, got %v", err)
 	}
@@ -316,8 +316,26 @@ func TestAdminServiceDeleteRejectsSuperAdmin(t *testing.T) {
 	}
 	svc := NewAdminService(store)
 
-	err := svc.Delete(context.Background(), 1, 2)
+	err := svc.Delete(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, 2)
 	if err != common.ErrCannotDeleteSuper {
 		t.Fatalf("expected cannot delete super admin, got %v", err)
+	}
+}
+
+func TestAdminServiceGetRejectsNonSuperAdmin(t *testing.T) {
+	svc := NewAdminService(&fakeUserStore{}, &fakeAdminAccessStore{})
+
+	_, err := svc.Get(context.Background(), common.AccessContext{UserID: 2, Role: common.RoleAdmin}, 1)
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected non-super-admin get to be rejected, got %v", err)
+	}
+}
+
+func TestAdminServiceDeleteRejectsNonSuperAdmin(t *testing.T) {
+	svc := NewAdminService(&fakeUserStore{})
+
+	err := svc.Delete(context.Background(), common.AccessContext{UserID: 2, Role: common.RoleAdmin}, 1)
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected non-super-admin delete to be rejected, got %v", err)
 	}
 }

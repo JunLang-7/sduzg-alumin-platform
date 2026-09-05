@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { alumniApi } from '../api/alumni';
 import { useAuthStore } from '../store/authStore';
+import { canManageFiles } from '../utils/access';
 import type { AlumniFileItem, AlumniFileListResponse } from '../types/alumni';
 
 const FILE_TYPE_LABELS: Record<string, string> = {
@@ -43,14 +44,16 @@ interface Props {
 
 export function AlumniFilesCard({ alumniId }: Props) {
   const user = useAuthStore((s) => s.user);
-  const isAdmin =
-    user?.role === 'admin' || user?.role === 'super_admin';
+  const isAdmin = canManageFiles(user);
 
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<AlumniFileListResponse | null>(null);
   const [uploading, setUploading] = useState<string | null>(null);
 
   const loadFiles = useCallback(async () => {
+    if (!isAdmin) {
+      return;
+    }
     setLoading(true);
     try {
       const data = await alumniApi.listFiles(alumniId);
@@ -60,11 +63,15 @@ export function AlumniFilesCard({ alumniId }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [alumniId]);
+  }, [alumniId, isAdmin]);
 
   useEffect(() => {
     void loadFiles();
   }, [loadFiles]);
+
+  if (!isAdmin) {
+    return null;
+  }
 
   const handleUpload = async (
     fileType: 'degree_archive' | 'academic_record',

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
@@ -110,7 +111,7 @@ func (s *AlumniService) WithExportCache(c *cache.ExportCache) *AlumniService {
 	return s
 }
 
-// WithOperationLogger 注入导出操作审计记录器。
+// WithOperationLogger 注入导出和导入操作审计记录器。
 func (s *AlumniService) WithOperationLogger(logger OperationLogWriter) *AlumniService {
 	s.opLogger = logger
 	return s
@@ -122,10 +123,15 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
-	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 	}
-	if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
+	if query.DataDomainID != nil {
+		if !viewer.IsSuperAdmin() && !viewer.CanAccessDomain(*query.DataDomainID) {
+			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = []uint64{*query.DataDomainID}
+	} else if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
 		if len(domainIDs) == 0 {
 			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 		}
@@ -173,6 +179,7 @@ func (s *AlumniService) maskListItems(items []dto.AlumniListItem, viewer common.
 		for i := range items {
 			items[i].Mobile = nil
 			items[i].Email = nil
+			items[i].WorkUnit = nil
 			items[i].Position = nil
 		}
 	}
@@ -192,11 +199,11 @@ func scopedDataDomainIDs(access common.AccessContext) ([]uint64, bool) {
 }
 
 func profileContainsSensitiveFields(profile do.AlumniCreateProfile) bool {
-	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
 }
 
 func updateContainsSensitiveFields(profile do.AlumniUpdateProfile) bool {
-	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
 }
 
 func assignCreateDataDomain(profile *do.AlumniCreateProfile, operator common.AccessContext) error {
@@ -256,6 +263,7 @@ func (s *AlumniService) maskSensitiveFields(detail *dto.AlumniDetail, alumniID u
 	mask := func() {
 		detail.Mobile = nil
 		detail.Email = nil
+		detail.WorkUnit = nil
 		detail.Position = nil
 		detail.MailingAddress = nil
 	}
@@ -419,10 +427,15 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 	}
 
 	query := req.ToQuery().Normalize()
-	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
 		return nil, common.ErrPermissionDenied
 	}
-	if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
+	if query.DataDomainID != nil {
+		if !operator.IsSuperAdmin() && !operator.CanAccessDomain(*query.DataDomainID) {
+			return nil, common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = []uint64{*query.DataDomainID}
+	} else if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
 		if len(domainIDs) == 0 {
 			return nil, common.ErrPermissionDenied
 		}
@@ -466,6 +479,14 @@ type exportAuditDetail struct {
 	Format                  string   `json:"format"`
 	DataDomainIDs           []uint64 `json:"data_domain_ids,omitempty"`
 	RecordCount             int      `json:"record_count"`
+	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
+}
+
+type importAuditDetail struct {
+	DataDomainIDs           []uint64 `json:"data_domain_ids,omitempty"`
+	Total                   int      `json:"total"`
+	Success                 int      `json:"success"`
+	Failed                  int      `json:"failed"`
 	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
 }
 
@@ -517,6 +538,7 @@ func maskExportItems(items []*model.AlumniProfile, operator common.AccessContext
 		copyItem := *item
 		copyItem.Mobile = nil
 		copyItem.Email = nil
+		copyItem.WorkUnit = nil
 		copyItem.Position = nil
 		copyItem.MailingAddress = nil
 		masked = append(masked, &copyItem)
@@ -820,14 +842,58 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 				_ = s.exportCache.Invalidate(ctx)
 			}
 		}
+		s.writeImportAudit(ctx, operator, validProfiles, result)
 
 		return result, nil
 	}
 
-	return &dto.AlumniImportResult{
+	result := &dto.AlumniImportResult{
 		Total:  len(rows) - 1,
 		Errors: rowErrors,
-	}, nil
+	}
+	s.writeImportAudit(ctx, operator, nil, result)
+	return result, nil
+}
+
+// writeImportAudit 记录导入结果汇总，不写入任何校友字段原值。
+func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.AccessContext, profiles []do.AlumniCreateProfile, result *dto.AlumniImportResult) {
+	if s.opLogger == nil || result == nil {
+		return
+	}
+	domainSet := make(map[uint64]struct{})
+	sensitiveFieldsIncluded := false
+	for _, profile := range profiles {
+		if profile.DataDomainID != nil {
+			domainSet[*profile.DataDomainID] = struct{}{}
+		}
+		if profileContainsSensitiveFields(profile) {
+			sensitiveFieldsIncluded = true
+		}
+	}
+	domainIDs := make([]uint64, 0, len(domainSet))
+	for domainID := range domainSet {
+		domainIDs = append(domainIDs, domainID)
+	}
+	sort.Slice(domainIDs, func(i, j int) bool { return domainIDs[i] < domainIDs[j] })
+
+	detail, err := json.Marshal(importAuditDetail{
+		DataDomainIDs:           domainIDs,
+		Total:                   result.Total,
+		Success:                 result.Success,
+		Failed:                  result.Total - result.Success,
+		SensitiveFieldsIncluded: sensitiveFieldsIncluded,
+	})
+	if err != nil {
+		return
+	}
+	detailText := string(detail)
+	_ = s.opLogger.Write(ctx, &model.OperationLog{
+		OperatorID:   operator.UserID,
+		OperatorRole: operator.Role,
+		Action:       "import_alumni",
+		TargetType:   "alumni_import",
+		Detail:       &detailText,
+	})
 }
 
 func matchesImportHeaders(actual, expected []string) bool {
@@ -956,6 +1022,7 @@ func mapAlumniListItems(items []*model.AlumniProfile) []dto.AlumniListItem {
 		}
 		result = append(result, dto.AlumniListItem{
 			ID:           item.ID,
+			DataDomainID: item.DataDomainID,
 			Name:         item.Name,
 			Grade:        item.Grade,
 			ClassName:    item.ClassName,
@@ -984,6 +1051,7 @@ func mapAlumniDetail(item *model.AlumniProfile) *dto.AlumniDetail {
 
 	return &dto.AlumniDetail{
 		ID:             item.ID,
+		DataDomainID:   item.DataDomainID,
 		Name:           item.Name,
 		Grade:          item.Grade,
 		ClassName:      item.ClassName,

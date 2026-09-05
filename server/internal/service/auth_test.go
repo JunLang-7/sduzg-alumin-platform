@@ -41,6 +41,38 @@ type fakeUserStore struct {
 	updatedUserID      uint64
 }
 
+func TestAuthServiceCurrentUserReturnsActiveAccess(t *testing.T) {
+	name := "管理员"
+	users := &fakeUserStore{user: &model.User{
+		ID:       2,
+		Account:  "manager01",
+		Role:     common.RoleAdmin,
+		RealName: &name,
+		Status:   common.UserStatusActive,
+	}}
+	accessStore := &fakeAdminAccessStore{domains: activeAdminDomains()}
+	service := NewAuthService(users, nil, nil, nil, config.Config{}, accessStore)
+
+	result, err := service.CurrentUser(context.Background(), common.AccessContext{
+		UserID:    2,
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{2},
+		Permissions: map[string]bool{
+			common.PermissionAlumniSensitiveRead: true,
+			"unknown.permission":                 true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CurrentUser() error = %v", err)
+	}
+	if result.Account != "manager01" || len(result.Domains) != 1 || result.Domains[0].ID != 2 {
+		t.Fatalf("unexpected current user domains: %+v", result)
+	}
+	if len(result.Permissions) != 1 || result.Permissions[0] != common.PermissionAlumniSensitiveRead {
+		t.Fatalf("unexpected current user permissions: %v", result.Permissions)
+	}
+}
+
 func (s *fakeUserStore) FindByAccount(context.Context, string) (*model.User, error) {
 	return s.user, s.findErr
 }
@@ -60,7 +92,7 @@ func (s *fakeUserStore) ListAdmins(_ context.Context, _ do.AdminListQuery) ([]*m
 	return s.users, s.total, s.listErr
 }
 
-func (s *fakeUserStore) CreateAdminWithAccess(_ context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
+func (s *fakeUserStore) CreateAdminWithAccess(_ context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, _ common.AccessContext) (*model.User, error) {
 	s.createProfile = profile
 	s.createHash = passwordHash
 	s.createDomainIDs = append([]uint64(nil), domainIDs...)
@@ -82,7 +114,7 @@ func (s *fakeUserStore) CreateAdminWithAccess(_ context.Context, profile do.Admi
 	}, nil
 }
 
-func (s *fakeUserStore) ReplaceAdminAccess(_ context.Context, id uint64, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
+func (s *fakeUserStore) ReplaceAdminAccess(_ context.Context, id uint64, domainIDs []uint64, permissions []string, _ common.AccessContext) (*model.User, error) {
 	s.replaceID = id
 	s.replaceDomainIDs = append([]uint64(nil), domainIDs...)
 	s.replacePermissions = append([]string(nil), permissions...)

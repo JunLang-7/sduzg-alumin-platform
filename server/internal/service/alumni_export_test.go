@@ -185,6 +185,7 @@ func TestExportFilterPropagation(t *testing.T) {
 func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
 	mobile := "13800000000"
 	email := "zhangsan@example.com"
+	workUnit := "山东大学"
 	position := "主任"
 	address := "济南市"
 	store := &fakeAlumniStore{items: []*model.AlumniProfile{{
@@ -193,6 +194,7 @@ func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
 		Grade:          "2020级",
 		Mobile:         &mobile,
 		Email:          &email,
+		WorkUnit:       &workUnit,
 		Position:       &position,
 		MailingAddress: &address,
 	}}}
@@ -217,7 +219,7 @@ func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
 		t.Fatalf("read exported csv: %v", err)
 	}
 	row := records[1]
-	if row[10] != "" || row[11] != "" || row[13] != "" || row[14] != "" {
+	if row[9] != "" || row[10] != "" || row[11] != "" || row[13] != "" || row[14] != "" {
 		t.Fatalf("expected sensitive export cells to be blank, got %v", row)
 	}
 }
@@ -248,6 +250,14 @@ func TestExportRejectsSensitiveFilterWithoutPermission(t *testing.T) {
 	})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive export filter to be rejected, got %v", err)
+	}
+
+	_, err = svc.Export(context.Background(), dto.AlumniExportRequest{WorkUnit: "山东大学"}, common.AccessContext{
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{1},
+	})
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected sensitive work-unit export filter to be rejected, got %v", err)
 	}
 }
 

@@ -47,7 +47,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		ctx := context.Background()
 		passwordHash := "bcrypt-hash-not-plaintext"
 		created, err := repo.CreateAdminWithAccess(ctx, do.AdminCreateProfile{Account: "admin_access_test"}, passwordHash,
-			[]uint64{mpa.ID}, []string{common.PermissionAlumniSensitiveRead}, 1)
+			[]uint64{mpa.ID}, []string{common.PermissionAlumniSensitiveRead}, common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		}
 
 		updated, err := repo.ReplaceAdminAccess(ctx, created.ID,
-			[]uint64{undergraduate.ID, mpa.ID}, []string{common.PermissionAlumniFilesManage}, 1)
+			[]uint64{undergraduate.ID, mpa.ID}, []string{common.PermissionAlumniFilesManage}, common.AccessContext{UserID: 1, Role: common.RoleAdmin})
 		if err != nil {
 			return err
 		}
@@ -95,6 +95,9 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		if len(logs) != 2 || logs[0].Action != "create_admin_access" || logs[1].Action != "replace_admin_access" {
 			t.Errorf("unexpected authorization audit logs: %+v", logs)
 		}
+		if len(logs) == 2 && (logs[0].OperatorRole != common.RoleSuperAdmin || logs[1].OperatorRole != common.RoleAdmin) {
+			t.Errorf("unexpected audit operator roles: create=%q replace=%q", logs[0].OperatorRole, logs[1].OperatorRole)
+		}
 		var createAudit, replaceAudit adminAccessAuditDetail
 		if logs[0].Detail == nil || json.Unmarshal([]byte(*logs[0].Detail), &createAudit) != nil {
 			t.Errorf("create audit detail is invalid: %+v", logs[0].Detail)
@@ -113,7 +116,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		}
 
 		_, err = repo.CreateAdminWithAccess(ctx, do.AdminCreateProfile{Account: "admin_access_rollback_test"}, passwordHash,
-			[]uint64{mpa.ID}, []string{"duplicate", "duplicate"}, 1)
+			[]uint64{mpa.ID}, []string{"duplicate", "duplicate"}, common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
 		if err == nil {
 			t.Error("expected duplicate permission write to fail")
 		}
@@ -129,7 +132,7 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 			return err
 		}
 		_, err = repo.CreateAdminWithAccess(ctx, do.AdminCreateProfile{Account: "admin_access_disabled_domain_test"}, passwordHash,
-			[]uint64{mpa.ID}, nil, 1)
+			[]uint64{mpa.ID}, nil, common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
 		if !errors.Is(err, common.ErrInvalidDataDomain) {
 			t.Errorf("disabled data domain error = %v, want %v", err, common.ErrInvalidDataDomain)
 		}
