@@ -11,6 +11,7 @@ var (
 	ErrAccountAlreadyExists  = errors.New("account already exists")
 	ErrCannotDeleteSelf      = errors.New("cannot delete self")
 	ErrCannotDeleteSuper     = errors.New("cannot delete super admin")
+	ErrCannotModifySuper     = errors.New("cannot modify super admin")
 	ErrAlumniNotFound        = errors.New("alumni not found")
 	ErrDataDomainUnavailable = errors.New("data domain unavailable")
 	ErrInvalidDataDomain     = errors.New("invalid data domain")

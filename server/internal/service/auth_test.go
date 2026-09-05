@@ -18,21 +18,27 @@ import (
 )
 
 type fakeUserStore struct {
-	user          *model.User
-	usersByID     map[uint64]*model.User
-	users         []*model.User
-	total         int64
-	created       *model.User
-	createProfile do.AdminCreateProfile
-	createHash    string
-	deleteID      uint64
-	findErr       error
-	listErr       error
-	createErr     error
-	deleteErr     error
-	updateErr     error
-	lastLoginAt   time.Time
-	updatedUserID uint64
+	user               *model.User
+	usersByID          map[uint64]*model.User
+	users              []*model.User
+	total              int64
+	created            *model.User
+	createProfile      do.AdminCreateProfile
+	createHash         string
+	createDomainIDs    []uint64
+	createPermissions  []string
+	replaceID          uint64
+	replaceDomainIDs   []uint64
+	replacePermissions []string
+	replaceErr         error
+	deleteID           uint64
+	findErr            error
+	listErr            error
+	createErr          error
+	deleteErr          error
+	updateErr          error
+	lastLoginAt        time.Time
+	updatedUserID      uint64
 }
 
 func (s *fakeUserStore) FindByAccount(context.Context, string) (*model.User, error) {
@@ -72,6 +78,32 @@ func (s *fakeUserStore) CreateAdmin(_ context.Context, profile do.AdminCreatePro
 		Mobile:       profile.Mobile,
 		Status:       common.UserStatusActive,
 	}, nil
+}
+
+func (s *fakeUserStore) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
+	s.createDomainIDs = append([]uint64(nil), domainIDs...)
+	s.createPermissions = append([]string(nil), permissions...)
+	return s.CreateAdmin(ctx, profile, passwordHash)
+}
+
+func (s *fakeUserStore) ReplaceAdminAccess(_ context.Context, id uint64, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
+	s.replaceID = id
+	s.replaceDomainIDs = append([]uint64(nil), domainIDs...)
+	s.replacePermissions = append([]string(nil), permissions...)
+	if s.replaceErr != nil {
+		return nil, s.replaceErr
+	}
+	if s.usersByID != nil {
+		user, ok := s.usersByID[id]
+		if !ok {
+			return nil, common.ErrUserNotFound
+		}
+		if user.Role == common.RoleSuperAdmin {
+			return nil, common.ErrCannotModifySuper
+		}
+		return user, nil
+	}
+	return s.user, nil
 }
 
 func (s *fakeUserStore) DeleteAdmin(_ context.Context, id uint64) error {

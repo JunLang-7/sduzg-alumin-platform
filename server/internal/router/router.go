@@ -81,7 +81,7 @@ func New(deps Dependencies) *gin.Engine {
 		WithExportCache(cache.NewExportCache(deps.RedisClient))
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 超级管理员服务和处理器
-	adminService := service.NewAdminService(userRepository)
+	adminService := service.NewAdminService(userRepository, accessControlRepository)
 	adminHandler := handler.NewAdminHandler(adminService)
 	// 数据大屏服务和处理器
 	dashboardRepository := repository.NewDashboardRepository(deps.DB)
@@ -153,7 +153,10 @@ func New(deps Dependencies) *gin.Engine {
 			// 管理员账号管理
 			superAdmin.GET("/admins", adminHandler.List)
 			superAdmin.POST("/admins", adminHandler.Create)
+			superAdmin.GET("/admins/:id", adminHandler.Detail)
+			superAdmin.PUT("/admins/:id/access", adminHandler.ReplaceAccess)
 			superAdmin.DELETE("/admins/:id", adminHandler.Delete)
+			superAdmin.GET("/data-domains", adminHandler.ListDataDomains)
 		}
 	}
 

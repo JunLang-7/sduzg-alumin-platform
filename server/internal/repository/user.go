@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -21,12 +22,24 @@ type UserStore interface {
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
 	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
+	CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
+	ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
 	DeleteAdmin(ctx context.Context, id uint64) error
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
 	UpdateMobile(ctx context.Context, id uint64, mobile string) error
 	UpdateEmail(ctx context.Context, id uint64, email string) error
 	CreateUser(ctx context.Context, user *model.User) error
+}
+
+type adminAccessAuditDetail struct {
+	Before *adminAccessSnapshot `json:"before,omitempty"`
+	After  adminAccessSnapshot  `json:"after"`
+}
+
+type adminAccessSnapshot struct {
+	DomainIDs   []uint64 `json:"domain_ids"`
+	Permissions []string `json:"permissions"`
 }
 
 type UserRepository struct {
@@ -195,6 +208,162 @@ func (r *UserRepository) CreateAdmin(ctx context.Context, profile do.AdminCreate
 	}
 
 	return item, nil
+}
+
+// CreateAdminWithAccess 在同一事务中创建管理员、写入授权映射和审计日志。
+func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var created *model.User
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := validateActiveDataDomains(tx, domainIDs); err != nil {
+			return err
+		}
+		item := &model.User{
+			Account:      profile.Account,
+			PasswordHash: passwordHash,
+			Role:         common.RoleAdmin,
+			RealName:     profile.RealName,
+			Mobile:       profile.Mobile,
+			Status:       common.UserStatusActive,
+		}
+		if err := tx.Create(item).Error; err != nil {
+			if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+				return common.ErrAccountAlreadyExists
+			}
+			return err
+		}
+		if err := replaceAdminAccessRecords(tx, item.ID, domainIDs, permissions); err != nil {
+			return err
+		}
+		if err := writeAdminAccessAuditLog(tx, operatorID, "create_admin_access", item.ID, nil, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+			return err
+		}
+		created = item
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return created, nil
+}
+
+// ReplaceAdminAccess 整体替换普通管理员的数据域和权限，并记录变更前后快照。
+func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	var updated *model.User
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := validateActiveDataDomains(tx, domainIDs); err != nil {
+			return err
+		}
+		var user model.User
+		if err := tx.Where("id = ? AND deleted_at IS NULL", id).First(&user).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrUserNotFound
+			}
+			return err
+		}
+		if user.Role == common.RoleSuperAdmin {
+			return common.ErrCannotModifySuper
+		}
+		if user.Role != common.RoleAdmin {
+			return common.ErrUserNotFound
+		}
+
+		before, err := loadAdminAccessSnapshot(tx, id)
+		if err != nil {
+			return err
+		}
+		if err := replaceAdminAccessRecords(tx, id, domainIDs, permissions); err != nil {
+			return err
+		}
+		if err := writeAdminAccessAuditLog(tx, operatorID, "replace_admin_access", id, &before, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+			return err
+		}
+		updated = &user
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+func validateActiveDataDomains(tx *gorm.DB, domainIDs []uint64) error {
+	if len(domainIDs) == 0 {
+		return common.ErrInvalidDataDomain
+	}
+	var count int64
+	if err := tx.Model(&model.DataDomain{}).
+		Where("id IN ? AND status = ?", domainIDs, common.DataDomainStatusActive).
+		Count(&count).
+		Error; err != nil {
+		return err
+	}
+	if count != int64(len(domainIDs)) {
+		return common.ErrInvalidDataDomain
+	}
+	return nil
+}
+
+func replaceAdminAccessRecords(tx *gorm.DB, userID uint64, domainIDs []uint64, permissions []string) error {
+	if err := tx.Where("user_id = ?", userID).Delete(&model.AdminDataScope{}).Error; err != nil {
+		return err
+	}
+	if err := tx.Where("user_id = ?", userID).Delete(&model.AdminPermission{}).Error; err != nil {
+		return err
+	}
+	for _, domainID := range domainIDs {
+		if err := tx.Create(&model.AdminDataScope{UserID: userID, DataDomainID: domainID}).Error; err != nil {
+			return err
+		}
+	}
+	for _, permission := range permissions {
+		if err := tx.Create(&model.AdminPermission{UserID: userID, PermissionCode: permission}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func loadAdminAccessSnapshot(tx *gorm.DB, userID uint64) (adminAccessSnapshot, error) {
+	snapshot := adminAccessSnapshot{DomainIDs: []uint64{}, Permissions: []string{}}
+	var scopes []model.AdminDataScope
+	if err := tx.Where("user_id = ?", userID).Order("data_domain_id ASC").Find(&scopes).Error; err != nil {
+		return snapshot, err
+	}
+	for _, scope := range scopes {
+		snapshot.DomainIDs = append(snapshot.DomainIDs, scope.DataDomainID)
+	}
+	var permissions []model.AdminPermission
+	if err := tx.Where("user_id = ?", userID).Order("permission_code ASC").Find(&permissions).Error; err != nil {
+		return snapshot, err
+	}
+	for _, permission := range permissions {
+		snapshot.Permissions = append(snapshot.Permissions, permission.PermissionCode)
+	}
+	return snapshot, nil
+}
+
+func writeAdminAccessAuditLog(tx *gorm.DB, operatorID uint64, action string, targetID uint64, before *adminAccessSnapshot, after adminAccessSnapshot) error {
+	detail, err := json.Marshal(adminAccessAuditDetail{Before: before, After: after})
+	if err != nil {
+		return err
+	}
+	detailText := string(detail)
+	return tx.Create(&model.OperationLog{
+		OperatorID:   operatorID,
+		OperatorRole: common.RoleSuperAdmin,
+		Action:       action,
+		TargetType:   "admin_access",
+		TargetID:     &targetID,
+		Detail:       &detailText,
+	}).Error
 }
 
 // DeleteAdmin 软删除管理员账号。
