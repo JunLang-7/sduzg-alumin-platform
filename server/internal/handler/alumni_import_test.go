@@ -129,6 +129,9 @@ func TestImportHandlerSuccess(t *testing.T) {
 
 	body := &bytes.Buffer{}
 	body.WriteString("--boundary\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"data_domain_id\"\r\n\r\n")
+	body.WriteString("1\r\n")
+	body.WriteString("--boundary\r\n")
 	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"")
 	body.WriteString(filename)
 	body.WriteString("\"\r\n")

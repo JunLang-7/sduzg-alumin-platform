@@ -1,6 +1,16 @@
 package do
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
+
+func TestAlumniListQueryNormalizeSortsAndDeduplicatesDataDomainIDs(t *testing.T) {
+	query := AlumniListQuery{DataDomainIDs: []uint64{3, 1, 2, 1, 3}}.Normalize()
+	if !slices.Equal(query.DataDomainIDs, []uint64{1, 2, 3}) {
+		t.Fatalf("normalized data domains = %v, want [1 2 3]", query.DataDomainIDs)
+	}
+}
 
 func TestAlumniDedupKeyIncludesMobile(t *testing.T) {
 	base := AlumniDedupKey{Name: "张三", Grade: "2020级", ClassName: "MPA", Cohort: "2020"}
