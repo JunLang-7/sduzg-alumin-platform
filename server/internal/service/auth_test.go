@@ -60,9 +60,11 @@ func (s *fakeUserStore) ListAdmins(_ context.Context, _ do.AdminListQuery) ([]*m
 	return s.users, s.total, s.listErr
 }
 
-func (s *fakeUserStore) CreateAdmin(_ context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error) {
+func (s *fakeUserStore) CreateAdminWithAccess(_ context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
 	s.createProfile = profile
 	s.createHash = passwordHash
+	s.createDomainIDs = append([]uint64(nil), domainIDs...)
+	s.createPermissions = append([]string(nil), permissions...)
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
@@ -78,12 +80,6 @@ func (s *fakeUserStore) CreateAdmin(_ context.Context, profile do.AdminCreatePro
 		Mobile:       profile.Mobile,
 		Status:       common.UserStatusActive,
 	}, nil
-}
-
-func (s *fakeUserStore) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {
-	s.createDomainIDs = append([]uint64(nil), domainIDs...)
-	s.createPermissions = append([]string(nil), permissions...)
-	return s.CreateAdmin(ctx, profile, passwordHash)
 }
 
 func (s *fakeUserStore) ReplaceAdminAccess(_ context.Context, id uint64, domainIDs []uint64, permissions []string, _ uint64) (*model.User, error) {

@@ -21,7 +21,6 @@ type UserStore interface {
 	FindByAlumniID(ctx context.Context, alumniID uint64) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
-	CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error)
 	CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
 	ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
 	DeleteAdmin(ctx context.Context, id uint64) error
@@ -184,30 +183,6 @@ func (r *UserRepository) ListAdmins(ctx context.Context, listQuery do.AdminListQ
 	}
 
 	return items, total, nil
-}
-
-// CreateAdmin 创建管理员账号。
-func (r *UserRepository) CreateAdmin(ctx context.Context, profile do.AdminCreateProfile, passwordHash string) (*model.User, error) {
-	if r.db == nil {
-		return nil, common.ErrDatabaseUnavailable
-	}
-
-	item := &model.User{
-		Account:      profile.Account,
-		PasswordHash: passwordHash,
-		Role:         common.RoleAdmin,
-		RealName:     profile.RealName,
-		Mobile:       profile.Mobile,
-		Status:       common.UserStatusActive,
-	}
-	if err := r.db.WithContext(ctx).Create(item).Error; err != nil {
-		if errors.Is(err, gorm.ErrDuplicatedKey) || strings.Contains(strings.ToLower(err.Error()), "duplicate") {
-			return nil, common.ErrAccountAlreadyExists
-		}
-		return nil, err
-	}
-
-	return item, nil
 }
 
 // CreateAdminWithAccess 在同一事务中创建管理员、写入授权映射和审计日志。
