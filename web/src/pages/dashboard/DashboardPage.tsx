@@ -12,7 +12,9 @@ import { Button, Input, Modal, Segmented, Spin, message } from 'antd';
 import { alumniApi } from '../../api/alumni';
 import { dashboardApi } from '../../api/dashboard';
 import logoUrl from '../../assets/pspa-logo.png';
+import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile } from '../../types/alumni';
+import { canReadSensitive } from '../../utils/access';
 import { AlumniDetailModal } from './AlumniDetailModal';
 import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
@@ -238,6 +240,8 @@ function EmptyData({ text = '暂无数据' }: { text?: string }) {
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const user = useAuthStore((state) => state.user);
+  const sensitiveReadable = canReadSensitive(user);
   const [overview, setOverview] = useState<DashboardOverview>(emptyOverview);
   const [dimension, setDimension] = useState<DashboardDimension>('grade');
   const [mainDistribution, setMainDistribution] = useState<DistributionItem[]>([]);
@@ -286,6 +290,7 @@ export function DashboardPage() {
   useEffect(() => {
     setInitialLoading(true);
     setFeedLoading(true);
+    setRegionDataLoading(true);
     Promise.allSettled([
       dashboardApi.overview(),
       dashboardApi.distribution('grade'),
@@ -308,6 +313,10 @@ export function DashboardPage() {
         if (feedResult.status === 'fulfilled') {
           setAlumniFeed(feedResult.value);
           setAllAlumniCache(feedResult.value);
+          if (!sensitiveReadable) {
+            setRegionDataLoading(false);
+            return;
+          }
           void enrichAlumniMailingAddresses(feedResult.value)
             .then((items) => {
               setAlumniFeed(items);
@@ -328,7 +337,7 @@ export function DashboardPage() {
         setInitialLoading(false);
         setFeedLoading(false);
       });
-  }, []);
+  }, [sensitiveReadable]);
 
   useEffect(() => {
     if (searchKeyword.trim() || alumniFeed.length <= FEED_WINDOW_SIZE) {
@@ -728,7 +737,7 @@ export function DashboardPage() {
         <td>{item.name}</td>
         <td>{formatText(item.grade)}</td>
         <td>{formatText(item.industry)}</td>
-        <td>{formatText(item.work_unit)}</td>
+        <td>{sensitiveReadable ? formatText(item.work_unit) : '无权限查看'}</td>
         <td>{formatText(item.mentor)}</td>
       </tr>
     ));
@@ -813,25 +822,27 @@ export function DashboardPage() {
           expandable={false}
         >
           {(expanded) => (
-            <RegionIndustryExplorer
-              alumni={allAlumniCache ?? alumniFeed}
-              expanded={expanded}
-              loading={regionDataLoading}
-              view="map"
-              mapMode={regionMapMode}
-              selectedRegion={selectedMapRegion}
-              selectedDistrict={selectedMapDistrict}
-              onMapModeChange={(mode) => {
-                setRegionMapMode(mode);
-                setSelectedMapDistrict('');
-              }}
-              onRegionChange={(region) => {
-                setSelectedMapRegion(region);
-                setSelectedMapDistrict('');
-              }}
-              onDistrictChange={setSelectedMapDistrict}
-              onSelectAlumni={openAlumniDetail}
-            />
+            sensitiveReadable ? (
+              <RegionIndustryExplorer
+                alumni={allAlumniCache ?? alumniFeed}
+                expanded={expanded}
+                loading={regionDataLoading}
+                view="map"
+                mapMode={regionMapMode}
+                selectedRegion={selectedMapRegion}
+                selectedDistrict={selectedMapDistrict}
+                onMapModeChange={(mode) => {
+                  setRegionMapMode(mode);
+                  setSelectedMapDistrict('');
+                }}
+                onRegionChange={(region) => {
+                  setSelectedMapRegion(region);
+                  setSelectedMapDistrict('');
+                }}
+                onDistrictChange={setSelectedMapDistrict}
+                onSelectAlumni={openAlumniDetail}
+              />
+            ) : <EmptyData text="无权限查看地域分布" />
           )}
         </DataScreenPanel>
 
@@ -857,7 +868,7 @@ export function DashboardPage() {
                     }
                   }}
                   onSearch={runSearch}
-                  placeholder="输入姓名、单位、职务、导师等关键词..."
+                  placeholder={sensitiveReadable ? '输入姓名、单位、职务、导师等关键词...' : '输入姓名、行业、导师等关键词...'}
                   enterButton="搜索"
                 />
               </div>
@@ -892,21 +903,24 @@ export function DashboardPage() {
           title="地域与行业分布"
           subtitle="省内外、城市、区县与行业联动"
           className="dashboard-industry-panel"
+          expandable={sensitiveReadable}
         >
           {(expanded) => (
-            <RegionIndustryExplorer
-              alumni={allAlumniCache ?? alumniFeed}
-              expanded={expanded}
-              loading={regionDataLoading}
-              view="industry"
-              mapMode={regionMapMode}
-              selectedRegion={selectedMapRegion}
-              selectedDistrict={selectedMapDistrict}
-              onMapModeChange={setRegionMapMode}
-              onRegionChange={setSelectedMapRegion}
-              onDistrictChange={setSelectedMapDistrict}
-              onSelectAlumni={openAlumniDetail}
-            />
+            sensitiveReadable ? (
+              <RegionIndustryExplorer
+                alumni={allAlumniCache ?? alumniFeed}
+                expanded={expanded}
+                loading={regionDataLoading}
+                view="industry"
+                mapMode={regionMapMode}
+                selectedRegion={selectedMapRegion}
+                selectedDistrict={selectedMapDistrict}
+                onMapModeChange={setRegionMapMode}
+                onRegionChange={setSelectedMapRegion}
+                onDistrictChange={setSelectedMapDistrict}
+                onSelectAlumni={openAlumniDetail}
+              />
+            ) : <EmptyData text="无权限查看地域与行业分布" />
           )}
         </DataScreenPanel>
       </main>
@@ -925,6 +939,7 @@ export function DashboardPage() {
         loading={distributionLoading}
         title={distributionTitle}
         items={distributionAlumni}
+        sensitiveReadable={sensitiveReadable}
         onClose={() => setDistributionOpen(false)}
         onSelect={(profile) => {
           setDistributionOpen(false);

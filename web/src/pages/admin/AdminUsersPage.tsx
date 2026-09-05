@@ -81,7 +81,15 @@ export function AdminUsersPage() {
     } finally { setSaving(false); }
   };
   const handleRemove = async (record: AdminUser) => {
-    try { await adminsApi.remove(record.id); message.success('管理员已删除'); await loadData(query); }
+    try {
+      await adminsApi.remove(record.id);
+      message.success('管理员已删除');
+      if (items.length === 1 && (query.page || 1) > 1) {
+        setQuery((current) => ({ ...current, page: (current.page || 1) - 1 }));
+        return;
+      }
+      await loadData(query);
+    }
     catch (error) { message.error((error as Error).message || '删除失败'); }
   };
 
@@ -105,7 +113,7 @@ export function AdminUsersPage() {
         </Space>
       ),
     },
-  ], [query]);
+  ], [items.length, query]);
 
   return <>
     <PageHeader title="管理员管理" description="配置管理员可管理范围与功能权限" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>创建管理员</Button>} />
