@@ -166,7 +166,7 @@ export function AlumniManagementPage() {
         width: 110,
       },
       {
-        title: '所属领域',
+        title: '培养类别',
         dataIndex: 'data_domain_id',
         width: 170,
         render: (value: number) => <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>,
@@ -334,7 +334,7 @@ export function AlumniManagementPage() {
     <>
       <PageHeader
         title="校友管理"
-        description="管理员维护已授权领域内的校友基础档案"
+        description="管理员维护可管理范围内的校友基础档案"
         extra={
           <Button type="primary" icon={<PlusOutlined />} onClick={openCreateModal}>
             新增校友
@@ -363,7 +363,7 @@ export function AlumniManagementPage() {
             />
           </Form.Item>
           <Form.Item name="data_domain_id">
-            <Select allowClear placeholder="所属领域" options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+            <Select allowClear placeholder="培养类别" options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
           </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
@@ -372,7 +372,7 @@ export function AlumniManagementPage() {
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
             </Button>
-            <Select value={importDomainID} onChange={setImportDomainID} allowClear placeholder="导入目标领域" style={{ width: 170 }} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+            <Select value={importDomainID} onChange={setImportDomainID} allowClear placeholder="导入目标培养类别" style={{ width: 170 }} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
             <Button icon={<UploadOutlined />} loading={importing} onClick={handleImportClick}>
               导入 Excel
             </Button>
@@ -440,7 +440,7 @@ export function AlumniManagementPage() {
           >
             <Input maxLength={50} />
           </Form.Item>
-          <Form.Item label="所属领域" name="data_domain_id" rules={[{ required: true, message: '请选择所属领域' }]}>
+          <Form.Item label="培养类别" name="data_domain_id" rules={[{ required: true, message: '请选择培养类别' }]}>
             <Select disabled={Boolean(editing) || domains.length === 1} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
           </Form.Item>
           <Form.Item label="班级" name="class_name">
