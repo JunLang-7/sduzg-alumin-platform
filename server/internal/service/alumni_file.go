@@ -33,7 +33,7 @@ type AlumniFileService struct {
 	files    repository.AlumniFileStore
 	alumni   repository.AlumniStore
 	store    *storage.Client
-	opLogger *OperationLogger
+	opLogger OperationLogWriter
 }
 
 // NewAlumniFileService 创建文件服务实例。
@@ -41,7 +41,7 @@ func NewAlumniFileService(
 	files repository.AlumniFileStore,
 	alumni repository.AlumniStore,
 	store *storage.Client,
-	opLogger *OperationLogger,
+	opLogger OperationLogWriter,
 ) *AlumniFileService {
 	return &AlumniFileService{
 		files:    files,
@@ -104,7 +104,7 @@ func (s *AlumniFileService) GenerateUploadURL(ctx context.Context, operator comm
 		return nil, err
 	}
 
-	s.writeOpLog(ctx, operator.UserID, "request_upload_url", saved.ID, alumni, fileType, originalName)
+	s.writeOpLog(ctx, operator, "request_upload_url", saved.ID, alumni, fileType, originalName)
 
 	return &dto.AlumniFileUploadURLResponse{
 		FileID:    saved.ID,
@@ -165,7 +165,7 @@ func (s *AlumniFileService) ConfirmUpload(ctx context.Context, operator common.A
 	}
 
 	// 5. 记录操作日志
-	s.writeOpLog(ctx, operator.UserID, "confirm_upload", fileID, alumni, record.FileType, record.OriginalName)
+	s.writeOpLog(ctx, operator, "confirm_upload", fileID, alumni, record.FileType, record.OriginalName)
 
 	return &dto.AlumniFileUploadResponse{
 		ID:           record.ID,
@@ -180,7 +180,8 @@ func (s *AlumniFileService) ConfirmUpload(ctx context.Context, operator common.A
 // GenerateDownloadURL 生成预签名下载 URL：校验权限 → 返回 Presigned GET URL。
 // 客户端凭该 URL 直连 MinIO 下载，数据不经过 API Server。
 func (s *AlumniFileService) GenerateDownloadURL(ctx context.Context, operator common.AccessContext, alumniID uint64, fileID uint64) (*dto.AlumniFileDownloadURLResponse, error) {
-	if _, err := s.getAccessibleAlumni(ctx, alumniID, operator); err != nil {
+	alumni, err := s.getAccessibleAlumni(ctx, alumniID, operator)
+	if err != nil {
 		return nil, err
 	}
 
@@ -202,6 +203,7 @@ func (s *AlumniFileService) GenerateDownloadURL(ctx context.Context, operator co
 		)
 		return nil, common.ErrStorageUnavailable
 	}
+	s.writeOpLog(ctx, operator, "download_alumni_file", fileID, alumni, record.FileType, record.OriginalName)
 
 	return &dto.AlumniFileDownloadURLResponse{
 		DownloadURL:  downloadURL,
@@ -278,7 +280,7 @@ func (s *AlumniFileService) DeleteFile(ctx context.Context, operator common.Acce
 	}
 
 	// 记录操作日志
-	s.writeOpLog(ctx, operator.UserID, "delete_alumni_file", fileID, alumni, record.FileType, record.OriginalName)
+	s.writeOpLog(ctx, operator, "delete_alumni_file", fileID, alumni, record.FileType, record.OriginalName)
 
 	return nil
 }
@@ -286,6 +288,9 @@ func (s *AlumniFileService) DeleteFile(ctx context.Context, operator common.Acce
 // getAccessibleAlumni 在任何文件读写前校验管理员角色及其数据域范围。
 func (s *AlumniFileService) getAccessibleAlumni(ctx context.Context, alumniID uint64, operator common.AccessContext) (*model.AlumniProfile, error) {
 	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	if !operator.HasPermission(common.PermissionAlumniFilesManage) {
 		return nil, common.ErrPermissionDenied
 	}
 	domainIDs, restricted := scopedDataDomainIDs(operator)
@@ -352,16 +357,18 @@ func (s *AlumniFileService) replaceOldFiles(ctx context.Context, alumniID uint64
 }
 
 // writeOpLog 记录文件操作审计日志。
-func (s *AlumniFileService) writeOpLog(ctx context.Context, operatorID uint64, action string, fileID uint64, alumni *model.AlumniProfile, fileType, originalName string) {
+func (s *AlumniFileService) writeOpLog(ctx context.Context, operator common.AccessContext, action string, fileID uint64, alumni *model.AlumniProfile, fileType, originalName string) {
 	if s.opLogger == nil {
 		return
 	}
 
 	detail := map[string]any{
-		"alumni_id":     alumni.ID,
-		"alumni_name":   alumni.Name,
-		"file_type":     fileType,
-		"original_name": originalName,
+		"alumni_id":                alumni.ID,
+		"alumni_name":              alumni.Name,
+		"target_data_domain_id":    alumni.DataDomainID,
+		"operator_data_domain_ids": operator.DomainIDs,
+		"file_type":                fileType,
+		"original_name":            originalName,
 	}
 	detailJSON, err := json.Marshal(detail)
 	if err != nil {
@@ -371,11 +378,12 @@ func (s *AlumniFileService) writeOpLog(ctx context.Context, operatorID uint64, a
 
 	detailStr := string(detailJSON)
 	log := model.OperationLog{
-		OperatorID: operatorID,
-		Action:     action,
-		TargetType: "alumni_file",
-		TargetID:   &fileID,
-		Detail:     &detailStr,
+		OperatorID:   operator.UserID,
+		OperatorRole: operator.Role,
+		Action:       action,
+		TargetType:   "alumni_file",
+		TargetID:     &fileID,
+		Detail:       &detailStr,
 	}
 	if err := s.opLogger.Write(ctx, &log); err != nil {
 		logger.Warn("failed to write operation log", zap.String("action", action), zap.Error(err))

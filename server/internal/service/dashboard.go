@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
@@ -21,13 +22,17 @@ func NewDashboardService(dashboard repository.DashboardStore) *DashboardService 
 }
 
 // Overview 获取数据大屏总览指标。
-func (s *DashboardService) Overview(ctx context.Context) (*dto.DashboardOverview, error) {
+func (s *DashboardService) Overview(ctx context.Context, operator common.AccessContext) (*dto.DashboardOverview, error) {
 	if s.dashboard == nil {
 		logger.Error("dashboard repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
 	}
+	dataDomainIDs, err := dashboardDataDomainIDs(operator)
+	if err != nil {
+		return nil, err
+	}
 
-	stats, err := s.dashboard.Overview(ctx)
+	stats, err := s.dashboard.Overview(ctx, dataDomainIDs)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
@@ -41,7 +46,7 @@ func (s *DashboardService) Overview(ctx context.Context) (*dto.DashboardOverview
 }
 
 // Distribution 获取指定维度的校友分布统计。
-func (s *DashboardService) Distribution(ctx context.Context, req dto.DashboardDistributionRequest) ([]dto.DashboardDistributionItem, error) {
+func (s *DashboardService) Distribution(ctx context.Context, req dto.DashboardDistributionRequest, operator common.AccessContext) ([]dto.DashboardDistributionItem, error) {
 	if s.dashboard == nil {
 		logger.Error("dashboard repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
@@ -51,6 +56,12 @@ func (s *DashboardService) Distribution(ctx context.Context, req dto.DashboardDi
 	if !query.Valid() {
 		return nil, common.ErrInvalidRequest
 	}
+	dataDomainIDs, err := dashboardDataDomainIDs(operator)
+	if err != nil {
+		return nil, err
+	}
+	query.DataDomainIDs = dataDomainIDs
+	query = query.Normalize()
 
 	items, err := s.dashboard.Distribution(ctx, query)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
@@ -66,6 +77,23 @@ func (s *DashboardService) Distribution(ctx context.Context, req dto.DashboardDi
 	}
 
 	return mapDashboardDistributionItems(items), nil
+}
+
+// dashboardDataDomainIDs 将管理员授权上下文转换为统计查询范围。
+// nil 表示超级管理员的全域范围；普通管理员必须至少拥有一个数据域。
+func dashboardDataDomainIDs(operator common.AccessContext) ([]uint64, error) {
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	if operator.IsSuperAdmin() {
+		return nil, nil
+	}
+	if len(operator.DomainIDs) == 0 {
+		return nil, common.ErrPermissionDenied
+	}
+	domainIDs := slices.Clone(operator.DomainIDs)
+	slices.Sort(domainIDs)
+	return slices.Compact(domainIDs), nil
 }
 
 func mapDashboardOverview(stats do.DashboardOverviewStats) *dto.DashboardOverview {

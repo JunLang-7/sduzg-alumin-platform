@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -13,12 +14,14 @@ import (
 type fakeDashboardStore struct {
 	stats             do.DashboardOverviewStats
 	err               error
+	overviewDomainIDs []uint64
 	distributionQuery do.DashboardDistributionQuery
 	distributionItems []do.DashboardDistributionItem
 	distributionErr   error
 }
 
-func (s *fakeDashboardStore) Overview(_ context.Context) (do.DashboardOverviewStats, error) {
+func (s *fakeDashboardStore) Overview(_ context.Context, dataDomainIDs []uint64) (do.DashboardOverviewStats, error) {
+	s.overviewDomainIDs = slices.Clone(dataDomainIDs)
 	return s.stats, s.err
 }
 
@@ -39,7 +42,7 @@ func TestDashboardServiceOverviewCalculatesCompletionRates(t *testing.T) {
 	}
 	svc := NewDashboardService(store)
 
-	result, err := svc.Overview(context.Background())
+	result, err := svc.Overview(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("expected overview success, got %v", err)
 	}
@@ -69,7 +72,7 @@ func TestDashboardServiceOverviewHandlesEmptyAlumni(t *testing.T) {
 	}
 	svc := NewDashboardService(store)
 
-	result, err := svc.Overview(context.Background())
+	result, err := svc.Overview(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("expected overview success, got %v", err)
 	}
@@ -81,7 +84,7 @@ func TestDashboardServiceOverviewHandlesEmptyAlumni(t *testing.T) {
 func TestDashboardServiceOverviewReturnsDatabaseUnavailable(t *testing.T) {
 	svc := NewDashboardService(&fakeDashboardStore{err: common.ErrDatabaseUnavailable})
 
-	_, err := svc.Overview(context.Background())
+	_, err := svc.Overview(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin})
 	if !errors.Is(err, common.ErrDatabaseUnavailable) {
 		t.Fatalf("expected database unavailable, got %v", err)
 	}
@@ -98,7 +101,7 @@ func TestDashboardServiceDistributionNormalizesAndMapsItems(t *testing.T) {
 
 	items, err := svc.Distribution(context.Background(), dto.DashboardDistributionRequest{
 		Dimension: " Grade ",
-	})
+	}, common.AccessContext{Role: common.RoleSuperAdmin})
 	if err != nil {
 		t.Fatalf("expected distribution success, got %v", err)
 	}
@@ -116,7 +119,7 @@ func TestDashboardServiceDistributionRejectsInvalidDimension(t *testing.T) {
 
 	_, err := svc.Distribution(context.Background(), dto.DashboardDistributionRequest{
 		Dimension: "name",
-	})
+	}, common.AccessContext{Role: common.RoleSuperAdmin})
 	if !errors.Is(err, common.ErrInvalidRequest) {
 		t.Fatalf("expected invalid request, got %v", err)
 	}
@@ -130,8 +133,39 @@ func TestDashboardServiceDistributionReturnsDatabaseUnavailable(t *testing.T) {
 
 	_, err := svc.Distribution(context.Background(), dto.DashboardDistributionRequest{
 		Dimension: do.DashboardDistributionDimensionIndustry,
-	})
+	}, common.AccessContext{Role: common.RoleSuperAdmin})
 	if !errors.Is(err, common.ErrDatabaseUnavailable) {
 		t.Fatalf("expected database unavailable, got %v", err)
+	}
+}
+
+func TestDashboardServiceScopesAllStatisticsToAdministratorDomains(t *testing.T) {
+	store := &fakeDashboardStore{}
+	svc := NewDashboardService(store)
+	operator := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{3, 1, 3}}
+
+	if _, err := svc.Overview(context.Background(), operator); err != nil {
+		t.Fatalf("expected overview success, got %v", err)
+	}
+	if !slices.Equal(store.overviewDomainIDs, []uint64{1, 3}) {
+		t.Fatalf("expected overview to receive operator domains, got %v", store.overviewDomainIDs)
+	}
+
+	if _, err := svc.Distribution(context.Background(), dto.DashboardDistributionRequest{
+		Dimension: do.DashboardDistributionDimensionGrade,
+	}, operator); err != nil {
+		t.Fatalf("expected distribution success, got %v", err)
+	}
+	if !slices.Equal(store.distributionQuery.DataDomainIDs, []uint64{1, 3}) {
+		t.Fatalf("expected normalized distribution domains [1 3], got %v", store.distributionQuery.DataDomainIDs)
+	}
+}
+
+func TestDashboardServiceRejectsAdministratorWithoutDataDomain(t *testing.T) {
+	svc := NewDashboardService(&fakeDashboardStore{})
+
+	_, err := svc.Overview(context.Background(), common.AccessContext{Role: common.RoleAdmin})
+	if !errors.Is(err, common.ErrPermissionDenied) {
+		t.Fatalf("expected permission denied, got %v", err)
 	}
 }
