@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-func TestAlumniListQueryNormalizeSortsDataDomainIDs(t *testing.T) {
-	query := AlumniListQuery{DataDomainIDs: []uint64{3, 1, 2}}.Normalize()
+func TestAlumniListQueryNormalizeSortsAndDeduplicatesDataDomainIDs(t *testing.T) {
+	query := AlumniListQuery{DataDomainIDs: []uint64{3, 1, 2, 1, 3}}.Normalize()
 	if !slices.Equal(query.DataDomainIDs, []uint64{1, 2, 3}) {
 		t.Fatalf("normalized data domains = %v, want [1 2 3]", query.DataDomainIDs)
 	}

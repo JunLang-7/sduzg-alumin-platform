@@ -148,6 +148,16 @@ func (q AlumniListQuery) Normalize() AlumniListQuery {
 	q.Mobile = strings.TrimSpace(q.Mobile)
 	q.DataDomainIDs = append([]uint64(nil), q.DataDomainIDs...)
 	sort.Slice(q.DataDomainIDs, func(i, j int) bool { return q.DataDomainIDs[i] < q.DataDomainIDs[j] })
+	if len(q.DataDomainIDs) > 1 {
+		writeIndex := 1
+		for _, id := range q.DataDomainIDs[1:] {
+			if id != q.DataDomainIDs[writeIndex-1] {
+				q.DataDomainIDs[writeIndex] = id
+				writeIndex++
+			}
+		}
+		q.DataDomainIDs = q.DataDomainIDs[:writeIndex]
+	}
 	return q
 }
 

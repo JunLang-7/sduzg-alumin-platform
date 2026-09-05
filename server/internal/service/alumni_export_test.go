@@ -200,13 +200,13 @@ func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
 
 	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"}, common.AccessContext{
 		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{2},
+		DomainIDs: []uint64{2, 1, 2},
 	})
 	if err != nil {
 		t.Fatalf("expected scoped export success, got %v", err)
 	}
-	if len(store.query.DataDomainIDs) != 1 || store.query.DataDomainIDs[0] != 2 {
-		t.Fatalf("expected export to query domain 2, got %v", store.query.DataDomainIDs)
+	if len(store.query.DataDomainIDs) != 2 || store.query.DataDomainIDs[0] != 1 || store.query.DataDomainIDs[1] != 2 {
+		t.Fatalf("expected export to query normalized domains [1 2], got %v", store.query.DataDomainIDs)
 	}
 	if store.query.CanReadSensitive {
 		t.Fatal("expected export query to mark sensitive fields unavailable")

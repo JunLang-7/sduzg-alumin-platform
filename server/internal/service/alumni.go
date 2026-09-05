@@ -132,6 +132,7 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 		query.DataDomainIDs = domainIDs
 	}
 	query.CanReadSensitive = viewer.HasPermission(common.PermissionAlumniSensitiveRead)
+	query = query.Normalize()
 
 	// 无过滤条件时优先用缓存计数，跳过 DB COUNT(*)
 	if query.IsUnfiltered() && len(query.DataDomainIDs) == 0 && s.countCache != nil {
@@ -428,6 +429,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 		query.DataDomainIDs = domainIDs
 	}
 	query.CanReadSensitive = operator.HasPermission(common.PermissionAlumniSensitiveRead)
+	query = query.Normalize()
 	format := req.FormatOrDefault()
 
 	// 优先读缓存，避免全表扫描
