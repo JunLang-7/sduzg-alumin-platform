@@ -6,10 +6,15 @@ import (
 	"encoding/csv"
 	"testing"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/xuri/excelize/v2"
 )
+
+func exportAsSuperAdmin(svc *AlumniService, req dto.AlumniExportRequest) (*ExportResult, error) {
+	return svc.Export(context.Background(), req, common.AccessContext{Role: common.RoleSuperAdmin})
+}
 
 func TestExportXlsxFormat(t *testing.T) {
 	workUnit := "山东大学"
@@ -31,7 +36,7 @@ func TestExportXlsxFormat(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "xlsx"})
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "xlsx"})
 	if err != nil {
 		t.Fatalf("expected xlsx export success, got %v", err)
 	}
@@ -69,7 +74,7 @@ func TestExportCsvFormat(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"})
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "csv"})
 	if err != nil {
 		t.Fatalf("expected csv export success, got %v", err)
 	}
@@ -106,7 +111,7 @@ func TestExportDefaultFormatIsXlsx(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{})
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{})
 	if err != nil {
 		t.Fatalf("expected export success, got %v", err)
 	}
@@ -121,7 +126,7 @@ func TestExportEmptyData(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil)
 
-	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{})
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{})
 	if err != nil {
 		t.Fatalf("expected export success for empty data, got %v", err)
 	}
@@ -151,7 +156,7 @@ func TestExportFilterPropagation(t *testing.T) {
 	}
 	svc := NewAlumniService(store, nil)
 
-	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{
+	_, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{
 		Grade:    "2023级",
 		Industry: "政府",
 		Format:   "csv",
@@ -164,6 +169,65 @@ func TestExportFilterPropagation(t *testing.T) {
 	}
 	if store.query.Industry != "政府" {
 		t.Fatalf("expected industry filter 政府, got %q", store.query.Industry)
+	}
+}
+
+func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
+	mobile := "13800000000"
+	email := "zhangsan@example.com"
+	position := "主任"
+	address := "济南市"
+	store := &fakeAlumniStore{items: []*model.AlumniProfile{{
+		ID:             1,
+		Name:           "张三",
+		Grade:          "2020级",
+		Mobile:         &mobile,
+		Email:          &email,
+		Position:       &position,
+		MailingAddress: &address,
+	}}}
+	svc := NewAlumniService(store, nil)
+
+	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"}, common.AccessContext{
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{2},
+	})
+	if err != nil {
+		t.Fatalf("expected scoped export success, got %v", err)
+	}
+	if len(store.query.DataDomainIDs) != 1 || store.query.DataDomainIDs[0] != 2 {
+		t.Fatalf("expected export to query domain 2, got %v", store.query.DataDomainIDs)
+	}
+	if store.query.CanReadSensitive {
+		t.Fatal("expected export query to mark sensitive fields unavailable")
+	}
+
+	records, err := csv.NewReader(bytes.NewReader(result.Data[3:])).ReadAll()
+	if err != nil {
+		t.Fatalf("read exported csv: %v", err)
+	}
+	row := records[1]
+	if row[10] != "" || row[11] != "" || row[13] != "" || row[14] != "" {
+		t.Fatalf("expected sensitive export cells to be blank, got %v", row)
+	}
+}
+
+func TestExportRejectsSensitiveFilterWithoutPermission(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{Mobile: "13800000000"}, common.AccessContext{
+		Role:      common.RoleAdmin,
+		DomainIDs: []uint64{1},
+	})
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected sensitive export filter to be rejected, got %v", err)
+	}
+}
+
+func TestExportRejectsAdminWithoutDataDomain(t *testing.T) {
+	svc := NewAlumniService(&fakeAlumniStore{}, nil)
+	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{}, common.AccessContext{Role: common.RoleAdmin})
+	if err != common.ErrPermissionDenied {
+		t.Fatalf("expected empty data-domain scope to be rejected, got %v", err)
 	}
 }
 
@@ -189,7 +253,7 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 	svc := NewAlumniService(store, nil)
 
 	// Test CSV format
-	result, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"})
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "csv"})
 	if err != nil {
 		t.Fatalf("expected csv export success, got %v", err)
 	}
@@ -221,7 +285,7 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 	}
 
 	// Test XLSX format
-	result, err = svc.Export(context.Background(), dto.AlumniExportRequest{Format: "xlsx"})
+	result, err = exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "xlsx"})
 	if err != nil {
 		t.Fatalf("expected xlsx export success, got %v", err)
 	}

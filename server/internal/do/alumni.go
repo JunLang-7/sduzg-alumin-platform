@@ -7,19 +7,21 @@ import (
 )
 
 type AlumniListQuery struct {
-	Page         common.PageQuery
-	Keyword      string
-	Grade        string
-	ClassName    string
-	Cohort       string
-	Counselor    string
-	Mentor       string
-	Major        string
-	TrainingMode string
-	Industry     string
-	WorkUnit     string
-	Position     string
-	Mobile       string
+	Page             common.PageQuery
+	Keyword          string
+	Grade            string
+	ClassName        string
+	Cohort           string
+	Counselor        string
+	Mentor           string
+	Major            string
+	TrainingMode     string
+	Industry         string
+	WorkUnit         string
+	Position         string
+	Mobile           string
+	DataDomainIDs    []uint64
+	CanReadSensitive bool
 }
 
 type AlumniEditableProfile struct {
@@ -49,6 +51,7 @@ type AlumniUpdateProfile struct {
 }
 
 type AlumniCreateProfile struct {
+	DataDomainID   *uint64
 	Name           string
 	Grade          string
 	ClassName      *string

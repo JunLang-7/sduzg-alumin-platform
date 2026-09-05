@@ -157,7 +157,7 @@ func (s *fakeAlumniStoreForAuth) ListAll(_ context.Context, _ do.AlumniListQuery
 	return nil, nil
 }
 
-func (s *fakeAlumniStoreForAuth) GetByID(_ context.Context, _ uint64) (*model.AlumniProfile, error) {
+func (s *fakeAlumniStoreForAuth) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
 	return nil, common.ErrAlumniNotFound
 }
 
@@ -173,11 +173,11 @@ func (s *fakeAlumniStoreForAuth) FindExistingByDedupKey(_ context.Context, _ []d
 	return nil, nil
 }
 
-func (s *fakeAlumniStoreForAuth) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile) error {
+func (s *fakeAlumniStoreForAuth) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
 	return nil
 }
 
-func (s *fakeAlumniStoreForAuth) Delete(_ context.Context, _ uint64, _ uint64) error {
+func (s *fakeAlumniStoreForAuth) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error {
 	return nil
 }
 

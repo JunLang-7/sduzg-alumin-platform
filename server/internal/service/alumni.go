@@ -102,9 +102,19 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
+	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+	}
+	if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
+		if len(domainIDs) == 0 {
+			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = domainIDs
+	}
+	query.CanReadSensitive = viewer.HasPermission(common.PermissionAlumniSensitiveRead)
 
 	// 无过滤条件时优先用缓存计数，跳过 DB COUNT(*)
-	if query.IsUnfiltered() && s.countCache != nil {
+	if query.IsUnfiltered() && len(query.DataDomainIDs) == 0 && s.countCache != nil {
 		total, hit, _ := s.countCache.Get(ctx)
 		if !hit {
 			if n, err := s.alumni.CountActive(ctx); err == nil {
@@ -136,7 +146,7 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	return common.NewPager(mapped, query.Page, total), nil
 }
 
-// maskListItems 默认屏蔽列表中的敏感字段，仅当授权上下文确认查看者为管理员时才放行。
+// maskListItems 默认屏蔽列表中的敏感字段，仅当授权上下文包含敏感字段查看权限时才放行。
 func (s *AlumniService) maskListItems(items []dto.AlumniListItem, viewer common.AccessContext) {
 	mask := func() {
 		for i := range items {
@@ -146,12 +156,43 @@ func (s *AlumniService) maskListItems(items []dto.AlumniListItem, viewer common.
 		}
 	}
 
-	// 仅管理员和超级管理员可查看完整信息
-	if viewer.IsAdministrator() {
+	if viewer.HasPermission(common.PermissionAlumniSensitiveRead) {
 		return
 	}
 
 	mask()
+}
+
+func scopedDataDomainIDs(access common.AccessContext) ([]uint64, bool) {
+	if access.Role == common.RoleAdmin {
+		return access.DomainIDs, true
+	}
+	return nil, false
+}
+
+func profileContainsSensitiveFields(profile do.AlumniCreateProfile) bool {
+	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+}
+
+func updateContainsSensitiveFields(profile do.AlumniUpdateProfile) bool {
+	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+}
+
+func assignCreateDataDomain(profile *do.AlumniCreateProfile, operator common.AccessContext) error {
+	if operator.IsSuperAdmin() {
+		return nil
+	}
+	if operator.Role != common.RoleAdmin || len(operator.DomainIDs) == 0 {
+		return common.ErrPermissionDenied
+	}
+	if len(operator.DomainIDs) == 1 {
+		profile.DataDomainID = &operator.DomainIDs[0]
+		return nil
+	}
+	if profile.DataDomainID == nil || !operator.CanAccessDomain(*profile.DataDomainID) {
+		return common.ErrPermissionDenied
+	}
+	return nil
 }
 
 // GetByID 根据 ID 获取校友详情，并根据请求授权上下文屏蔽字段。
@@ -161,7 +202,11 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewer common.Ac
 		return nil, common.ErrDatabaseUnavailable
 	}
 
-	item, err := s.alumni.GetByID(ctx, id)
+	domainIDs, restricted := scopedDataDomainIDs(viewer)
+	if restricted && len(domainIDs) == 0 {
+		return nil, common.ErrAlumniNotFound
+	}
+	item, err := s.alumni.GetByID(ctx, id, domainIDs)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Uint64("alumni_id", id), zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
@@ -194,8 +239,7 @@ func (s *AlumniService) maskSensitiveFields(detail *dto.AlumniDetail, alumniID u
 		detail.MailingAddress = nil
 	}
 
-	// 管理员和超级管理员可查看完整信息
-	if viewer.IsAdministrator() {
+	if viewer.HasPermission(common.PermissionAlumniSensitiveRead) {
 		return
 	}
 
@@ -208,10 +252,13 @@ func (s *AlumniService) maskSensitiveFields(detail *dto.AlumniDetail, alumniID u
 }
 
 // Create 由管理员新增校友档案。
-func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.AdminAlumniCreateRequest) (*dto.AlumniDetail, error) {
+func (s *AlumniService) Create(ctx context.Context, operator common.AccessContext, req dto.AdminAlumniCreateRequest) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
+	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
 	}
 
 	profile := req.ToProfile().Normalize()
@@ -221,17 +268,23 @@ func (s *AlumniService) Create(ctx context.Context, operatorID uint64, req dto.A
 	if profile.Status != common.AlumniStatusActive {
 		return nil, common.ErrInvalidRequest
 	}
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
+		return nil, common.ErrPermissionDenied
+	}
+	if err := assignCreateDataDomain(&profile, operator); err != nil {
+		return nil, err
+	}
 
-	created, err := s.alumni.Create(ctx, &profile, operatorID)
+	created, err := s.alumni.Create(ctx, &profile, operator.UserID)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
-		logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Error(err))
+		logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
 	}
 	if errors.Is(err, common.ErrInvalidRequest) {
 		return nil, common.ErrInvalidRequest
 	}
 	if err != nil {
-		logger.Error("failed to create alumni", zap.Uint64("operator_id", operatorID), zap.Error(err))
+		logger.Error("failed to create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 		return nil, err
 	}
 
@@ -250,13 +303,23 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
 	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
 
 	profile := req.ToProfile().Normalize()
 	if profile.Name == "" || profile.Grade == "" {
 		return nil, common.ErrInvalidRequest
 	}
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && updateContainsSensitiveFields(profile) {
+		return nil, common.ErrPermissionDenied
+	}
+	domainIDs, restricted := scopedDataDomainIDs(operator)
+	if restricted && len(domainIDs) == 0 {
+		return nil, common.ErrAlumniNotFound
+	}
 
-	if err := s.alumni.Update(ctx, id, operator.UserID, profile); err != nil {
+	if err := s.alumni.Update(ctx, id, operator.UserID, profile, domainIDs); err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
 			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return nil, common.ErrDatabaseUnavailable
@@ -278,22 +341,29 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 }
 
 // Delete 由管理员软删除校友档案。
-func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64) error {
+func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContext, id uint64) error {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return common.ErrDatabaseUnavailable
 	}
+	if !operator.IsAdministrator() {
+		return common.ErrPermissionDenied
+	}
 
-	if err := s.alumni.Delete(ctx, id, operatorID); err != nil {
+	domainIDs, restricted := scopedDataDomainIDs(operator)
+	if restricted && len(domainIDs) == 0 {
+		return common.ErrAlumniNotFound
+	}
+	if err := s.alumni.Delete(ctx, id, operator.UserID, domainIDs); err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
-			logger.Error("database is unavailable", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return common.ErrDatabaseUnavailable
 		}
 		if errors.Is(err, common.ErrAlumniNotFound) {
-			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operatorID))
+			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operator.UserID))
 			return common.ErrAlumniNotFound
 		}
-		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operatorID), zap.Uint64("alumni_id", id), zap.Error(err))
+		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return err
 	}
 
@@ -318,13 +388,26 @@ func (s *AlumniService) Delete(ctx context.Context, operatorID uint64, id uint64
 }
 
 // Export 导出校友数据为 xlsx 或 csv 格式。
-func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest) (*ExportResult, error) {
+func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest, operator common.AccessContext) (*ExportResult, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
 	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
 
 	query := req.ToQuery().Normalize()
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+		return nil, common.ErrPermissionDenied
+	}
+	if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
+		if len(domainIDs) == 0 {
+			return nil, common.ErrPermissionDenied
+		}
+		query.DataDomainIDs = domainIDs
+	}
+	query.CanReadSensitive = operator.HasPermission(common.PermissionAlumniSensitiveRead)
 	format := req.FormatOrDefault()
 
 	// 优先读缓存，避免全表扫描
@@ -332,12 +415,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 		if cached, err := s.exportCache.Get(ctx, query); err == nil {
 			var items []*model.AlumniProfile
 			if json.Unmarshal(cached, &items) == nil {
-				switch format {
-				case "csv":
-					return buildCSV(items)
-				default:
-					return buildXLSX(items)
-				}
+				return s.buildExport(maskExportItems(items, operator), format)
 			}
 		}
 	}
@@ -359,12 +437,36 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest)
 		}
 	}
 
+	return s.buildExport(maskExportItems(items, operator), format)
+}
+
+func (s *AlumniService) buildExport(items []*model.AlumniProfile, format string) (*ExportResult, error) {
 	switch format {
 	case "csv":
 		return buildCSV(items)
 	default:
 		return buildXLSX(items)
 	}
+}
+
+// maskExportItems 为无敏感字段权限的导出请求清空受保护字段，且不修改缓存或仓储返回对象。
+func maskExportItems(items []*model.AlumniProfile, operator common.AccessContext) []*model.AlumniProfile {
+	if operator.HasPermission(common.PermissionAlumniSensitiveRead) {
+		return items
+	}
+	masked := make([]*model.AlumniProfile, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		copyItem := *item
+		copyItem.Mobile = nil
+		copyItem.Email = nil
+		copyItem.Position = nil
+		copyItem.MailingAddress = nil
+		masked = append(masked, &copyItem)
+	}
+	return masked
 }
 
 // ExportTemplate 生成导入模板 Excel 文件，包含表头行和一条示例空行。
@@ -498,10 +600,17 @@ func buildCSV(items []*model.AlumniProfile) (*ExportResult, error) {
 }
 
 // Import 从上传的 xlsx 文件批量导入校友档案。逐行校验，姓名和年级为必填。
-func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.Reader) (*dto.AlumniImportResult, error) {
+func (s *AlumniService) Import(ctx context.Context, operator common.AccessContext, dataDomainID *uint64, file io.Reader) (*dto.AlumniImportResult, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
 		return nil, common.ErrDatabaseUnavailable
+	}
+	if !operator.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	targetProfile := do.AlumniCreateProfile{DataDomainID: dataDomainID}
+	if err := assignCreateDataDomain(&targetProfile, operator); err != nil {
+		return nil, err
 	}
 
 	data, err := io.ReadAll(file)
@@ -556,6 +665,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 
 		profile := parseRowToProfile(row)
 		profile = profile.Normalize()
+		profile.DataDomainID = targetProfile.DataDomainID
 
 		if profile.Name == "" {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "姓名为空"})
@@ -564,6 +674,9 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		if profile.Grade == "" {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "年级为空"})
 			continue
+		}
+		if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
+			return nil, common.ErrPermissionDenied
 		}
 
 		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})
@@ -577,7 +690,7 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 
 		existing, err := s.alumni.FindExistingByDedupKey(ctx, dedupKeys)
 		if err != nil {
-			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operatorID), zap.Error(err))
+			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 			return nil, err
 		}
 
@@ -599,8 +712,8 @@ func (s *AlumniService) Import(ctx context.Context, operatorID uint64, file io.R
 		}
 
 		if len(validProfiles) > 0 {
-			if err := s.alumni.BatchCreate(ctx, validProfiles, operatorID); err != nil {
-				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operatorID), zap.Error(err))
+			if err := s.alumni.BatchCreate(ctx, validProfiles, operator.UserID); err != nil {
+				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 				return nil, err
 			}
 			result.Success = len(validProfiles)

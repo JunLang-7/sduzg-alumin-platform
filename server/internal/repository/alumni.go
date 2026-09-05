@@ -18,11 +18,11 @@ type AlumniStore interface {
 	ListAll(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
 	CountActive(ctx context.Context) (int64, error)
 	FindOnly(ctx context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error)
-	GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error)
+	GetByID(ctx context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error)
 	Create(ctx context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error)
 	BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error
-	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error
-	Delete(ctx context.Context, id uint64, updaterID uint64) error
+	Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile, dataDomainIDs []uint64) error
+	Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 	FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error)
 	FindByMobile(ctx context.Context, mobile string) (*model.AlumniProfile, error)
@@ -42,17 +42,22 @@ func NewAlumniRepository(db *gorm.DB) *AlumniRepository {
 // applyFilters 构建带过滤条件的查询，供 List / ListAll / FindOnly 复用。
 func applyFilters(db *gorm.DB, listQuery do.AlumniListQuery) *gorm.DB {
 	qs := query.Use(db).AlumniProfile
+	if len(listQuery.DataDomainIDs) > 0 {
+		db = db.Where(qs.DataDomainID.In(listQuery.DataDomainIDs...))
+	}
 
 	if listQuery.Keyword != "" {
 		like := "%" + listQuery.Keyword + "%"
-		db = db.Where(field.Or(
+		conditions := []field.Expr{
 			qs.Name.Like(like),
 			qs.WorkUnit.Like(like),
-			qs.Position.Like(like),
 			qs.Mentor.Like(like),
 			qs.Counselor.Like(like),
-			qs.Mobile.Like(like),
-		))
+		}
+		if listQuery.CanReadSensitive {
+			conditions = append(conditions, qs.Position.Like(like), qs.Mobile.Like(like))
+		}
+		db = db.Where(field.Or(conditions...))
 	}
 	if listQuery.Grade != "" {
 		db = db.Where(qs.Grade.Eq(listQuery.Grade))
@@ -81,10 +86,10 @@ func applyFilters(db *gorm.DB, listQuery do.AlumniListQuery) *gorm.DB {
 	if listQuery.WorkUnit != "" {
 		db = db.Where(qs.WorkUnit.Like("%" + listQuery.WorkUnit + "%"))
 	}
-	if listQuery.Position != "" {
+	if listQuery.CanReadSensitive && listQuery.Position != "" {
 		db = db.Where(qs.Position.Like("%" + listQuery.Position + "%"))
 	}
-	if listQuery.Mobile != "" {
+	if listQuery.CanReadSensitive && listQuery.Mobile != "" {
 		db = db.Where(qs.Mobile.Eq(listQuery.Mobile))
 	}
 	return db
@@ -184,16 +189,20 @@ func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQ
 	return items, nil
 }
 
-// GetByID 根据 ID 获取校友详情
-func (r *AlumniRepository) GetByID(ctx context.Context, id uint64) (*model.AlumniProfile, error) {
+// GetByID 根据 ID 和可访问数据域获取校友详情。
+func (r *AlumniRepository) GetByID(ctx context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
 
 	qs := query.Use(r.db).AlumniProfile
 	var item model.AlumniProfile
-	err := r.db.WithContext(ctx).
-		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+	db := r.db.WithContext(ctx).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive))
+	if len(dataDomainIDs) > 0 {
+		db = db.Where(qs.DataDomainID.In(dataDomainIDs...))
+	}
+	err := db.
 		First(&item).
 		Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -214,9 +223,18 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 	if profile == nil {
 		return nil, common.ErrInvalidRequest
 	}
-	dataDomainID, err := r.defaultMPADataDomainID(ctx)
-	if err != nil {
-		return nil, err
+	dataDomainID := uint64(0)
+	if profile.DataDomainID != nil {
+		dataDomainID = *profile.DataDomainID
+		if err := r.validateActiveDataDomainIDs(ctx, []uint64{dataDomainID}); err != nil {
+			return nil, err
+		}
+	} else {
+		var err error
+		dataDomainID, err = r.defaultMPADataDomainID(ctx)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	item := &model.AlumniProfile{
@@ -257,8 +275,27 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	if len(profiles) == 0 {
 		return nil
 	}
-	dataDomainID, err := r.defaultMPADataDomainID(ctx)
-	if err != nil {
+	dataDomainIDs := make([]uint64, len(profiles))
+	needsDefaultDomain := false
+	for i, profile := range profiles {
+		if profile.DataDomainID == nil {
+			needsDefaultDomain = true
+			continue
+		}
+		dataDomainIDs[i] = *profile.DataDomainID
+	}
+	if needsDefaultDomain {
+		defaultDomainID, err := r.defaultMPADataDomainID(ctx)
+		if err != nil {
+			return err
+		}
+		for i := range dataDomainIDs {
+			if dataDomainIDs[i] == 0 {
+				dataDomainIDs[i] = defaultDomainID
+			}
+		}
+	}
+	if err := r.validateActiveDataDomainIDs(ctx, dataDomainIDs); err != nil {
 		return err
 	}
 
@@ -266,7 +303,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	for i := range profiles {
 		p := profiles[i]
 		items = append(items, &model.AlumniProfile{
-			DataDomainID:   dataDomainID,
+			DataDomainID:   dataDomainIDs[i],
 			Name:           p.Name,
 			Grade:          p.Grade,
 			ClassName:      p.ClassName,
@@ -290,6 +327,37 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	}
 
 	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
+}
+
+// validateActiveDataDomainIDs 校验目标数据域存在且处于可用状态。
+func (r *AlumniRepository) validateActiveDataDomainIDs(ctx context.Context, ids []uint64) error {
+	uniqueIDs := make(map[uint64]struct{}, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			return common.ErrInvalidDataDomain
+		}
+		uniqueIDs[id] = struct{}{}
+	}
+	if len(uniqueIDs) == 0 {
+		return common.ErrInvalidDataDomain
+	}
+
+	uniqueIDList := make([]uint64, 0, len(uniqueIDs))
+	for id := range uniqueIDs {
+		uniqueIDList = append(uniqueIDList, id)
+	}
+	qs := query.Use(r.db).DataDomain
+	var domains []model.DataDomain
+	if err := r.db.WithContext(ctx).
+		Where(qs.ID.In(uniqueIDList...), qs.Status.Eq(common.DataDomainStatusActive)).
+		Find(&domains).
+		Error; err != nil {
+		return err
+	}
+	if len(domains) != len(uniqueIDList) {
+		return common.ErrInvalidDataDomain
+	}
+	return nil
 }
 
 // defaultMPADataDomainID 为当前尚未传入数据域的历史写入路径提供兼容默认值。
@@ -361,7 +429,7 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 }
 
 // Update 编辑管理员可维护的校友档案字段。
-func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile) error {
+func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile, dataDomainIDs []uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
@@ -416,9 +484,13 @@ func (r *AlumniRepository) Update(ctx context.Context, id uint64, updaterID uint
 		updates[qs.Remark.ColumnName().String()] = nullableString(*profile.Remark)
 	}
 
-	result := r.db.WithContext(ctx).
+	db := r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
-		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive))
+	if len(dataDomainIDs) > 0 {
+		db = db.Where(qs.DataDomainID.In(dataDomainIDs...))
+	}
+	result := db.
 		Updates(updates)
 	if result.Error != nil {
 		return result.Error
@@ -438,7 +510,7 @@ func nullableString(value string) any {
 }
 
 // Delete 软删除校友档案。
-func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64) error {
+func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
@@ -449,8 +521,12 @@ func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint
 			qs.Status.ColumnName().String():    common.AlumniStatusDeleted,
 			qs.UpdatedBy.ColumnName().String(): updaterID,
 		}
-		updateResult := tx.Model(&model.AlumniProfile{}).
-			Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive)).
+		updateQuery := tx.Model(&model.AlumniProfile{}).
+			Where(qs.ID.Eq(id), qs.DeletedAt.IsNull(), qs.Status.Eq(common.AlumniStatusActive))
+		if len(dataDomainIDs) > 0 {
+			updateQuery = updateQuery.Where(qs.DataDomainID.In(dataDomainIDs...))
+		}
+		updateResult := updateQuery.
 			Updates(updates)
 		if updateResult.Error != nil {
 			return updateResult.Error
@@ -459,7 +535,11 @@ func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint
 			return common.ErrAlumniNotFound
 		}
 
-		deleteResult := tx.Where(qs.ID.Eq(id), qs.DeletedAt.IsNull()).Delete(&model.AlumniProfile{})
+		deleteQuery := tx.Where(qs.ID.Eq(id), qs.DeletedAt.IsNull())
+		if len(dataDomainIDs) > 0 {
+			deleteQuery = deleteQuery.Where(qs.DataDomainID.In(dataDomainIDs...))
+		}
+		deleteResult := deleteQuery.Delete(&model.AlumniProfile{})
 		if deleteResult.Error != nil {
 			return deleteResult.Error
 		}

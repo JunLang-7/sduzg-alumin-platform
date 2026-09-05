@@ -106,6 +106,7 @@ func (r AlumniProfileUpdateRequest) ToProfile() do.AlumniEditableProfile {
 }
 
 type AdminAlumniCreateRequest struct {
+	DataDomainID   *uint64 `json:"data_domain_id"`
 	Name           string  `json:"name" binding:"required"`
 	Grade          string  `json:"grade" binding:"required"`
 	ClassName      *string `json:"class_name"`
@@ -145,6 +146,7 @@ type AdminAlumniUpdateRequest struct {
 
 func (r AdminAlumniCreateRequest) ToProfile() do.AlumniCreateProfile {
 	return do.AlumniCreateProfile{
+		DataDomainID:   r.DataDomainID,
 		Name:           r.Name,
 		Grade:          r.Grade,
 		ClassName:      r.ClassName,

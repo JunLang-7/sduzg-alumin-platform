@@ -8,6 +8,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -26,7 +27,7 @@ func (s *fakeExportStore) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*m
 	return s.items, s.err
 }
 
-func (s *fakeExportStore) GetByID(_ context.Context, _ uint64) (*model.AlumniProfile, error) {
+func (s *fakeExportStore) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
 	return nil, common.ErrAlumniNotFound
 }
 
@@ -45,11 +46,11 @@ func (s *fakeExportStore) Create(_ context.Context, _ *do.AlumniCreateProfile, _
 	return nil, nil
 }
 
-func (s *fakeExportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile) error {
+func (s *fakeExportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
 	return nil
 }
 
-func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64) error {
+func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error {
 	return nil
 }
 
@@ -84,7 +85,7 @@ func TestExportHandlerXlsxSuccess(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export", nil)
 	rec := httptest.NewRecorder()
@@ -118,7 +119,7 @@ func TestExportHandlerCsvSuccess(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export?format=csv", nil)
 	rec := httptest.NewRecorder()
@@ -143,7 +144,7 @@ func TestExportHandlerDatabaseUnavailable(t *testing.T) {
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
-	engine.GET("/admin/alumni/export", h.Export)
+	engine.GET("/admin/alumni/export", withExportAccess(h.Export))
 
 	req := httptest.NewRequest(http.MethodGet, "/admin/alumni/export", nil)
 	rec := httptest.NewRecorder()
@@ -152,5 +153,12 @@ func TestExportHandlerDatabaseUnavailable(t *testing.T) {
 
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected status %d, got %d", http.StatusServiceUnavailable, rec.Code)
+	}
+}
+
+func withExportAccess(handler gin.HandlerFunc) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &common.AccessContext{Role: common.RoleSuperAdmin})
+		handler(c)
 	}
 }
