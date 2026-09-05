@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
@@ -110,7 +111,7 @@ func (s *AlumniService) WithExportCache(c *cache.ExportCache) *AlumniService {
 	return s
 }
 
-// WithOperationLogger 注入导出操作审计记录器。
+// WithOperationLogger 注入导出和导入操作审计记录器。
 func (s *AlumniService) WithOperationLogger(logger OperationLogWriter) *AlumniService {
 	s.opLogger = logger
 	return s
@@ -481,6 +482,14 @@ type exportAuditDetail struct {
 	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
 }
 
+type importAuditDetail struct {
+	DataDomainIDs           []uint64 `json:"data_domain_ids,omitempty"`
+	Total                   int      `json:"total"`
+	Success                 int      `json:"success"`
+	Failed                  int      `json:"failed"`
+	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
+}
+
 func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common.AccessContext, query do.AlumniListQuery, items []*model.AlumniProfile, format string) (*ExportResult, error) {
 	result, err := s.buildExport(maskExportItems(items, operator), format)
 	if err != nil {
@@ -833,14 +842,58 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 				_ = s.exportCache.Invalidate(ctx)
 			}
 		}
+		s.writeImportAudit(ctx, operator, validProfiles, result)
 
 		return result, nil
 	}
 
-	return &dto.AlumniImportResult{
+	result := &dto.AlumniImportResult{
 		Total:  len(rows) - 1,
 		Errors: rowErrors,
-	}, nil
+	}
+	s.writeImportAudit(ctx, operator, nil, result)
+	return result, nil
+}
+
+// writeImportAudit 记录导入结果汇总，不写入任何校友字段原值。
+func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.AccessContext, profiles []do.AlumniCreateProfile, result *dto.AlumniImportResult) {
+	if s.opLogger == nil || result == nil {
+		return
+	}
+	domainSet := make(map[uint64]struct{})
+	sensitiveFieldsIncluded := false
+	for _, profile := range profiles {
+		if profile.DataDomainID != nil {
+			domainSet[*profile.DataDomainID] = struct{}{}
+		}
+		if profileContainsSensitiveFields(profile) {
+			sensitiveFieldsIncluded = true
+		}
+	}
+	domainIDs := make([]uint64, 0, len(domainSet))
+	for domainID := range domainSet {
+		domainIDs = append(domainIDs, domainID)
+	}
+	sort.Slice(domainIDs, func(i, j int) bool { return domainIDs[i] < domainIDs[j] })
+
+	detail, err := json.Marshal(importAuditDetail{
+		DataDomainIDs:           domainIDs,
+		Total:                   result.Total,
+		Success:                 result.Success,
+		Failed:                  result.Total - result.Success,
+		SensitiveFieldsIncluded: sensitiveFieldsIncluded,
+	})
+	if err != nil {
+		return
+	}
+	detailText := string(detail)
+	_ = s.opLogger.Write(ctx, &model.OperationLog{
+		OperatorID:   operator.UserID,
+		OperatorRole: operator.Role,
+		Action:       "import_alumni",
+		TargetType:   "alumni_import",
+		Detail:       &detailText,
+	})
 }
 
 func matchesImportHeaders(actual, expected []string) bool {

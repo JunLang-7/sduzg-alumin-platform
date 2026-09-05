@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Card, Checkbox, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -93,7 +93,7 @@ export function AdminUsersPage() {
     catch (error) { message.error((error as Error).message || '删除失败'); }
   };
 
-  const columns = useMemo<ColumnsType<AdminUser>>(() => [
+  const columns: ColumnsType<AdminUser> = [
     { title: '账号', dataIndex: 'account' },
     { title: '姓名', dataIndex: 'real_name' },
     { title: '可管理范围', dataIndex: 'domains', render: (value: DataDomain[]) => value.map((domain) => <Tag key={domain.id}>{domain.name}</Tag>) },
@@ -113,7 +113,7 @@ export function AdminUsersPage() {
         </Space>
       ),
     },
-  ], [items.length, query]);
+  ];
 
   return <>
     <PageHeader title="管理员管理" description="配置管理员可管理范围与功能权限" extra={<Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>创建管理员</Button>} />

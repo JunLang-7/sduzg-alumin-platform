@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -128,6 +130,38 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected 0 errors, got %+v", result.Errors)
+	}
+}
+
+func TestImportWritesAuditWithoutProfileValues(t *testing.T) {
+	reader, err := buildXLSXReader(alumniColumnHeaders, [][]string{{"张三", "2020级", "", "", "", "", "", "", "", "山东大学"}})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	writer := &fakeExportOperationLogger{}
+	domainID := uint64(1)
+	svc := NewAlumniService(&fakeAlumniStore{}, nil).WithOperationLogger(writer)
+
+	result, err := svc.Import(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, &domainID, reader)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 1 || len(writer.logs) != 1 {
+		t.Fatalf("expected one successful import audit, result=%+v logs=%+v", result, writer.logs)
+	}
+	log := writer.logs[0]
+	if log.Action != "import_alumni" || log.OperatorID != 7 || log.OperatorRole != common.RoleSuperAdmin || log.Detail == nil {
+		t.Fatalf("unexpected import audit log: %+v", log)
+	}
+	if strings.Contains(*log.Detail, "张三") || strings.Contains(*log.Detail, "山东大学") {
+		t.Fatalf("import audit detail contains profile value: %s", *log.Detail)
+	}
+	var detail importAuditDetail
+	if err := json.Unmarshal([]byte(*log.Detail), &detail); err != nil {
+		t.Fatalf("parse import audit detail: %v", err)
+	}
+	if detail.Total != 1 || detail.Success != 1 || detail.Failed != 0 || len(detail.DataDomainIDs) != 1 || detail.DataDomainIDs[0] != domainID || !detail.SensitiveFieldsIncluded {
+		t.Fatalf("unexpected import audit detail: %+v", detail)
 	}
 }
 

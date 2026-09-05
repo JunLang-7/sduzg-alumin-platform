@@ -78,13 +78,18 @@ func (h *AdminHandler) Create(c *gin.Context) {
 }
 
 func (h *AdminHandler) Detail(c *gin.Context) {
+	operator, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
 	if err != nil || id == 0 {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid admin id")
 		return
 	}
 
-	result, err := h.admin.Get(c.Request.Context(), id)
+	result, err := h.admin.Get(c.Request.Context(), *operator, id)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -127,7 +132,7 @@ func (h *AdminHandler) ListDataDomains(c *gin.Context) {
 }
 
 func (h *AdminHandler) Delete(c *gin.Context) {
-	operatorID, ok := middleware.CurrentUserID(c)
+	operator, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
@@ -139,24 +144,13 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.admin.Delete(c.Request.Context(), operatorID, id)
+	err = h.admin.Delete(c.Request.Context(), *operator, id)
 	if err == nil {
 		response.Success(c, gin.H{"deleted": true})
 		return
 	}
 
-	switch {
-	case errors.Is(err, common.ErrCannotDeleteSelf):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "不能删除自己")
-	case errors.Is(err, common.ErrCannotDeleteSuper):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "不能删除超级管理员账号")
-	case errors.Is(err, common.ErrUserNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应管理员不存在")
-	case errors.Is(err, common.ErrDatabaseUnavailable):
-		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
-	default:
-		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
-	}
+	h.writeAccessError(c, err)
 }
 
 func (h *AdminHandler) writeAccessError(c *gin.Context, err error) {
@@ -169,6 +163,10 @@ func (h *AdminHandler) writeAccessError(c *gin.Context, err error) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrCannotModifySuper):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "不能修改超级管理员授权")
+	case errors.Is(err, common.ErrCannotDeleteSelf):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "不能删除自己")
+	case errors.Is(err, common.ErrCannotDeleteSuper):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "不能删除超级管理员账号")
 	case errors.Is(err, common.ErrUserNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应管理员不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):

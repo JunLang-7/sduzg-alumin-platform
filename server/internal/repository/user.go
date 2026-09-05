@@ -21,8 +21,8 @@ type UserStore interface {
 	FindByAlumniID(ctx context.Context, alumniID uint64) (*model.User, error)
 	FindByID(ctx context.Context, id uint64) (*model.User, error)
 	ListAdmins(ctx context.Context, listQuery do.AdminListQuery) ([]*model.User, int64, error)
-	CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
-	ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error)
+	CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operator common.AccessContext) (*model.User, error)
+	ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operator common.AccessContext) (*model.User, error)
 	DeleteAdmin(ctx context.Context, id uint64) error
 	UpdateLastLoginAt(ctx context.Context, id uint64, loggedInAt time.Time) error
 	UpdatePasswordHash(ctx context.Context, id uint64, passwordHash string) error
@@ -186,7 +186,7 @@ func (r *UserRepository) ListAdmins(ctx context.Context, listQuery do.AdminListQ
 }
 
 // CreateAdminWithAccess 在同一事务中创建管理员、写入授权映射和审计日志。
-func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
+func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.AdminCreateProfile, passwordHash string, domainIDs []uint64, permissions []string, operator common.AccessContext) (*model.User, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
@@ -213,7 +213,7 @@ func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.A
 		if err := replaceAdminAccessRecords(tx, item.ID, domainIDs, permissions); err != nil {
 			return err
 		}
-		if err := writeAdminAccessAuditLog(tx, operatorID, "create_admin_access", item.ID, nil, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+		if err := writeAdminAccessAuditLog(tx, operator, "create_admin_access", item.ID, nil, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
 			return err
 		}
 		created = item
@@ -226,7 +226,7 @@ func (r *UserRepository) CreateAdminWithAccess(ctx context.Context, profile do.A
 }
 
 // ReplaceAdminAccess 整体替换普通管理员的数据域和权限，并记录变更前后快照。
-func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operatorID uint64) (*model.User, error) {
+func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, domainIDs []uint64, permissions []string, operator common.AccessContext) (*model.User, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
@@ -258,7 +258,7 @@ func (r *UserRepository) ReplaceAdminAccess(ctx context.Context, id uint64, doma
 		if err := replaceAdminAccessRecords(tx, id, domainIDs, permissions); err != nil {
 			return err
 		}
-		if err := writeAdminAccessAuditLog(tx, operatorID, "replace_admin_access", id, &before, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
+		if err := writeAdminAccessAuditLog(tx, operator, "replace_admin_access", id, &before, adminAccessSnapshot{DomainIDs: domainIDs, Permissions: permissions}); err != nil {
 			return err
 		}
 		updated = &user
@@ -339,15 +339,15 @@ func loadAdminAccessSnapshot(tx *gorm.DB, userID uint64) (adminAccessSnapshot, e
 	return snapshot, nil
 }
 
-func writeAdminAccessAuditLog(tx *gorm.DB, operatorID uint64, action string, targetID uint64, before *adminAccessSnapshot, after adminAccessSnapshot) error {
+func writeAdminAccessAuditLog(tx *gorm.DB, operator common.AccessContext, action string, targetID uint64, before *adminAccessSnapshot, after adminAccessSnapshot) error {
 	detail, err := json.Marshal(adminAccessAuditDetail{Before: before, After: after})
 	if err != nil {
 		return err
 	}
 	detailText := string(detail)
 	return tx.Create(&model.OperationLog{
-		OperatorID:   operatorID,
-		OperatorRole: common.RoleSuperAdmin,
+		OperatorID:   operator.UserID,
+		OperatorRole: operator.Role,
 		Action:       action,
 		TargetType:   "admin_access",
 		TargetID:     &targetID,
