@@ -501,6 +501,23 @@ CREATE TABLE operation_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
 ```
 
+#### 5.2.4 管理员数据域与功能授权
+
+授权数据由 `data_domains`、`admin_data_scopes` 和 `admin_permissions` 三张表组成：前者维护稳定的业务数据域编码，后两者分别维护管理员可访问的数据域集合和可选功能权限。校友档案通过 `alumni_profiles.data_domain_id` 归属唯一数据域。
+
+| 权限类别 | 实现 |
+| --- | --- |
+| 数据域 | `undergraduate`、`academic_graduate`、`mpa`；普通管理员只能获得显式分配的 ID 集合 |
+| 敏感数据 | `alumni.sensitive.read`，覆盖手机号、邮箱、工作单位、职务、通讯地址的响应、检索、导出与写入 |
+| 档案文件 | `alumni.files.manage`，覆盖上传、确认、下载与删除 |
+| 超级管理员 | 不读取映射表限制，默认具有全部数据域和功能权限 |
+
+请求通过 JWT 确认身份后，由 `LoadAccessContext` 从数据库加载角色、有效数据域和权限码。业务服务必须接收该上下文；列表、详情、写入、导入导出、大屏和文件服务均在服务层再次裁决。普通管理员访问域外对象时统一返回资源不存在，缺少功能权限时返回 403。
+
+管理员授权变更写入 `operation_logs`，导入和导出写入不含校友原值的汇总审计；文件操作不记录预签名 URL。审计详情不得包含密码、手机号、邮箱、工作单位、通讯地址或其他敏感字段原值。
+
+升级顺序为先执行 `006_add_admin_access_control.sql`，再执行 `007_fix_data_domain_encoding.sql`；前者将历史校友和普通管理员回填至 MPA 数据域，后者修复非 UTF-8 客户端导致的数据域中文名称乱码。回滚前必须备份三张授权表及 `alumni_profiles.data_domain_id`；回滚应用版本时保留上述数据，待后续升级继续使用，避免删除授权历史和审计记录。
+
 ### 5.3 字典设计
 
 一期可先在代码中维护枚举，后续再拆成字典表。
