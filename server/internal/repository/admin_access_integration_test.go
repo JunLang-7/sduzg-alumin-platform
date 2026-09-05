@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"strings"
@@ -94,6 +95,17 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		if len(logs) != 2 || logs[0].Action != "create_admin_access" || logs[1].Action != "replace_admin_access" {
 			t.Errorf("unexpected authorization audit logs: %+v", logs)
 		}
+		var createAudit, replaceAudit adminAccessAuditDetail
+		if logs[0].Detail == nil || json.Unmarshal([]byte(*logs[0].Detail), &createAudit) != nil {
+			t.Errorf("create audit detail is invalid: %+v", logs[0].Detail)
+		} else if createAudit.Before != nil || len(createAudit.After.DomainIDs) != 1 || createAudit.After.DomainIDs[0] != mpa.ID || len(createAudit.After.Permissions) != 1 || createAudit.After.Permissions[0] != common.PermissionAlumniSensitiveRead {
+			t.Errorf("unexpected create audit snapshot: %+v", createAudit)
+		}
+		if logs[1].Detail == nil || json.Unmarshal([]byte(*logs[1].Detail), &replaceAudit) != nil {
+			t.Errorf("replace audit detail is invalid: %+v", logs[1].Detail)
+		} else if replaceAudit.Before == nil || len(replaceAudit.Before.DomainIDs) != 1 || replaceAudit.Before.DomainIDs[0] != mpa.ID || len(replaceAudit.Before.Permissions) != 1 || replaceAudit.Before.Permissions[0] != common.PermissionAlumniSensitiveRead || len(replaceAudit.After.DomainIDs) != 2 || replaceAudit.After.DomainIDs[0] != undergraduate.ID || replaceAudit.After.DomainIDs[1] != mpa.ID || len(replaceAudit.After.Permissions) != 1 || replaceAudit.After.Permissions[0] != common.PermissionAlumniFilesManage {
+			t.Errorf("unexpected replace audit snapshot: %+v", replaceAudit)
+		}
 		for _, log := range logs {
 			if log.Detail != nil && strings.Contains(*log.Detail, passwordHash) {
 				t.Errorf("audit log contains password hash: %s", *log.Detail)
@@ -111,6 +123,15 @@ func TestUserRepositoryAdminAccessTransactionAndAudit(t *testing.T) {
 		}
 		if rolledBackCount != 0 {
 			t.Errorf("failed transaction left %d user records", rolledBackCount)
+		}
+
+		if err := tx.Model(&model.DataDomain{}).Where(queries.DataDomain.ID.Eq(mpa.ID)).Update(queries.DataDomain.Status.ColumnName().String(), common.DataDomainStatusDisabled).Error; err != nil {
+			return err
+		}
+		_, err = repo.CreateAdminWithAccess(ctx, do.AdminCreateProfile{Account: "admin_access_disabled_domain_test"}, passwordHash,
+			[]uint64{mpa.ID}, nil, 1)
+		if !errors.Is(err, common.ErrInvalidDataDomain) {
+			t.Errorf("disabled data domain error = %v, want %v", err, common.ErrInvalidDataDomain)
 		}
 
 		return rollback

@@ -168,6 +168,33 @@ func TestAdminServiceCreateHashesPasswordAndMapsDetail(t *testing.T) {
 	}
 }
 
+func TestAdminServiceCreateAcceptsMultipleDataDomains(t *testing.T) {
+	store := &fakeUserStore{
+		created: &model.User{ID: 2, Account: "manager01", Role: common.RoleAdmin, Status: common.UserStatusActive},
+	}
+	svc := NewAdminService(store, &fakeAdminAccessStore{
+		domains:     activeAdminDomains(),
+		domainsByID: map[uint64][]uint64{2: {1, 2}},
+		permissions: map[uint64][]string{2: {common.PermissionAlumniSensitiveRead}},
+	})
+
+	result, err := svc.Create(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, dto.AdminCreateRequest{
+		Account:     "manager01",
+		Password:    "InitPass123",
+		DomainIDs:   []uint64{2, 1},
+		Permissions: []string{common.PermissionAlumniSensitiveRead},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(store.createDomainIDs) != 2 || store.createDomainIDs[0] != 1 || store.createDomainIDs[1] != 2 {
+		t.Fatalf("created domain IDs = %v, want [1 2]", store.createDomainIDs)
+	}
+	if len(result.Domains) != 2 || result.Domains[0].ID != 1 || result.Domains[1].ID != 2 {
+		t.Fatalf("created domains = %+v, want both active domains", result.Domains)
+	}
+}
+
 func TestAdminServiceCreateReturnsAccountAlreadyExists(t *testing.T) {
 	store := &fakeUserStore{createErr: common.ErrAccountAlreadyExists}
 	svc := NewAdminService(store, &fakeAdminAccessStore{domains: activeAdminDomains()})

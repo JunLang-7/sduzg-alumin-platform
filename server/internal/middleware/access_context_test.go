@@ -90,6 +90,34 @@ func TestAccessContextLoaderLoadsAdminAssignments(t *testing.T) {
 	}
 }
 
+func TestAccessContextLoaderReflectsUpdatedAssignmentsOnNextRequest(t *testing.T) {
+	users := &fakeAccessContextUserStore{user: &model.User{ID: 7, Role: common.RoleAdmin, Status: common.UserStatusActive}}
+	accessControl := &fakeAccessContextStore{
+		activeDomains:   []*model.DataDomain{{ID: 2}, {ID: 5}},
+		domainIDs:       []uint64{2},
+		permissionCodes: []string{common.PermissionAlumniSensitiveRead},
+	}
+	loader := NewAccessContextLoader(users, accessControl)
+
+	first, err := loader.Load(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("first Load() error = %v", err)
+	}
+	if !first.CanAccessDomain(2) || !first.HasPermission(common.PermissionAlumniSensitiveRead) {
+		t.Fatalf("unexpected first access context: %+v", first)
+	}
+
+	accessControl.domainIDs = []uint64{5}
+	accessControl.permissionCodes = []string{common.PermissionAlumniFilesManage}
+	next, err := loader.Load(context.Background(), 7)
+	if err != nil {
+		t.Fatalf("next Load() error = %v", err)
+	}
+	if next.CanAccessDomain(2) || !next.CanAccessDomain(5) || next.HasPermission(common.PermissionAlumniSensitiveRead) || !next.HasPermission(common.PermissionAlumniFilesManage) {
+		t.Fatalf("next request did not reflect updated assignments: %+v", next)
+	}
+}
+
 func TestAccessContextLoaderLoadsAssignmentsConcurrently(t *testing.T) {
 	release := make(chan struct{})
 	accessControl := &fakeAccessContextStore{
