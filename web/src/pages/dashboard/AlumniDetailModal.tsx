@@ -348,7 +348,7 @@ export function AlumniDetailModal({
                 <Descriptions.Item label="导师">{displayValue(profile.mentor)}</Descriptions.Item>
                 <Descriptions.Item label="行业">{displayValue(profile.industry)}</Descriptions.Item>
                 <Descriptions.Item label="职务">{displaySensitiveValue(profile.position, sensitiveReadable)}</Descriptions.Item>
-                <Descriptions.Item label="工作单位" span={3}>{displayValue(profile.work_unit)}</Descriptions.Item>
+                <Descriptions.Item label="工作单位" span={3}>{displaySensitiveValue(profile.work_unit, sensitiveReadable)}</Descriptions.Item>
                 <Descriptions.Item label="通讯地址" span={3}>{displaySensitiveValue(profile.mailing_address, sensitiveReadable)}</Descriptions.Item>
                 {profile.remark !== undefined ? (
                   <Descriptions.Item label="备注" span={3}>{displayValue(profile.remark)}</Descriptions.Item>

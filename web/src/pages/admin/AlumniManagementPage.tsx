@@ -191,12 +191,14 @@ export function AlumniManagementPage() {
         dataIndex: 'industry',
         width: 140,
       },
-      {
-        title: '工作单位',
-        dataIndex: 'work_unit',
-        width: 220,
-        ellipsis: true,
-      },
+      ...(sensitiveReadable
+        ? [{
+            title: '工作单位',
+            dataIndex: 'work_unit',
+            width: 220,
+            ellipsis: true,
+          }]
+        : []),
       {
         title: '状态',
         dataIndex: 'status',
@@ -226,7 +228,7 @@ export function AlumniManagementPage() {
         ),
       },
     ],
-    [domains, handleRemove, openEditModal],
+    [domains, handleRemove, openEditModal, sensitiveReadable],
   );
 
   const handleSearch = (values: AlumniQuery) => {
@@ -478,9 +480,7 @@ export function AlumniManagementPage() {
               options={industryOptions.map((value) => ({ label: value, value }))}
             />
           </Form.Item>
-          <Form.Item label="工作单位" name="work_unit">
-            <Input maxLength={255} />
-          </Form.Item>
+          {sensitiveReadable ? <Form.Item label="工作单位" name="work_unit"><Input maxLength={255} /></Form.Item> : null}
           {sensitiveReadable ? <Form.Item label="职务" name="position"><Input maxLength={100} /></Form.Item> : null}
           {sensitiveReadable ? <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide"><Input.TextArea rows={3} maxLength={255} showCount /></Form.Item> : null}
           <Form.Item label="管理员备注" name="remark" className="modal-grid-wide">

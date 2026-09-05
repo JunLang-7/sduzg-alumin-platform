@@ -7,6 +7,7 @@ import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile, AlumniQuery } from '../../types/alumni';
+import { canReadSensitive } from '../../utils/access';
 import { industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
@@ -15,6 +16,7 @@ export function AlumniListPage() {
   const [form] = Form.useForm<AlumniQuery>();
   const user = useAuthStore((state) => state.user);
   const domains = user?.domains || [];
+  const sensitiveReadable = canReadSensitive(user);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const urlKeyword = searchParams.get('keyword') || undefined;
@@ -94,17 +96,18 @@ export function AlumniListPage() {
         dataIndex: 'industry',
         width: 140,
       },
-      {
-        title: '工作单位',
-        dataIndex: 'work_unit',
-        width: 220,
-        ellipsis: true,
-      },
-      {
-        title: '职务',
-        dataIndex: 'position',
-        width: 140,
-      },
+      ...(sensitiveReadable
+        ? [{
+            title: '工作单位',
+            dataIndex: 'work_unit',
+            width: 220,
+            ellipsis: true,
+          }, {
+            title: '职务',
+            dataIndex: 'position',
+            width: 140,
+          }]
+        : []),
       {
         title: '操作',
         key: 'action',
@@ -121,7 +124,7 @@ export function AlumniListPage() {
         ),
       },
     ],
-    [domains, navigate],
+    [domains, navigate, sensitiveReadable],
   );
 
   const handleSearch = (values: AlumniQuery) => {
@@ -147,7 +150,7 @@ export function AlumniListPage() {
       <Card className="tool-card">
         <Form form={form} layout="inline" onFinish={handleSearch} className="search-form">
           <Form.Item name="keyword">
-            <Input allowClear placeholder="姓名、单位、导师" />
+          <Input allowClear placeholder={sensitiveReadable ? '姓名、单位、导师' : '姓名、导师'} />
           </Form.Item>
           <Form.Item name="grade">
             <Input allowClear placeholder="年级" />

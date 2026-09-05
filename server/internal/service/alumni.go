@@ -122,7 +122,7 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 	if s.alumni == nil {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
-	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
 		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
 	}
 	if query.DataDomainID != nil {
@@ -178,6 +178,7 @@ func (s *AlumniService) maskListItems(items []dto.AlumniListItem, viewer common.
 		for i := range items {
 			items[i].Mobile = nil
 			items[i].Email = nil
+			items[i].WorkUnit = nil
 			items[i].Position = nil
 		}
 	}
@@ -197,11 +198,11 @@ func scopedDataDomainIDs(access common.AccessContext) ([]uint64, bool) {
 }
 
 func profileContainsSensitiveFields(profile do.AlumniCreateProfile) bool {
-	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
 }
 
 func updateContainsSensitiveFields(profile do.AlumniUpdateProfile) bool {
-	return profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
+	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
 }
 
 func assignCreateDataDomain(profile *do.AlumniCreateProfile, operator common.AccessContext) error {
@@ -261,6 +262,7 @@ func (s *AlumniService) maskSensitiveFields(detail *dto.AlumniDetail, alumniID u
 	mask := func() {
 		detail.Mobile = nil
 		detail.Email = nil
+		detail.WorkUnit = nil
 		detail.Position = nil
 		detail.MailingAddress = nil
 	}
@@ -424,7 +426,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 	}
 
 	query := req.ToQuery().Normalize()
-	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.Position != "" || query.Mobile != "") {
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
 		return nil, common.ErrPermissionDenied
 	}
 	if query.DataDomainID != nil {
@@ -527,6 +529,7 @@ func maskExportItems(items []*model.AlumniProfile, operator common.AccessContext
 		copyItem := *item
 		copyItem.Mobile = nil
 		copyItem.Email = nil
+		copyItem.WorkUnit = nil
 		copyItem.Position = nil
 		copyItem.MailingAddress = nil
 		masked = append(masked, &copyItem)
