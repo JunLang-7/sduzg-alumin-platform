@@ -26,6 +26,11 @@ type AlumniFileCleaner interface {
 	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
 }
 
+// OperationLogWriter 记录不含敏感原值的业务审计日志。
+type OperationLogWriter interface {
+	Write(ctx context.Context, log *model.OperationLog) error
+}
+
 type ExportResult struct {
 	Data        []byte
 	ContentType string
@@ -33,6 +38,9 @@ type ExportResult struct {
 }
 
 var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号", "邮箱"}
+
+// alumniImportColumnHeaders 在通用校友字段外增加所属领域，供多域管理员逐行指定目标领域。
+var alumniImportColumnHeaders = append(append([]string{}, alumniColumnHeaders...), "所属领域")
 
 func exportRow(item *model.AlumniProfile) []string {
 	return []string{
@@ -76,12 +84,18 @@ func sanitizeExportValue(v string) string {
 type AlumniService struct {
 	alumni      repository.AlumniStore
 	files       AlumniFileCleaner
+	dataDomains repository.AccessControlStore
+	opLogger    OperationLogWriter
 	countCache  *cache.CountCache
 	exportCache *cache.ExportCache
 }
 
-func NewAlumniService(alumni repository.AlumniStore, files AlumniFileCleaner) *AlumniService {
-	return &AlumniService{alumni: alumni, files: files}
+func NewAlumniService(alumni repository.AlumniStore, files AlumniFileCleaner, dataDomains ...repository.AccessControlStore) *AlumniService {
+	service := &AlumniService{alumni: alumni, files: files}
+	if len(dataDomains) > 0 {
+		service.dataDomains = dataDomains[0]
+	}
+	return service
 }
 
 // WithCountCache 注入主动缓存计数器，用于优化无过滤条件时的 COUNT 查询。
@@ -93,6 +107,12 @@ func (s *AlumniService) WithCountCache(c *cache.CountCache) *AlumniService {
 // WithExportCache 注入导出结果缓存，避免每次导出都全表扫描。
 func (s *AlumniService) WithExportCache(c *cache.ExportCache) *AlumniService {
 	s.exportCache = c
+	return s
+}
+
+// WithOperationLogger 注入导出操作审计记录器。
+func (s *AlumniService) WithOperationLogger(logger OperationLogWriter) *AlumniService {
+	s.opLogger = logger
 	return s
 }
 
@@ -415,7 +435,7 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 		if cached, err := s.exportCache.Get(ctx, query); err == nil {
 			var items []*model.AlumniProfile
 			if json.Unmarshal(cached, &items) == nil {
-				return s.buildExport(maskExportItems(items, operator), format)
+				return s.buildAndAuditExport(ctx, operator, query, items, format)
 			}
 		}
 	}
@@ -437,7 +457,40 @@ func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest,
 		}
 	}
 
-	return s.buildExport(maskExportItems(items, operator), format)
+	return s.buildAndAuditExport(ctx, operator, query, items, format)
+}
+
+type exportAuditDetail struct {
+	Format                  string   `json:"format"`
+	DataDomainIDs           []uint64 `json:"data_domain_ids,omitempty"`
+	RecordCount             int      `json:"record_count"`
+	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
+}
+
+func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common.AccessContext, query do.AlumniListQuery, items []*model.AlumniProfile, format string) (*ExportResult, error) {
+	result, err := s.buildExport(maskExportItems(items, operator), format)
+	if err != nil {
+		return nil, err
+	}
+	if s.opLogger != nil {
+		detail, err := json.Marshal(exportAuditDetail{
+			Format:                  format,
+			DataDomainIDs:           query.DataDomainIDs,
+			RecordCount:             len(items),
+			SensitiveFieldsIncluded: operator.HasPermission(common.PermissionAlumniSensitiveRead),
+		})
+		if err == nil {
+			detailText := string(detail)
+			_ = s.opLogger.Write(ctx, &model.OperationLog{
+				OperatorID:   operator.UserID,
+				OperatorRole: operator.Role,
+				Action:       "export_alumni",
+				TargetType:   "alumni_export",
+				Detail:       &detailText,
+			})
+		}
+	}
+	return result, nil
 }
 
 func (s *AlumniService) buildExport(items []*model.AlumniProfile, format string) (*ExportResult, error) {
@@ -490,8 +543,8 @@ func buildTemplateXLSX() (*ExportResult, error) {
 	}
 
 	// 写表头行
-	headerRow := make([]any, len(alumniColumnHeaders))
-	for i, h := range alumniColumnHeaders {
+	headerRow := make([]any, len(alumniImportColumnHeaders))
+	for i, h := range alumniImportColumnHeaders {
 		headerRow[i] = h
 	}
 	if err := sw.SetRow("A1", headerRow); err != nil {
@@ -500,7 +553,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 	}
 
 	// 写一条空行，提示用户按此结构填写
-	emptyRow := make([]any, len(alumniColumnHeaders))
+	emptyRow := make([]any, len(alumniImportColumnHeaders))
 	for i := range emptyRow {
 		emptyRow[i] = ""
 	}
@@ -609,8 +662,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrPermissionDenied
 	}
 	targetProfile := do.AlumniCreateProfile{DataDomainID: dataDomainID}
-	if err := assignCreateDataDomain(&targetProfile, operator); err != nil {
-		return nil, err
+	if operator.Role == common.RoleAdmin {
+		if len(operator.DomainIDs) == 0 {
+			return nil, common.ErrPermissionDenied
+		}
+		if len(operator.DomainIDs) == 1 {
+			targetProfile.DataDomainID = &operator.DomainIDs[0]
+		} else if dataDomainID != nil && !operator.CanAccessDomain(*dataDomainID) {
+			return nil, common.ErrPermissionDenied
+		}
 	}
 
 	data, err := io.ReadAll(file)
@@ -643,13 +703,28 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 
 	header := rows[0]
-	if len(header) != len(alumniColumnHeaders) {
-		return nil, fmt.Errorf("表头列数不正确，期望 %d 列，实际 %d 列", len(alumniColumnHeaders), len(header))
+	hasDomainColumn := matchesImportHeaders(header, alumniImportColumnHeaders)
+	if !hasDomainColumn && !matchesImportHeaders(header, alumniColumnHeaders) {
+		return nil, fmt.Errorf("表头不正确，应使用 %d 列通用模板或 %d 列含所属领域模板", len(alumniColumnHeaders), len(alumniImportColumnHeaders))
 	}
-	for i, h := range header {
-		if strings.TrimSpace(h) != alumniColumnHeaders[i] {
-			return nil, fmt.Errorf("表头第 %d 列应为「%s」，实际为「%s」", i+1, alumniColumnHeaders[i], h)
+
+	domainByCode := map[string]*model.DataDomain{}
+	if targetProfile.DataDomainID == nil && hasDomainColumn {
+		if s.dataDomains == nil {
+			return nil, common.ErrDatabaseUnavailable
 		}
+		activeDomains, err := s.dataDomains.ListActiveDataDomains(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, domain := range activeDomains {
+			if domain != nil {
+				domainByCode[domain.Code] = domain
+			}
+		}
+	}
+	if targetProfile.DataDomainID == nil && !hasDomainColumn {
+		return nil, common.ErrInvalidRequest
 	}
 
 	type rowProfile struct {
@@ -665,7 +740,25 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 
 		profile := parseRowToProfile(row)
 		profile = profile.Normalize()
-		profile.DataDomainID = targetProfile.DataDomainID
+		if targetProfile.DataDomainID != nil {
+			profile.DataDomainID = targetProfile.DataDomainID
+		} else {
+			code := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
+			domain, exists := domainByCode[code]
+			if code == "" {
+				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域为空"})
+				continue
+			}
+			if !exists {
+				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效"})
+				continue
+			}
+			if !operator.IsSuperAdmin() && !operator.CanAccessDomain(domain.ID) {
+				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "无权导入该所属领域"})
+				continue
+			}
+			profile.DataDomainID = &domain.ID
+		}
 
 		if profile.Name == "" {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "姓名为空"})
@@ -733,6 +826,25 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		Total:  len(rows) - 1,
 		Errors: rowErrors,
 	}, nil
+}
+
+func matchesImportHeaders(actual, expected []string) bool {
+	if len(actual) != len(expected) {
+		return false
+	}
+	for i, value := range actual {
+		if strings.TrimSpace(value) != expected[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func cellValue(row []string, index int) string {
+	if index < 0 || index >= len(row) {
+		return ""
+	}
+	return row[index]
 }
 
 func alumniImportDedupKey(profile do.AlumniCreateProfile) do.AlumniDedupKey {

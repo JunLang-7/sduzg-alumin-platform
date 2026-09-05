@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"strings"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -11,6 +12,15 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/xuri/excelize/v2"
 )
+
+type fakeExportOperationLogger struct {
+	logs []*model.OperationLog
+}
+
+func (l *fakeExportOperationLogger) Write(_ context.Context, log *model.OperationLog) error {
+	l.logs = append(l.logs, log)
+	return nil
+}
 
 func exportAsSuperAdmin(svc *AlumniService, req dto.AlumniExportRequest) (*ExportResult, error) {
 	return svc.Export(context.Background(), req, common.AccessContext{Role: common.RoleSuperAdmin})
@@ -209,6 +219,24 @@ func TestExportScopesDomainAndMasksSensitiveFields(t *testing.T) {
 	row := records[1]
 	if row[10] != "" || row[11] != "" || row[13] != "" || row[14] != "" {
 		t.Fatalf("expected sensitive export cells to be blank, got %v", row)
+	}
+}
+
+func TestExportWritesAuditWithoutSensitiveValues(t *testing.T) {
+	mobile := "13800000000"
+	logger := &fakeExportOperationLogger{}
+	svc := NewAlumniService(&fakeAlumniStore{items: []*model.AlumniProfile{{ID: 1, Name: "张三", Grade: "2020级", Mobile: &mobile}}}, nil).
+		WithOperationLogger(logger)
+
+	_, err := svc.Export(context.Background(), dto.AlumniExportRequest{Format: "csv"}, common.AccessContext{UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{2}})
+	if err != nil {
+		t.Fatalf("Export() error = %v", err)
+	}
+	if len(logger.logs) != 1 || logger.logs[0].Action != "export_alumni" || logger.logs[0].Detail == nil {
+		t.Fatalf("unexpected audit logs: %+v", logger.logs)
+	}
+	if strings.Contains(*logger.logs[0].Detail, mobile) || strings.Contains(*logger.logs[0].Detail, "张三") {
+		t.Fatalf("export audit detail contains sensitive or profile value: %s", *logger.logs[0].Detail)
 	}
 }
 

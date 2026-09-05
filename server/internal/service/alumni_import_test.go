@@ -7,6 +7,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -51,7 +52,52 @@ func buildXLSXReader(headers []string, rows [][]string) (*bytes.Reader, error) {
 }
 
 func importAsSuperAdmin(svc *AlumniService, reader *bytes.Reader) (*dto.AlumniImportResult, error) {
-	return svc.Import(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, nil, reader)
+	domainID := uint64(1)
+	return svc.Import(context.Background(), common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}, &domainID, reader)
+}
+
+type fakeImportDataDomainStore struct {
+	domains []*model.DataDomain
+}
+
+func (s *fakeImportDataDomainStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
+	return s.domains, nil
+}
+
+func (s *fakeImportDataDomainStore) ListAdminDataDomainIDs(context.Context, uint64) ([]uint64, error) {
+	return nil, nil
+}
+
+func (s *fakeImportDataDomainStore) ListAdminPermissionCodes(context.Context, uint64) ([]string, error) {
+	return nil, nil
+}
+
+func TestImportValidatesDataDomainPerRowForMultiDomainAdmin(t *testing.T) {
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{
+		{"本科生校友", "2020级", "", "", "", "", "", "", "", "", "", "", "", "", "", common.DataDomainUndergraduate},
+		{"MPA校友", "2020级", "", "", "", "", "", "", "", "", "", "", "", "", "", common.DataDomainMPA},
+		{"未知领域", "2020级", "", "", "", "", "", "", "", "", "", "", "", "", "", "unknown"},
+		{"空领域", "2020级"},
+	})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, &fakeImportDataDomainStore{domains: []*model.DataDomain{
+		{ID: 1, Code: common.DataDomainUndergraduate, Status: common.DataDomainStatusActive},
+		{ID: 2, Code: common.DataDomainMPA, Status: common.DataDomainStatusActive},
+	}})
+
+	result, err := svc.Import(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{1, 3}}, nil, reader)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 1 || len(result.Errors) != 3 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if len(store.batchProfiles) != 1 || store.batchProfiles[0].DataDomainID == nil || *store.batchProfiles[0].DataDomainID != 1 {
+		t.Fatalf("unexpected imported data domains: %+v", store.batchProfiles)
+	}
 }
 
 func TestImportAllValidRows(t *testing.T) {
