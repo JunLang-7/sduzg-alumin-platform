@@ -1,5 +1,7 @@
 -- 第四阶段：新增校友数据域与管理员授权映射。
 
+SET NAMES utf8mb4;
+
 CREATE TABLE IF NOT EXISTS data_domains (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   code VARCHAR(64) NOT NULL COMMENT '稳定数据域编码',
