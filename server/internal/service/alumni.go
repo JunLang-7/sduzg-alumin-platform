@@ -676,7 +676,8 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 			continue
 		}
 		if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
-			return nil, common.ErrPermissionDenied
+			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "无权导入敏感字段"})
+			continue
 		}
 
 		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})

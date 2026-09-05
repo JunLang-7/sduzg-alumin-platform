@@ -85,7 +85,7 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 }
 
-func TestImportForcesAssignedDataDomainAndRejectsSensitiveWrite(t *testing.T) {
+func TestImportForcesAssignedDataDomainAndReportsUnauthorizedSensitiveWrite(t *testing.T) {
 	reader, err := buildXLSXReader(alumniColumnHeaders, [][]string{{"张三", "2020级"}})
 	if err != nil {
 		t.Fatalf("build xlsx: %v", err)
@@ -109,13 +109,16 @@ func TestImportForcesAssignedDataDomainAndRejectsSensitiveWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build xlsx: %v", err)
 	}
-	_, err = svc.Import(context.Background(), common.AccessContext{
+	result, err := svc.Import(context.Background(), common.AccessContext{
 		UserID:    7,
 		Role:      common.RoleAdmin,
 		DomainIDs: []uint64{assignedDomainID},
 	}, nil, reader)
-	if err != common.ErrPermissionDenied {
-		t.Fatalf("expected sensitive import to be rejected, got %v", err)
+	if err != nil {
+		t.Fatalf("expected partial import result, got %v", err)
+	}
+	if result.Success != 0 || len(result.Errors) != 1 || result.Errors[0].Row != 2 || result.Errors[0].Message != "无权导入敏感字段" {
+		t.Fatalf("expected sensitive row error, got %+v", result)
 	}
 }
 
