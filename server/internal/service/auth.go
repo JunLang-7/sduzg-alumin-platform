@@ -318,6 +318,7 @@ func resolveCodeSender(cfg config.Config) CodeSender {
 type AuthService struct {
 	users         repository.UserStore
 	alumni        repository.AlumniStore
+	opLogger      *OperationLogger
 	loginAttempts repository.LoginAttemptStore
 	verifyCode    repository.VerifyCodeStore
 	codeSender    CodeSender
@@ -347,6 +348,12 @@ func NewAuthService(
 		issuer:        cfg.App.Name,
 		now:           time.Now,
 	}
+}
+
+// WithOperationLogger 注入操作历史写入器，用于记录校友本人修改联系方式。
+func (s *AuthService) WithOperationLogger(l *OperationLogger) *AuthService {
+	s.opLogger = l
+	return s
 }
 
 // detectLoginType classifies an identifier string.
@@ -657,7 +664,7 @@ func generateCode(cfg config.Config, sender CodeSender, isPhone, isEmail bool) s
 }
 
 // UpdateContact updates the alumni's phone and/or email with code verification.
-func (s *AuthService) UpdateContact(ctx context.Context, userID uint64, req dto.UpdateContactRequest) error {
+func (s *AuthService) UpdateContact(ctx context.Context, userID uint64, req dto.UpdateContactRequest) (err error) {
 	user, err := s.users.FindByID(ctx, userID)
 	if errors.Is(err, common.ErrUserNotFound) {
 		return common.ErrUserNotFound
@@ -670,6 +677,32 @@ func (s *AuthService) UpdateContact(ctx context.Context, userID uint64, req dto.
 	}
 	if req.Mobile == nil && req.Email == nil {
 		return common.ErrInvalidRequest
+	}
+
+	var before *model.AlumniProfile
+	if s.opLogger != nil && s.opLogger.db != nil && user.AlumniID != nil && s.alumni != nil {
+		before, _ = s.alumni.GetByID(ctx, *user.AlumniID)
+		defer func() {
+			if before == nil {
+				return
+			}
+			after, fetchErr := s.alumni.GetByID(ctx, *user.AlumniID)
+			if fetchErr != nil {
+				return
+			}
+			writeProfileAudit(
+				ctx,
+				s.opLogger,
+				s.users,
+				userID,
+				"update",
+				"alumni_self",
+				"校友本人修改联系方式",
+				defaultAuditScope,
+				before,
+				after,
+			)
+		}()
 	}
 
 	currentMobile := strOrEmpty(user.Mobile)
