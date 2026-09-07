@@ -53,15 +53,16 @@ func New(deps Dependencies) *gin.Engine {
 	userRepository := repository.NewUserRepository(deps.DB)
 	// 校友仓库
 	alumniRepository := repository.NewAlumniRepository(deps.DB)
+	// 操作日志写入器
+	opLogger := service.NewOperationLogger(deps.DB)
 	// 登录尝试仓库
 	loginAttemptRepository := repository.NewLoginAttemptRepository(deps.RedisClient)
 	// 验证码仓库
 	verifyCodeRepository := repository.NewVerifyCodeStore(deps.RedisClient)
 	// 认证服务和处理器
-	authService := service.NewAuthService(userRepository, alumniRepository, loginAttemptRepository, verifyCodeRepository, deps.Config)
+	authService := service.NewAuthService(userRepository, alumniRepository, loginAttemptRepository, verifyCodeRepository, deps.Config).
+		WithOperationLogger(opLogger)
 	authHandler := handler.NewAuthHandler(authService)
-	// 操作日志写入器
-	opLogger := service.NewOperationLogger(deps.DB)
 	// 校友文件仓库、服务和处理器（仅存储启用时注册）
 	var alumniFileHandler *handler.AlumniFileHandler
 	var alumniFileCleaner service.AlumniFileCleaner
@@ -74,8 +75,13 @@ func New(deps Dependencies) *gin.Engine {
 	// 校友服务和处理器（注入文件服务以支持级联删除）
 	alumniService := service.NewAlumniService(alumniRepository, userRepository, alumniFileCleaner).
 		WithCountCache(cache.NewCountCache(deps.RedisClient)).
-		WithExportCache(cache.NewExportCache(deps.RedisClient))
+		WithExportCache(cache.NewExportCache(deps.RedisClient)).
+		WithOperationLogger(opLogger)
 	alumniHandler := handler.NewAlumniHandler(alumniService)
+	// 操作历史查询服务
+	auditRepository := repository.NewAuditRepository(deps.DB)
+	auditService := service.NewAuditService(auditRepository)
+	auditHandler := handler.NewAuditHandler(auditService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository)
 	adminHandler := handler.NewAdminHandler(adminService)
@@ -124,6 +130,10 @@ func New(deps Dependencies) *gin.Engine {
 			admin.POST("/alumni/import", alumniHandler.Import)
 			admin.GET("/alumni/export", alumniHandler.Export)
 			admin.GET("/alumni/template", alumniHandler.ExportTemplate)
+
+			// 操作历史（只读，管理员及以上可访问）
+			admin.GET("/audit/operations", auditHandler.List)
+			admin.GET("/audit/operations/:id", auditHandler.Detail)
 
 			// 管理校友文件（仅存储启用时注册）
 			if alumniFileHandler != nil {
