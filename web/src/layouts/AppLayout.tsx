@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   BarChartOutlined,
+  AuditOutlined,
   IdcardOutlined,
   LogoutOutlined,
   SearchOutlined,
@@ -56,11 +57,18 @@ export function AppLayout() {
     }
 
     if (hasRole(user, 'super_admin')) {
-      items.push({
-        key: '/admin/users',
-        icon: <UserOutlined />,
-        label: '管理员管理',
-      });
+      items.push(
+        {
+          key: '/admin/users',
+          icon: <UserOutlined />,
+          label: '管理员管理',
+        },
+        {
+          key: '/admin/audit/changes',
+          icon: <AuditOutlined />,
+          label: '操作历史',
+        },
+      );
     }
 
     return items;
@@ -75,6 +83,9 @@ export function AppLayout() {
     }
     if (location.pathname.startsWith('/admin/alumni')) {
       return ['/admin/alumni'];
+    }
+    if (location.pathname.startsWith('/admin/audit')) {
+      return ['/admin/audit/changes'];
     }
     if (location.pathname.startsWith('/profile')) {
       return ['/profile'];
