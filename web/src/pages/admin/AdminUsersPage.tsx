@@ -120,9 +120,12 @@ export function AdminUsersPage() {
     <Card className="tool-card"><Table rowKey="id" loading={loading} columns={columns} dataSource={items} pagination={{ current: query.page, pageSize: query.page_size, total, showSizeChanger: true, showTotal: (value) => `共 ${value} 条` }} onChange={(pagination: TablePaginationConfig) => setQuery({ page: pagination.current || 1, page_size: pagination.pageSize || defaultPageSize })} /></Card>
     <Modal title="创建管理员" open={modalOpen} onCancel={closeCreateModal} onOk={() => void handleCreate()} confirmLoading={saving} destroyOnClose>
       <Form form={form} layout="vertical" initialValues={{ domain_ids: [], permissions: [] }}>
-        <Form.Item label="账号" name="account" rules={[{ required: true, message: '请输入账号' }]}><Input maxLength={100} /></Form.Item>
+        <Form.Item label="账号" name="account" rules={[
+          { required: true, message: '请输入账号' },
+          { pattern: /^[A-Za-z][A-Za-z0-9_-]{3,31}$/, message: '账号须为 4-32 位，以字母开头，仅可包含字母、数字、下划线和连字符' },
+        ]}><Input maxLength={32} autoComplete="username" /></Form.Item>
         <Form.Item label="姓名" name="real_name" rules={[{ required: true, message: '请输入姓名' }]}><Input maxLength={100} /></Form.Item>
-        <Form.Item label="手机号" name="mobile"><Input maxLength={30} /></Form.Item>
+        <Form.Item label="手机号" name="mobile" rules={[{ pattern: /^1[3-9]\d{9}$/, message: '手机号格式不正确' }]}><Input maxLength={11} autoComplete="tel" /></Form.Item>
         <Form.Item label="初始密码" name="password" rules={[{ required: true, message: '请输入初始密码' }, { min: 8, message: '密码至少 8 位' }]}><Input.Password autoComplete="new-password" /></Form.Item>
         <AccessFields domains={domains} />
       </Form>

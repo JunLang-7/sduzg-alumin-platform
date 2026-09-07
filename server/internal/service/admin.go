@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"regexp"
 	"sort"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -12,6 +13,11 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"go.uber.org/zap"
 	"golang.org/x/crypto/bcrypt"
+)
+
+var (
+	adminAccountRegex = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_-]{3,31}$`)
+	adminMobileRegex  = regexp.MustCompile(`^1[3-9]\d{9}$`)
 )
 
 type AdminService struct {
@@ -67,7 +73,13 @@ func (s *AdminService) Create(ctx context.Context, operator common.AccessContext
 	}
 
 	profile := req.ToProfile().Normalize()
-	if profile.Account == "" || req.Password == "" {
+	if !adminAccountRegex.MatchString(profile.Account) {
+		return nil, common.ErrInvalidAccountFormat
+	}
+	if profile.Mobile != nil && !adminMobileRegex.MatchString(*profile.Mobile) {
+		return nil, common.ErrInvalidMobileFormat
+	}
+	if req.Password == "" {
 		return nil, common.ErrInvalidRequest
 	}
 	domainIDs, permissions, err := s.normalizeAccess(ctx, req.DomainIDs, req.Permissions)

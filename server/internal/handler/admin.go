@@ -64,6 +64,10 @@ func (h *AdminHandler) Create(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
+	case errors.Is(err, common.ErrInvalidAccountFormat):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "账号须为 4-32 位，以字母开头，仅可包含字母、数字、下划线和连字符")
+	case errors.Is(err, common.ErrInvalidMobileFormat):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "手机号格式不正确")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrInvalidDataDomain):
