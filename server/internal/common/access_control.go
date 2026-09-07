@@ -27,6 +27,12 @@ var knownDataDomainCodes = map[string]struct{}{
 	DataDomainMPA:              {},
 }
 
+var dataDomainDisplayNames = map[string]string{
+	DataDomainUndergraduate:    "本科生",
+	DataDomainAcademicGraduate: "学术学位研究生",
+	DataDomainMPA:              "MPA专业学位研究生",
+}
+
 var knownAdminPermissions = map[string]struct{}{
 	PermissionAlumniSensitiveRead: {},
 	PermissionAlumniFilesManage:   {},
@@ -36,6 +42,12 @@ var knownAdminPermissions = map[string]struct{}{
 func IsKnownDataDomainCode(code string) bool {
 	_, ok := knownDataDomainCodes[code]
 	return ok
+}
+
+// DataDomainDisplayName 将数据域编码转换为面向管理员展示的名称。
+// 未知编码返回空字符串，由调用方决定是否使用原始编码兜底。
+func DataDomainDisplayName(code string) string {
+	return dataDomainDisplayNames[code]
 }
 
 // IsKnownAdminPermission 判断 code 是否为系统支持的管理员权限。
