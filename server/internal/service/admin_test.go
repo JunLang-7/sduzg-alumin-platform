@@ -18,6 +18,10 @@ type fakeAdminAccessStore struct {
 	domainCalls int
 }
 
+func stringPointer(value string) *string {
+	return &value
+}
+
 func (s *fakeAdminAccessStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
 	s.domainCalls++
 	return s.domains, s.err
@@ -206,6 +210,37 @@ func TestAdminServiceCreateReturnsAccountAlreadyExists(t *testing.T) {
 	})
 	if err != common.ErrAccountAlreadyExists {
 		t.Fatalf("expected account already exists, got %v", err)
+	}
+}
+
+func TestAdminServiceCreateValidatesAccountAndOptionalMobile(t *testing.T) {
+	store := &fakeUserStore{}
+	svc := NewAdminService(store, &fakeAdminAccessStore{domains: activeAdminDomains()})
+	operator := common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin}
+
+	tests := []struct {
+		name string
+		req  dto.AdminCreateRequest
+		want error
+	}{
+		{
+			name: "invalid account characters",
+			req:  dto.AdminCreateRequest{Account: "manager 01", Password: "InitPass123", DomainIDs: []uint64{1}},
+			want: common.ErrInvalidAccountFormat,
+		},
+		{
+			name: "invalid mobile",
+			req:  dto.AdminCreateRequest{Account: "manager01", Password: "InitPass123", Mobile: stringPointer("12345"), DomainIDs: []uint64{1}},
+			want: common.ErrInvalidMobileFormat,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := svc.Create(context.Background(), operator, tt.req); err != tt.want {
+				t.Fatalf("Create() error = %v, want %v", err, tt.want)
+			}
+		})
 	}
 }
 

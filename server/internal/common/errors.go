@@ -7,6 +7,8 @@ var (
 	ErrCacheUnavailable    = errors.New("cache unavailable")
 
 	ErrInvalidRequest        = errors.New("invalid request")
+	ErrInvalidAccountFormat  = errors.New("invalid account format")
+	ErrInvalidMobileFormat   = errors.New("invalid mobile format")
 	ErrUserNotFound          = errors.New("user not found")
 	ErrAccountAlreadyExists  = errors.New("account already exists")
 	ErrCannotDeleteSelf      = errors.New("cannot delete self")
