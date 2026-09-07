@@ -84,9 +84,11 @@ func sanitizeExportValue(v string) string {
 
 type AlumniService struct {
 	alumni      repository.AlumniStore
+	users       repository.UserStore
 	files       AlumniFileCleaner
 	dataDomains repository.AccessControlStore
 	opLogger    OperationLogWriter
+	auditWriter AuditEventWriter
 	countCache  *cache.CountCache
 	exportCache *cache.ExportCache
 }
@@ -114,6 +116,21 @@ func (s *AlumniService) WithExportCache(c *cache.ExportCache) *AlumniService {
 // WithOperationLogger 注入导出和导入操作审计记录器。
 func (s *AlumniService) WithOperationLogger(logger OperationLogWriter) *AlumniService {
 	s.opLogger = logger
+	if writer, ok := logger.(AuditEventWriter); ok {
+		s.auditWriter = writer
+	}
+	return s
+}
+
+// WithAuditWriter 注入档案新增、修改、删除的审计事件写入器。
+func (s *AlumniService) WithAuditWriter(writer AuditEventWriter) *AlumniService {
+	s.auditWriter = writer
+	return s
+}
+
+// WithAuditUserStore 注入操作历史需要读取的操作用户存储。
+func (s *AlumniService) WithAuditUserStore(users repository.UserStore) *AlumniService {
+	s.users = users
 	return s
 }
 
@@ -317,6 +334,19 @@ func (s *AlumniService) Create(ctx context.Context, operator common.AccessContex
 		return nil, err
 	}
 
+	writeProfileAudit(
+		ctx,
+		s.auditWriter,
+		s.users,
+		operator.UserID,
+		"create",
+		"admin",
+		"管理员新增校友档案",
+		defaultAuditScope,
+		nil,
+		created,
+	)
+
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, 1)
 	}
@@ -348,6 +378,10 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrAlumniNotFound
 	}
 
+	var before *model.AlumniProfile
+	if s.auditWriter != nil && s.users != nil {
+		before, _ = s.alumni.GetByID(ctx, id, domainIDs)
+	}
 	if err := s.alumni.Update(ctx, id, operator.UserID, profile, domainIDs); err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
 			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
@@ -359,6 +393,22 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		}
 		logger.Error("failed to update alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return nil, err
+	}
+
+	if before != nil {
+		after, _ := s.alumni.GetByID(ctx, id, domainIDs)
+		writeProfileAudit(
+			ctx,
+			s.auditWriter,
+			s.users,
+			operator.UserID,
+			"update",
+			"admin",
+			"管理员修改校友档案",
+			defaultAuditScope,
+			before,
+			after,
+		)
 	}
 
 	updated, err := s.GetByID(ctx, id, operator)
@@ -383,6 +433,10 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 	if restricted && len(domainIDs) == 0 {
 		return common.ErrAlumniNotFound
 	}
+	var before *model.AlumniProfile
+	if s.auditWriter != nil && s.users != nil {
+		before, _ = s.alumni.GetByID(ctx, id, domainIDs)
+	}
 	if err := s.alumni.Delete(ctx, id, operator.UserID, domainIDs); err != nil {
 		if errors.Is(err, common.ErrDatabaseUnavailable) {
 			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
@@ -395,6 +449,19 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 		return err
 	}
+
+	writeProfileAudit(
+		ctx,
+		s.auditWriter,
+		s.users,
+		operator.UserID,
+		"delete",
+		"admin",
+		"管理员删除校友档案",
+		defaultAuditScope,
+		before,
+		nil,
+	)
 
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, -1)
@@ -984,6 +1051,10 @@ func (s *AlumniService) UpdateMe(ctx context.Context, access common.AccessContex
 	}
 
 	profile := req.ToProfile().Normalize()
+	var before *model.AlumniProfile
+	if s.auditWriter != nil && s.users != nil {
+		before, _ = s.alumni.GetByID(ctx, alumniID, nil)
+	}
 	if !profile.IsEmpty() {
 		if err := s.alumni.UpdateEditableFields(ctx, alumniID, access.UserID, profile); err != nil {
 			if errors.Is(err, common.ErrDatabaseUnavailable) {
@@ -997,6 +1068,21 @@ func (s *AlumniService) UpdateMe(ctx context.Context, access common.AccessContex
 			logger.Error("failed to update alumni profile", zap.Uint64("alumni_id", alumniID), zap.Uint64("user_id", access.UserID), zap.Error(err))
 			return nil, err
 		}
+	}
+	if before != nil {
+		after, _ := s.alumni.GetByID(ctx, alumniID, nil)
+		writeProfileAudit(
+			ctx,
+			s.auditWriter,
+			s.users,
+			access.UserID,
+			"update",
+			"alumni_self",
+			"校友本人修改个人资料",
+			defaultAuditScope,
+			before,
+			after,
+		)
 	}
 
 	return s.GetByID(ctx, alumniID, access)
