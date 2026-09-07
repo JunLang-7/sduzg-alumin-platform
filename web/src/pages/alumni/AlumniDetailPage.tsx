@@ -3,6 +3,7 @@ import { ArrowLeftOutlined } from '@ant-design/icons';
 import { Button, Card, Descriptions, Empty, Spin, message } from 'antd';
 import { useNavigate, useParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
+import { AuditOperationHistoryCard } from '../../components/AuditOperationHistoryCard';
 import { AlumniFilesCard } from '../../components/AlumniFilesCard';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
@@ -39,7 +40,7 @@ export function AlumniDetailPage() {
   }, [id]);
 
   return (
-    <>
+    <div className="alumni-detail-page audit-page">
       <PageHeader
         title="校友详情"
         extra={
@@ -48,7 +49,7 @@ export function AlumniDetailPage() {
           </Button>
         }
       />
-      <Card className="tool-card">
+      <Card className="tool-card alumni-profile-card" title="校友档案">
         <Spin spinning={loading}>
           {profile ? (
             <Descriptions bordered column={{ xs: 1, md: 2, xl: 3 }}>
@@ -86,7 +87,12 @@ export function AlumniDetailPage() {
         </Spin>
       </Card>
 
-      {profile && <AlumniFilesCard alumniId={profile.id} />}
-    </>
+      {profile && (
+        <>
+          <AlumniFilesCard alumniId={profile.id} />
+          <AuditOperationHistoryCard alumniId={profile.id} />
+        </>
+      )}
+    </div>
   );
 }
