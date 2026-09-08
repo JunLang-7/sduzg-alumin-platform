@@ -18,10 +18,7 @@ import { canReadSensitive } from '../../utils/access';
 import { AlumniDetailModal } from './AlumniDetailModal';
 import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
-import {
-  RegionIndustryExplorer,
-  type MapMode,
-} from './RegionIndustryExplorer';
+import { RegionIndustryExplorer, type MapMode } from './RegionIndustryExplorer';
 import type {
   DashboardDimension,
   DashboardOverview,
@@ -130,7 +127,10 @@ function extractYear(value?: string) {
   return year >= 1990 && year <= maxReasonableYear ? year : null;
 }
 
-function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniProfile[]): ChartDistributionItem[] {
+function toGraduationRateDistribution(
+  items: DistributionItem[],
+  alumni: AlumniProfile[],
+): ChartDistributionItem[] {
   const currentYear = new Date().getFullYear();
   const admissionCounts = new Map<number, number>();
   const normalGraduationCounts = new Map<number, number>();
@@ -155,7 +155,9 @@ function toGraduationRateDistribution(items: DistributionItem[], alumni: AlumniP
       const admissionCount = admissionYear ? admissionCounts.get(admissionYear) || 0 : 0;
       const normalGraduates = cohortYear ? normalGraduationCounts.get(cohortYear) || 0 : 0;
 
-      const graduationRate = admissionCount ? Number(((normalGraduates / admissionCount) * 100).toFixed(2)) : 0;
+      const graduationRate = admissionCount
+        ? Number(((normalGraduates / admissionCount) * 100).toFixed(2))
+        : 0;
       const rateUnavailable = !admissionCount;
 
       return {
@@ -211,25 +213,27 @@ function DataScreenPanel({
       <div className="data-screen-panel-body">
         {loading ? <Spin className="data-screen-spin" /> : children(false)}
       </div>
-      {expandable ? <Modal
-        centered
-        footer={null}
-        open={expanded}
-        width="min(1180px, 94vw)"
-        className="data-screen-modal"
-        title={title}
-        onCancel={() => setExpanded(false)}
-        afterOpenChange={(open) => {
-          if (!open) {
-            setModalReady(false);
-            return;
-          }
-          window.requestAnimationFrame(() => setModalReady(true));
-        }}
-        destroyOnHidden
-      >
-        {modalReady ? <div className="data-screen-expanded-body">{children(true)}</div> : null}
-      </Modal> : null}
+      {expandable ? (
+        <Modal
+          centered
+          footer={null}
+          open={expanded}
+          width="min(1180px, 94vw)"
+          className="data-screen-modal"
+          title={title}
+          onCancel={() => setExpanded(false)}
+          afterOpenChange={(open) => {
+            if (!open) {
+              setModalReady(false);
+              return;
+            }
+            window.requestAnimationFrame(() => setModalReady(true));
+          }}
+          destroyOnHidden
+        >
+          {modalReady ? <div className="data-screen-expanded-body">{children(true)}</div> : null}
+        </Modal>
+      ) : null}
     </section>
   );
 }
@@ -245,11 +249,11 @@ export function DashboardPage() {
   const [overview, setOverview] = useState<DashboardOverview>(emptyOverview);
   const [dimension, setDimension] = useState<DashboardDimension>('grade');
   const [mainDistribution, setMainDistribution] = useState<DistributionItem[]>([]);
-  const [mainDistributionDimension, setMainDistributionDimension] = useState<DashboardDimension>('grade');
+  const [mainDistributionDimension, setMainDistributionDimension] =
+    useState<DashboardDimension>('grade');
   const [alumniFeed, setAlumniFeed] = useState<AlumniProfile[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<AlumniProfile[]>([]);
-  const [initialLoading, setInitialLoading] = useState(false);
   const [mainLoading, setMainLoading] = useState(false);
   const [feedLoading, setFeedLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -288,7 +292,6 @@ export function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    setInitialLoading(true);
     setFeedLoading(true);
     setRegionDataLoading(true);
     Promise.allSettled([
@@ -334,7 +337,6 @@ export function DashboardPage() {
         }
       })
       .finally(() => {
-        setInitialLoading(false);
         setFeedLoading(false);
       });
   }, [sensitiveReadable]);
@@ -360,7 +362,9 @@ export function DashboardPage() {
         if (cancelled) {
           return;
         }
-        setMainDistribution(dimension === 'grade' || dimension === 'cohort' ? sortByNumericName(items) : items);
+        setMainDistribution(
+          dimension === 'grade' || dimension === 'cohort' ? sortByNumericName(items) : items,
+        );
         setMainDistributionDimension(dimension);
       })
       .catch((error: Error) => {
@@ -383,7 +387,10 @@ export function DashboardPage() {
     ? toPercent(overview.total_accounts / overview.total_alumni)
     : 0;
   const averageCompletion = toPercent(
-    (overview.mobile_complete_rate + overview.work_unit_complete_rate + overview.mentor_complete_rate) / 3,
+    (overview.mobile_complete_rate +
+      overview.work_unit_complete_rate +
+      overview.mentor_complete_rate) /
+      3,
   );
 
   const currentTime = useMemo(
@@ -403,18 +410,22 @@ export function DashboardPage() {
 
   const showLineChart = dimension === 'grade' || dimension === 'cohort';
   const isGraduationRateDimension = dimension === 'cohort';
-  const chartDistribution = useMemo<ChartDistributionItem[]>(
-    () => {
-      if (mainDistributionDimension !== dimension) {
-        return [];
-      }
+  const chartDistribution = useMemo<ChartDistributionItem[]>(() => {
+    if (mainDistributionDimension !== dimension) {
+      return [];
+    }
 
-      return isGraduationRateDimension
-        ? toGraduationRateDistribution(mainDistribution, allAlumniCache ?? alumniFeed)
-        : mainDistribution;
-    },
-    [allAlumniCache, alumniFeed, dimension, isGraduationRateDimension, mainDistribution, mainDistributionDimension],
-  );
+    return isGraduationRateDimension
+      ? toGraduationRateDistribution(mainDistribution, allAlumniCache ?? alumniFeed)
+      : mainDistribution;
+  }, [
+    allAlumniCache,
+    alumniFeed,
+    dimension,
+    isGraduationRateDimension,
+    mainDistribution,
+    mainDistributionDimension,
+  ]);
   const chartCountData = useMemo<ChartDistributionItem[]>(
     () =>
       isGraduationRateDimension
@@ -455,7 +466,9 @@ export function DashboardPage() {
               const first = items[0] as { name?: string; data?: ChartDistributionItem } | undefined;
               const data = first?.data;
               const graduationRate = data?.graduationRate ?? data?.value ?? 0;
-              const rateText = data?.rateUnavailable ? '暂无匹配入学人数' : formatPercentValue(graduationRate);
+              const rateText = data?.rateUnavailable
+                ? '暂无匹配入学人数'
+                : formatPercentValue(graduationRate);
               return [
                 first?.name || '',
                 `该届总人数：${formatNumber(data?.cohortTotal ?? data?.value ?? 0)} 人`,
@@ -470,7 +483,8 @@ export function DashboardPage() {
       grid: {
         top: isGraduationRateDimension ? (isCompactChart ? 42 : 50) : isCompactChart ? 20 : 26,
         right: isGraduationRateDimension ? (isCompactChart ? 32 : 44) : isCompactChart ? 6 : 10,
-        bottom: chartDistribution.length > 8 ? (isCompactChart ? 32 : 38) : isCompactChart ? 20 : 26,
+        bottom:
+          chartDistribution.length > 8 ? (isCompactChart ? 32 : 38) : isCompactChart ? 20 : 26,
         left: isCompactChart ? 22 : 30,
         containLabel: true,
       },
@@ -561,7 +575,14 @@ export function DashboardPage() {
           : []),
       ],
     }),
-    [chartBarData, chartDistribution, chartLineData, isCompactChart, isGraduationRateDimension, showLineChart],
+    [
+      chartBarData,
+      chartDistribution,
+      chartLineData,
+      isCompactChart,
+      isGraduationRateDimension,
+      showLineChart,
+    ],
   );
 
   const mainPieOption = useMemo(
@@ -602,7 +623,9 @@ export function DashboardPage() {
           label: {
             color: '#eaf7ff',
             formatter: (params: { name: string; percent?: number; value?: number }) =>
-              (params.percent || 0) >= 2 ? `${params.name}\n${formatPercentValue(params.percent ?? 0)}` : '',
+              (params.percent || 0) >= 2
+                ? `${params.name}\n${formatPercentValue(params.percent ?? 0)}`
+                : '',
             fontWeight: 800,
             fontSize: isCompactChart ? 9 : 10,
             distanceToLabelLine: 3,
@@ -613,8 +636,8 @@ export function DashboardPage() {
             lineStyle: { color: 'rgba(195, 224, 255, 0.52)' },
           },
           labelLayout: () => ({
-              hideOverlap: true,
-              moveOverlap: 'shiftY',
+            hideOverlap: true,
+            moveOverlap: 'shiftY',
           }),
           data: chartPieData,
         },
@@ -662,13 +685,13 @@ export function DashboardPage() {
 
   const togglePageFullscreen = () => {
     if (document.fullscreenElement) {
-      document
-        .exitFullscreen()
-        .catch(() => message.warning('退出全屏失败，请重试'));
+      document.exitFullscreen().catch(() => message.warning('退出全屏失败，请重试'));
       return;
     }
 
-    document.documentElement.requestFullscreen().catch(() => message.warning('进入全屏失败，请重试'));
+    document.documentElement
+      .requestFullscreen()
+      .catch(() => message.warning('进入全屏失败，请重试'));
   };
 
   const openAlumniDetail = (item: AlumniProfile) => {
@@ -683,9 +706,12 @@ export function DashboardPage() {
   };
 
   const openDistributionAlumni = async (value: string) => {
-    const dimensionLabel =
-      dimensions.find((item) => item.value === dimension)?.label || '分布';
-    setDistributionTitle(dimension === 'cohort' ? `${dimensionLabel}对应届数：${value}` : `${dimensionLabel}：${value}`);
+    const dimensionLabel = dimensions.find((item) => item.value === dimension)?.label || '分布';
+    setDistributionTitle(
+      dimension === 'cohort'
+        ? `${dimensionLabel}对应届数：${value}`
+        : `${dimensionLabel}：${value}`,
+    );
     setDistributionOpen(true);
     setDistributionLoading(true);
 
@@ -703,7 +729,9 @@ export function DashboardPage() {
         return;
       }
 
-      setDistributionAlumni(profiles.filter((profile) => formatText(String(profile[field] || '')) === value));
+      setDistributionAlumni(
+        profiles.filter((profile) => formatText(String(profile[field] || '')) === value),
+      );
     } catch (error) {
       message.error((error as Error).message || '分布项校友信息加载失败');
       setDistributionAlumni([]);
@@ -755,7 +783,10 @@ export function DashboardPage() {
         </div>
         <div className="dashboard-screen-tools">
           <span>{currentTime}</span>
-          <Button icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />} onClick={togglePageFullscreen}>
+          <Button
+            icon={isFullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            onClick={togglePageFullscreen}
+          >
             {isFullscreen ? '退出全屏' : '全屏展示'}
           </Button>
           <Button icon={<ArrowLeftOutlined />} onClick={() => navigate('/admin/alumni')}>
@@ -821,7 +852,7 @@ export function DashboardPage() {
           className="dashboard-map-panel"
           expandable={false}
         >
-          {(expanded) => (
+          {(expanded) =>
             sensitiveReadable ? (
               <RegionIndustryExplorer
                 alumni={allAlumniCache ?? alumniFeed}
@@ -842,8 +873,10 @@ export function DashboardPage() {
                 onDistrictChange={setSelectedMapDistrict}
                 onSelectAlumni={openAlumniDetail}
               />
-            ) : <EmptyData text="无权限查看地域分布" />
-          )}
+            ) : (
+              <EmptyData text="无权限查看地域分布" />
+            )
+          }
         </DataScreenPanel>
 
         <DataScreenPanel
@@ -868,7 +901,11 @@ export function DashboardPage() {
                     }
                   }}
                   onSearch={runSearch}
-                  placeholder={sensitiveReadable ? '输入姓名、单位、职务、导师等关键词...' : '输入姓名、行业、导师等关键词...'}
+                  placeholder={
+                    sensitiveReadable
+                      ? '输入姓名、单位、职务、导师等关键词...'
+                      : '输入姓名、行业、导师等关键词...'
+                  }
                   enterButton="搜索"
                 />
               </div>
@@ -905,7 +942,7 @@ export function DashboardPage() {
           className="dashboard-industry-panel"
           expandable={sensitiveReadable}
         >
-          {(expanded) => (
+          {(expanded) =>
             sensitiveReadable ? (
               <RegionIndustryExplorer
                 alumni={allAlumniCache ?? alumniFeed}
@@ -920,8 +957,10 @@ export function DashboardPage() {
                 onDistrictChange={setSelectedMapDistrict}
                 onSelectAlumni={openAlumniDetail}
               />
-            ) : <EmptyData text="无权限查看地域与行业分布" />
-          )}
+            ) : (
+              <EmptyData text="无权限查看地域与行业分布" />
+            )
+          }
         </DataScreenPanel>
       </main>
 

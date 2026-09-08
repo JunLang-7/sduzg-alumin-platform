@@ -120,10 +120,7 @@ export function ProfilePage() {
 
   return (
     <>
-      <PageHeader
-        title="我的资料"
-        description="维护工作单位、职务、通讯地址和联系方式"
-      />
+      <PageHeader title="我的资料" description="维护工作单位、职务、通讯地址和联系方式" />
       <Card className="tool-card form-card">
         <Spin spinning={loading}>
           <div className="profile-summary">
@@ -134,10 +131,19 @@ export function ProfilePage() {
 
           {/* Contact Info Section */}
           <div style={{ marginBottom: 24, padding: 16, background: '#fafafa', borderRadius: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                marginBottom: 8,
+              }}
+            >
               <Text strong>联系方式</Text>
               {(!phoneBound || !emailBound) && (
-                <Button size="small" onClick={openContactModal}>绑定</Button>
+                <Button size="small" onClick={openContactModal}>
+                  绑定
+                </Button>
               )}
             </div>
             <div style={{ display: 'flex', gap: 24 }}>
@@ -190,7 +196,9 @@ export function ProfilePage() {
               <MobileOutlined />
               <Text type="secondary">手机号：</Text>
               <Text>{maskPhone(profile?.mobile)}</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>（已绑定）</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                （已绑定）
+              </Text>
             </div>
           ) : (
             <Form.Item
@@ -210,7 +218,9 @@ export function ProfilePage() {
               <MailOutlined />
               <Text type="secondary">邮箱：</Text>
               <Text>{maskEmail(profile?.email)}</Text>
-              <Text type="secondary" style={{ fontSize: 12 }}>（已绑定）</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                （已绑定）
+              </Text>
             </div>
           ) : (
             <Form.Item
@@ -225,7 +235,7 @@ export function ProfilePage() {
             </Form.Item>
           )}
 
-          {(phoneBound && emailBound) ? (
+          {phoneBound && emailBound ? (
             <Text type="secondary">手机号和邮箱均已绑定。</Text>
           ) : (
             <Form.Item

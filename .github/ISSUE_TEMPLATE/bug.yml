@@ -1,0 +1,37 @@
+name: 缺陷报告
+description: 提交可复现的行为问题。
+title: "[bug] "
+labels: [bug]
+body:
+  - type: textarea
+    attributes:
+      label: 问题与影响
+      description: 哪个角色在什么场景受到影响？请勿填写真实个人信息。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 复现步骤
+      placeholder: |
+        1. 使用 ... 角色登录
+        2. 打开 ...
+        3. 执行 ...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 预期结果与实际结果
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 验收条件
+      description: 修复后可验证的结果；每项应可以测试或手工验证。
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 环境与脱敏材料
+      description: 浏览器、版本、错误信息或截图。请先删除账号、手机号、Token 等敏感信息。

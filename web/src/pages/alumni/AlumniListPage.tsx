@@ -69,7 +69,9 @@ export function AlumniListPage() {
         title: '培养类别',
         dataIndex: 'data_domain_id',
         width: 170,
-        render: (value: number) => <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>,
+        render: (value: number) => (
+          <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>
+        ),
       },
       {
         title: '班级',
@@ -97,16 +99,19 @@ export function AlumniListPage() {
         width: 140,
       },
       ...(sensitiveReadable
-        ? [{
-            title: '工作单位',
-            dataIndex: 'work_unit',
-            width: 220,
-            ellipsis: true,
-          }, {
-            title: '职务',
-            dataIndex: 'position',
-            width: 140,
-          }]
+        ? [
+            {
+              title: '工作单位',
+              dataIndex: 'work_unit',
+              width: 220,
+              ellipsis: true,
+            },
+            {
+              title: '职务',
+              dataIndex: 'position',
+              width: 140,
+            },
+          ]
         : []),
       {
         title: '操作',
@@ -146,11 +151,14 @@ export function AlumniListPage() {
 
   return (
     <>
-      <PageHeader title="校友列表" description="按培养类别、基础信息、学习经历和职业信息检索校友档案" />
+      <PageHeader
+        title="校友列表"
+        description="按培养类别、基础信息、学习经历和职业信息检索校友档案"
+      />
       <Card className="tool-card">
         <Form form={form} layout="inline" onFinish={handleSearch} className="search-form">
           <Form.Item name="keyword">
-          <Input allowClear placeholder={sensitiveReadable ? '姓名、单位、导师' : '姓名、导师'} />
+            <Input allowClear placeholder={sensitiveReadable ? '姓名、单位、导师' : '姓名、导师'} />
           </Form.Item>
           <Form.Item name="grade">
             <Input allowClear placeholder="年级" />

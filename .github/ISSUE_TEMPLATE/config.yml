@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/JunLang-7/sduzg-alumin-platform/security/advisories/new
+    about: 请勿在公开 Issue 中披露账号、个人信息、密钥或安全漏洞细节。

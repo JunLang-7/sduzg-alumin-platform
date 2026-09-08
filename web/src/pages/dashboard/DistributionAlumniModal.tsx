@@ -72,7 +72,11 @@ export function DistributionAlumniModal({
             allowClear
             prefix={<SearchOutlined />}
             value={keyword}
-            placeholder={sensitiveReadable ? '在当前筛选结果中检索姓名、单位、行业、导师等...' : '在当前筛选结果中检索姓名、行业、导师等...'}
+            placeholder={
+              sensitiveReadable
+                ? '在当前筛选结果中检索姓名、单位、行业、导师等...'
+                : '在当前筛选结果中检索姓名、行业、导师等...'
+            }
             onChange={(event) => setKeyword(event.target.value)}
           />
           <span>

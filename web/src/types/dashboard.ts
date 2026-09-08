@@ -12,10 +12,4 @@ export interface DistributionItem {
 }
 
 export type DashboardDimension =
-  | 'grade'
-  | 'class_name'
-  | 'cohort'
-  | 'gender'
-  | 'major'
-  | 'training_mode'
-  | 'industry';
+  'grade' | 'class_name' | 'cohort' | 'gender' | 'major' | 'training_mode' | 'industry';

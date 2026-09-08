@@ -20,6 +20,8 @@ web/node_modules/
 web/dist/
 web/.env.local
 web/.vite/
+web/.vitest/
+web/coverage/
 
 # Docker / local data
 .docker/

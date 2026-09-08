@@ -1,0 +1,23 @@
+name: 技术任务
+description: 维护、重构、构建、文档或基础设施工作。
+title: "[chore] "
+labels: [chore]
+body:
+  - type: textarea
+    attributes:
+      label: 当前问题与目标
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 完成条件
+      description: 说明能被验证的结果。
+      placeholder: |
+        - [ ] ...
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 影响范围与验证方式
+    validations:
+      required: true

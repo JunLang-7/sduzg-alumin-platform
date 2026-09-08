@@ -8,9 +8,9 @@
 
 技术栈：
 
-- 后端：Go 1.26、Gin、GORM、MySQL 8.0、Redis、Viper、zap。
-- 前端：React 18、Vite、TypeScript、Ant Design、axios、Zustand、ECharts。
-- 本地编排：`docker-compose.yml` 启动 MySQL、Redis、API 和 Web。
+- 后端：Go 1.26.6、Gin、GORM、MySQL 8.0、Redis、Viper、zap。
+- 前端：React 18、Vite、TypeScript、Ant Design、axios、Zustand、ECharts；构建环境使用 Node.js 22。
+- 本地编排：`docker-compose.yml` 启动 MySQL、Redis、MinIO、API 和 Web。
 
 ## 目录结构
 
@@ -34,14 +34,27 @@
   - `src/utils/`：权限、字典等工具。
 - `docs/`：需求和技术方案文档。
 
-## 常用命令
+## 本地质量检查
+
+首次在 `web/` 安装依赖时使用 `npm ci`。日常提交前优先在仓库根目录执行：
+
+```bash
+make fmt        # 格式化 Go 和前端文件，会修改工作区
+make fmt-check  # 仅检查格式
+make lint       # Go vet 与 ESLint
+make test       # 后端 race 测试与前端 Vitest
+make build      # 构建 API 和 Web
+make check      # 依次执行 fmt-check、lint、test、build
+```
+
+## 常用开发命令
 
 后端：
 
 ```bash
 cd server
 go mod tidy
-go test ./...
+go test -race -count=1 ./...
 go run ./cmd/api
 ```
 
@@ -49,9 +62,10 @@ go run ./cmd/api
 
 ```bash
 cd web
-npm install
+npm ci
 npm run dev
-npm run build
+npm run test
+npm run lint
 ```
 
 整体本地环境：
@@ -96,11 +110,11 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - 登录态由 `src/store/authStore.ts` 管理，避免绕过 store 直接散落读写登录用户信息。
 - UI 文案默认使用中文，并保持政管学院/MPA 校友平台语境一致。
 - 全局视觉变量在 `src/styles/global.css`，新增样式应尽量复用现有色值和页面结构。
-- 前端没有单独 lint/test 脚本；涉及前端改动时至少运行 `cd web && npm run build`。
+- 前端使用 Prettier、ESLint 和 Vitest。涉及前端改动时至少运行 `npm run lint`、`npm run test` 和 `npm run build`；格式化使用 `npm run format` 或根目录 `make fmt`。
 
 ## 数据库与环境
 
-- MySQL 初始化脚本在 `server/migrations/001_init_schema.sql`，包含 `users`、`alumni_profiles`、`operation_logs`。
+- MySQL 初始化脚本在 `server/migrations/001_init_schema.sql`，后续变更使用递增编号的迁移文件；迁移当前固定初始化 `sdu_alumni_db`。
 - Compose 将 MySQL 映射到本机 `3307`，Redis 映射到 `6379`，API 暴露 `8080`，Web 暴露 `80`。
 - 示例配置见 `server/.env.example` 和 `web/.env.example`。
 - 前端开发服务器默认 `http://127.0.0.1:5173`，`/api` 代理到 `http://127.0.0.1:8080`。
@@ -110,13 +124,18 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 
 - 后端业务逻辑优先补充同包 `_test.go`，现有测试使用标准库 `testing` 和轻量 fake store。
 - 修改配置加载、路由、中间件、认证或权限时，补充或更新后端测试。
-- 修改前端路由、权限、API 类型或构建配置时，运行 `npm run build` 验证 TypeScript 和 Vite 构建。
-- 修改数据库 schema 后，同步更新迁移、生成模型、相关 DTO/API 类型和文档。
-- 若改动影响联调流程，使用 `docker compose up --build` 验证完整环境。
+- 修改前端路由、权限、API 类型或构建配置时，补充 Vitest 测试，并运行 `npm run lint`、`npm run test`、`npm run build`。
+- 修改数据库 schema 后，同步更新有序迁移、生成模型、相关 DTO/API 类型和文档。CI 会从空 MySQL 按顺序应用全部迁移，并在 Redis 可用时运行集成测试。
+- 若改动影响联调流程，使用 `docker compose up --build` 验证完整环境；CI 还会构建镜像，并检查 API 的存活与就绪接口及 Web 容器的静态页面服务。
 
 ## 工作注意事项
 
 - 开始改动前检查当前工作区状态，避免覆盖用户已有修改。
+- 开始功能、缺陷或技术工作前，先阅读关联 Issue 的范围和验收条件；没有关联 Issue 时，先创建或补齐 Issue，再开始实现。
+- 依据 Issue 验收条件编写或更新测试。PR 使用 `Closes #编号` 关联 Issue，并逐项写明验收证据；需求范围变化时先更新 Issue。
+- 新功能必须覆盖正常路径、关键边界和失败路径；缺陷修复必须添加回归测试。权限、个人信息和数据域改动必须覆盖未登录、越权和跨域访问边界。
+- 提交前优先运行根目录 `make check`；涉及 MySQL、Redis 或迁移的改动还应运行对应集成验证。
+- GitHub 上的 `main`、`dev` 分支要求关联 Issue、六项 CI 检查通过、一位评审批准、全部讨论解决及线性历史后才能合并。日常开发 PR 目标为 `dev`，发布 PR 由 `dev` 提交到 `main`。
 - 保持改动聚焦，不做无关格式化、重命名或大范围重构。
 - 不提交 `.env`、日志、构建产物、`web/node_modules/`、`web/dist/` 等本地文件。
 - 需求或权限不明确时，以 `docs/` 中的一期 MPA 试点范围为准；不要擅自引入活动、内容管理、AI、支付等未纳入一期的模块。

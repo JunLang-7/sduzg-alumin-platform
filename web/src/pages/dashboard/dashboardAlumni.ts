@@ -147,9 +147,7 @@ export async function enrichAlumniMailingAddresses(items: AlumniProfile[]) {
   return cacheAlumni(
     items.map((item) => {
       const addresses = addressQueues.get(alumniKey(item));
-      return addresses?.length
-        ? { ...item, mailing_address: addresses.shift() }
-        : item;
+      return addresses?.length ? { ...item, mailing_address: addresses.shift() } : item;
     }),
     true,
   );
