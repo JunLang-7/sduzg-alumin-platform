@@ -8,22 +8,9 @@ import {
   LoadingOutlined,
   UploadOutlined,
 } from '@ant-design/icons';
-import {
-  Button,
-  Descriptions,
-  Empty,
-  Modal,
-  Popconfirm,
-  Spin,
-  Upload,
-  message,
-} from 'antd';
+import { Button, Descriptions, Empty, Modal, Popconfirm, Spin, Upload, message } from 'antd';
 import { alumniApi } from '../../api/alumni';
-import type {
-  AlumniFileItem,
-  AlumniFileListResponse,
-  AlumniProfile,
-} from '../../types/alumni';
+import type { AlumniFileItem, AlumniFileListResponse, AlumniProfile } from '../../types/alumni';
 import { useAuthStore } from '../../store/authStore';
 import { canManageFiles, canReadSensitive } from '../../utils/access';
 
@@ -73,12 +60,7 @@ function getMimeType(item: AlumniFileItem) {
   return (item.mime_type || '').toLowerCase();
 }
 
-export function AlumniDetailModal({
-  profile,
-  loading,
-  open,
-  onClose,
-}: AlumniDetailModalProps) {
+export function AlumniDetailModal({ profile, loading, open, onClose }: AlumniDetailModalProps) {
   const user = useAuthStore((state) => state.user);
   const filesManageable = canManageFiles(user);
   const sensitiveReadable = canReadSensitive(user);
@@ -174,9 +156,7 @@ export function AlumniDetailModal({
       await alumniApi.uploadFile(profile.id, fileType, file);
       message.success(`${fileType === 'academic_record' ? '学籍档案' : '学位档案'}上传成功`);
     } catch (error) {
-      message.error(
-        getErrorMessage(error, '上传失败，请确认文件存储可用且文件不超过 50MB'),
-      );
+      message.error(getErrorMessage(error, '上传失败，请确认文件存储可用且文件不超过 50MB'));
       setUploadingArchive(null);
       return;
     }
@@ -184,9 +164,7 @@ export function AlumniDetailModal({
     try {
       await loadFiles(profile.id);
     } catch (error) {
-      message.warning(
-        `档案上传成功，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`,
-      );
+      message.warning(`档案上传成功，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`);
     } finally {
       setUploadingArchive(null);
     }
@@ -210,22 +188,18 @@ export function AlumniDetailModal({
     try {
       await loadFiles(profile.id);
     } catch (error) {
-      message.warning(
-        `档案已删除，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`,
-      );
+      message.warning(`档案已删除，但列表刷新失败：${getErrorMessage(error, '请稍后重试')}`);
     } finally {
       setDeletingFileId(null);
     }
   };
 
-  const renderFiles = (
-    title: string,
-    items: AlumniFileItem[],
-    fileType: ArchiveType,
-  ) => (
+  const renderFiles = (title: string, items: AlumniFileItem[], fileType: ArchiveType) => (
     <section className="dashboard-archive-section">
       <header>
-        <span><FileTextOutlined /></span>
+        <span>
+          <FileTextOutlined />
+        </span>
         <strong>{title}</strong>
         <em>{items.length} 个文件</em>
         <Upload
@@ -337,63 +311,87 @@ export function AlumniDetailModal({
               <Descriptions bordered column={{ xs: 1, sm: 2, lg: 3 }} size="small">
                 <Descriptions.Item label="姓名">{displayValue(profile.name)}</Descriptions.Item>
                 <Descriptions.Item label="性别">{displayValue(profile.gender)}</Descriptions.Item>
-                <Descriptions.Item label="联系电话">{displaySensitiveValue(profile.mobile, sensitiveReadable)}</Descriptions.Item>
-                <Descriptions.Item label="邮箱">{displaySensitiveValue(profile.email, sensitiveReadable)}</Descriptions.Item>
+                <Descriptions.Item label="联系电话">
+                  {displaySensitiveValue(profile.mobile, sensitiveReadable)}
+                </Descriptions.Item>
+                <Descriptions.Item label="邮箱">
+                  {displaySensitiveValue(profile.email, sensitiveReadable)}
+                </Descriptions.Item>
                 <Descriptions.Item label="年级">{displayValue(profile.grade)}</Descriptions.Item>
-                <Descriptions.Item label="班级">{displayValue(profile.class_name)}</Descriptions.Item>
+                <Descriptions.Item label="班级">
+                  {displayValue(profile.class_name)}
+                </Descriptions.Item>
                 <Descriptions.Item label="届数">{displayValue(profile.cohort)}</Descriptions.Item>
                 <Descriptions.Item label="专业">{displayValue(profile.major)}</Descriptions.Item>
-                <Descriptions.Item label="培养方式">{displayValue(profile.training_mode)}</Descriptions.Item>
-                <Descriptions.Item label="辅导员">{displayValue(profile.counselor)}</Descriptions.Item>
+                <Descriptions.Item label="培养方式">
+                  {displayValue(profile.training_mode)}
+                </Descriptions.Item>
+                <Descriptions.Item label="辅导员">
+                  {displayValue(profile.counselor)}
+                </Descriptions.Item>
                 <Descriptions.Item label="导师">{displayValue(profile.mentor)}</Descriptions.Item>
                 <Descriptions.Item label="行业">{displayValue(profile.industry)}</Descriptions.Item>
-                <Descriptions.Item label="职务">{displaySensitiveValue(profile.position, sensitiveReadable)}</Descriptions.Item>
-                <Descriptions.Item label="工作单位" span={3}>{displaySensitiveValue(profile.work_unit, sensitiveReadable)}</Descriptions.Item>
-                <Descriptions.Item label="通讯地址" span={3}>{displaySensitiveValue(profile.mailing_address, sensitiveReadable)}</Descriptions.Item>
+                <Descriptions.Item label="职务">
+                  {displaySensitiveValue(profile.position, sensitiveReadable)}
+                </Descriptions.Item>
+                <Descriptions.Item label="工作单位" span={3}>
+                  {displaySensitiveValue(profile.work_unit, sensitiveReadable)}
+                </Descriptions.Item>
+                <Descriptions.Item label="通讯地址" span={3}>
+                  {displaySensitiveValue(profile.mailing_address, sensitiveReadable)}
+                </Descriptions.Item>
                 {profile.remark !== undefined ? (
-                  <Descriptions.Item label="备注" span={3}>{displayValue(profile.remark)}</Descriptions.Item>
+                  <Descriptions.Item label="备注" span={3}>
+                    {displayValue(profile.remark)}
+                  </Descriptions.Item>
                 ) : null}
                 <Descriptions.Item label="状态">
                   {profile.status === 'active' ? '正常' : displayValue(profile.status)}
                 </Descriptions.Item>
-                <Descriptions.Item label="创建时间">{displayTime(profile.created_at)}</Descriptions.Item>
-                <Descriptions.Item label="更新时间">{displayTime(profile.updated_at)}</Descriptions.Item>
+                <Descriptions.Item label="创建时间">
+                  {displayTime(profile.created_at)}
+                </Descriptions.Item>
+                <Descriptions.Item label="更新时间">
+                  {displayTime(profile.updated_at)}
+                </Descriptions.Item>
               </Descriptions>
 
-              {filesManageable ? <Spin spinning={filesLoading}>
-                <div className="dashboard-archive-actions">
-                  <Button
-                    icon={<IdcardOutlined />}
-                    type={activeArchive === 'academic_record' ? 'primary' : 'default'}
-                    onClick={() =>
-                      setActiveArchive((current) =>
-                        current === 'academic_record' ? null : 'academic_record',
-                      )
-                    }
-                  >
-                    学籍档案
-                    <span>{files?.academic_record.length || 0}</span>
-                  </Button>
-                  <Button
-                    icon={<FileTextOutlined />}
-                    type={activeArchive === 'degree_archive' ? 'primary' : 'default'}
-                    onClick={() =>
-                      setActiveArchive((current) =>
-                        current === 'degree_archive' ? null : 'degree_archive',
-                      )
-                    }
-                  >
-                    学位档案
-                    <span>{files?.degree_archive.length || 0}</span>
-                  </Button>
-                </div>
-                {activeArchive === 'academic_record'
-                  ? renderFiles('学籍档案', files?.academic_record || [], 'academic_record')
-                  : null}
-                {activeArchive === 'degree_archive'
-                  ? renderFiles('学位档案', files?.degree_archive || [], 'degree_archive')
-                  : null}
-              </Spin> : null}
+              {filesManageable ? (
+                <Spin spinning={filesLoading}>
+                  <div className="dashboard-archive-actions">
+                    <Button
+                      icon={<IdcardOutlined />}
+                      type={activeArchive === 'academic_record' ? 'primary' : 'default'}
+                      onClick={() =>
+                        setActiveArchive((current) =>
+                          current === 'academic_record' ? null : 'academic_record',
+                        )
+                      }
+                    >
+                      学籍档案
+                      <span>{files?.academic_record.length || 0}</span>
+                    </Button>
+                    <Button
+                      icon={<FileTextOutlined />}
+                      type={activeArchive === 'degree_archive' ? 'primary' : 'default'}
+                      onClick={() =>
+                        setActiveArchive((current) =>
+                          current === 'degree_archive' ? null : 'degree_archive',
+                        )
+                      }
+                    >
+                      学位档案
+                      <span>{files?.degree_archive.length || 0}</span>
+                    </Button>
+                  </div>
+                  {activeArchive === 'academic_record'
+                    ? renderFiles('学籍档案', files?.academic_record || [], 'academic_record')
+                    : null}
+                  {activeArchive === 'degree_archive'
+                    ? renderFiles('学位档案', files?.degree_archive || [], 'degree_archive')
+                    : null}
+                </Spin>
+              ) : null}
             </div>
           ) : (
             <div className="dashboard-detail-placeholder">正在读取校友完整信息...</div>

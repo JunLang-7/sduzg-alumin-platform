@@ -1,0 +1,37 @@
+name: 功能需求
+description: 在开发前定义用户价值、范围和验收条件。
+title: "[feat] "
+labels: [feature]
+body:
+  - type: textarea
+    attributes:
+      label: 背景与目标
+      description: 哪个角色在什么情境需要解决什么问题？
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 范围与非目标
+      description: 本次包含什么，明确不包含什么，避免开发中无声扩大范围。
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: 验收条件
+      description: 以用户可观察的行为描述。不要只写“新增接口”或“测试通过”。
+      placeholder: |
+        - [ ] 作为 ...，当 ... 时，可以 ...
+        - [ ] 无权限用户 ...
+        - [ ] 空数据或错误场景 ...
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: 数据与权限影响
+      options:
+        - label: 不涉及个人信息、权限或数据域。
+        - label: 涉及个人信息、权限或数据域，已在下方说明。
+  - type: textarea
+    attributes:
+      label: 数据、权限和接口说明
+      description: 涉及的角色、数据域、敏感字段、数据库迁移或 API 兼容性。

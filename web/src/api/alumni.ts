@@ -80,9 +80,9 @@ export const alumniApi = {
   },
 
   importData(file: File, dataDomainID?: number) {
-	const formData = new FormData();
-	formData.append('file', file);
-	if (dataDomainID) formData.append('data_domain_id', String(dataDomainID));
+    const formData = new FormData();
+    formData.append('file', file);
+    if (dataDomainID) formData.append('data_domain_id', String(dataDomainID));
 
     return request<AlumniImportResult>({
       method: 'POST',
@@ -90,7 +90,7 @@ export const alumniApi = {
       data: formData,
     });
   },
-  
+
   listFiles(id: number) {
     return request<AlumniFileListResponse>({
       method: 'GET',
@@ -98,7 +98,11 @@ export const alumniApi = {
     });
   },
 
-  async uploadFile(id: number, fileType: 'degree_archive' | 'academic_record', file: File): Promise<AlumniFileItem> {
+  async uploadFile(
+    id: number,
+    fileType: 'degree_archive' | 'academic_record',
+    file: File,
+  ): Promise<AlumniFileItem> {
     // 1. 请求预签名上传 URL
     const { file_id, upload_url } = await request<AlumniFileUploadURLResponse>({
       method: 'POST',

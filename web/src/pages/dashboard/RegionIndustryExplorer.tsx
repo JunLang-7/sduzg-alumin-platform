@@ -130,8 +130,7 @@ const chinaProvinceGeoJSON = {
   features: chinaGeoJSON.features
     .filter(
       (feature) =>
-        Boolean(feature.properties?.name) &&
-        feature.properties?.name !== '香港特别行政区',
+        Boolean(feature.properties?.name) && feature.properties?.name !== '香港特别行政区',
     )
     .map((feature) => {
       if (feature.geometry.type !== 'MultiPolygon') return feature;
@@ -248,12 +247,9 @@ const cityAliases = new Map<string, AlumniRegion>();
   });
 });
 
-const locationAliases = [...new Set([
-  '山东省',
-  '山东',
-  ...cityAliases.keys(),
-  ...provinceAliases.keys(),
-])].sort((left, right) => right.length - left.length);
+const locationAliases = [
+  ...new Set(['山东省', '山东', ...cityAliases.keys(), ...provinceAliases.keys()]),
+].sort((left, right) => right.length - left.length);
 
 const branchSuffixes = ['分公司', '分行', '支行', '办事处', '联络处', '营业部', '项目部'];
 
@@ -322,10 +318,7 @@ function resolveRegion(item: AlumniProfile): AlumniRegion | null {
     const addressCity = cityAliases.get(earliestAlias(address, cityAliases.keys()));
     return {
       ...branchRegion,
-      city:
-        addressCity?.province === branchRegion.province
-          ? addressCity.city
-          : branchRegion.city,
+      city: addressCity?.province === branchRegion.province ? addressCity.city : branchRegion.city,
     };
   }
 
@@ -339,19 +332,12 @@ function resolveRegion(item: AlumniProfile): AlumniRegion | null {
     const addressCity = cityAliases.get(earliestAlias(address, cityAliases.keys()));
     return {
       ...workRegion,
-      city:
-        addressCity?.province === workRegion.province
-          ? addressCity.city
-          : workRegion.city,
+      city: addressCity?.province === workRegion.province ? addressCity.city : workRegion.city,
     };
   }
 
   const addressAlias = earliestAlias(address, locationAliases);
   return regionFromAlias(addressAlias, address);
-}
-
-function profileLocationText(item: AlumniProfile) {
-  return normalize(`${item.work_unit || ''}${item.mailing_address || ''}`);
 }
 
 function locationTextMatches(text: string, location: string) {
@@ -374,15 +360,9 @@ function administrativeStem(name: string) {
   );
 }
 
-function matchDistrictName(
-  text: string,
-  districtNames: string[],
-  parentCity: string,
-) {
+function matchDistrictName(text: string, districtNames: string[], parentCity: string) {
   if (!text) return '';
-  const orderedNames = [...districtNames].sort(
-    (left, right) => right.length - left.length,
-  );
+  const orderedNames = [...districtNames].sort((left, right) => right.length - left.length);
 
   const fullNameMatch = orderedNames.find((name) => text.includes(name));
   if (fullNameMatch) return fullNameMatch;
@@ -391,11 +371,7 @@ function matchDistrictName(
   return (
     orderedNames.find((name) => {
       const shortName = administrativeStem(name);
-      return (
-        shortName.length >= 2 &&
-        shortName !== parentStem &&
-        text.includes(shortName)
-      );
+      return shortName.length >= 2 && shortName !== parentStem && text.includes(shortName);
     }) || ''
   );
 }
@@ -415,27 +391,20 @@ function assignProfileToDistrict(
   );
 }
 
-function findMapLoader<T>(
-  loaders: Record<string, () => Promise<T>>,
-  adcode: number,
-) {
+function findMapLoader<T>(loaders: Record<string, () => Promise<T>>, adcode: number) {
   const suffix = `/${adcode}.json`;
-  return Object.entries(loaders).find(([path]) =>
-    path.replace(/\\/gu, '/').endsWith(suffix),
-  )?.[1];
+  return Object.entries(loaders).find(([path]) => path.replace(/\\/gu, '/').endsWith(suffix))?.[1];
 }
 
 function createAdaptiveHeatValueMap(counts: number[]) {
-  const positiveCounts = [...new Set(counts.filter((count) => count > 0))]
-    .sort((left, right) => left - right);
+  const positiveCounts = [...new Set(counts.filter((count) => count > 0))].sort(
+    (left, right) => left - right,
+  );
   const maxCount = positiveCounts[positiveCounts.length - 1] || 1;
   const values = new Map<number, number>();
 
   positiveCounts.forEach((count, index) => {
-    const rank =
-      positiveCounts.length === 1
-        ? 0.72
-        : index / (positiveCounts.length - 1);
+    const rank = positiveCounts.length === 1 ? 0.72 : index / (positiveCounts.length - 1);
     const magnitude = Math.log1p(count) / Math.log1p(maxCount);
     values.set(count, 0.1 + (rank * 0.78 + magnitude * 0.22) * 0.9);
   });
@@ -475,9 +444,7 @@ function interpolateMapColor(value: number) {
   const ratio = position - leftIndex;
   const left = parseHexColor(starMapColors[leftIndex]);
   const right = parseHexColor(starMapColors[rightIndex]);
-  return left.map((channel, index) =>
-    Math.round(channel + (right[index] - channel) * ratio),
-  );
+  return left.map((channel, index) => Math.round(channel + (right[index] - channel) * ratio));
 }
 
 function rgbColor(channels: number[], brightness = 1) {
@@ -492,8 +459,9 @@ function formatLegendCount(count: number) {
 }
 
 function createHeatLegend(counts: number[]): HeatLegendItem[] {
-  const positiveCounts = [...new Set(counts.filter((count) => count > 0))]
-    .sort((left, right) => left - right);
+  const positiveCounts = [...new Set(counts.filter((count) => count > 0))].sort(
+    (left, right) => left - right,
+  );
   const valueMap = createAdaptiveHeatValueMap(counts);
   const items: HeatLegendItem[] = [
     {
@@ -507,8 +475,7 @@ function createHeatLegend(counts: number[]): HeatLegendItem[] {
   const binCount = Math.min(5, positiveCounts.length);
   for (let index = 0; index < binCount; index += 1) {
     const startIndex = Math.floor((index * positiveCounts.length) / binCount);
-    const endIndex =
-      Math.floor(((index + 1) * positiveCounts.length) / binCount) - 1;
+    const endIndex = Math.floor(((index + 1) * positiveCounts.length) / binCount) - 1;
     const min = positiveCounts[startIndex];
     const max = positiveCounts[Math.max(startIndex, endIndex)];
     const value = valueMap.get(max) || 0.1;
@@ -538,10 +505,7 @@ function MapHeatLegend({ items }: { items: HeatLegendItem[] }) {
   );
 }
 
-function starGlowStyle(
-  value: number,
-  pulse: number,
-) {
+function starGlowStyle(value: number, pulse: number) {
   if (value < 0) {
     return {
       areaColor: '#09275f',
@@ -560,12 +524,8 @@ function starGlowStyle(
   const pulseDarkness = 1 - easedPulse * (0.38 + value * 0.12);
   return {
     areaColor: rgbColor(baseColor, pulseDarkness),
-    shadowBlur: Math.round(
-      3 + value * 12 + easedPulse * (10 + value * 22),
-    ),
-    shadowColor: warmGlow
-      ? `rgba(255, 224, 105, ${alpha})`
-      : `rgba(76, 220, 255, ${alpha})`,
+    shadowBlur: Math.round(3 + value * 12 + easedPulse * (10 + value * 22)),
+    shadowColor: warmGlow ? `rgba(255, 224, 105, ${alpha})` : `rgba(76, 220, 255, ${alpha})`,
     opacity: 1,
     borderColor: warmGlow
       ? `rgba(255, 239, 155, ${0.48 + easedPulse * 0.5})`
@@ -690,10 +650,7 @@ export function RegionIndustryExplorer({
       interactionUntilRef.current = Date.now() + 900;
     });
     renderer.on('mouseup', () => {
-      interactionUntilRef.current = Math.max(
-        interactionUntilRef.current,
-        Date.now() + 520,
-      );
+      interactionUntilRef.current = Math.max(interactionUntilRef.current, Date.now() + 520);
     });
     renderer.on('click', (event) => {
       if (!event.target) {
@@ -721,11 +678,12 @@ export function RegionIndustryExplorer({
   const regionCounts = useMemo(() => {
     const counts = new Map<string, number>();
     alumniWithRegion.forEach(({ region }) => {
-      const name = mapMode === 'shandong'
-        ? region?.province === '山东省'
-          ? region.city
-          : undefined
-        : region?.province;
+      const name =
+        mapMode === 'shandong'
+          ? region?.province === '山东省'
+            ? region.city
+            : undefined
+          : region?.province;
       if (name) {
         counts.set(name, (counts.get(name) || 0) + 1);
       }
@@ -738,10 +696,7 @@ export function RegionIndustryExplorer({
     () => mapRegions.map((name) => regionCounts.get(name) || 0),
     [mapRegions, regionCounts],
   );
-  const mapHeatValues = useMemo(
-    () => createAdaptiveHeatValues(mapRegionCounts),
-    [mapRegionCounts],
-  );
+  const mapHeatValues = useMemo(() => createAdaptiveHeatValues(mapRegionCounts), [mapRegionCounts]);
   const mapData = useMemo(
     () =>
       mapRegions.map((name, index): MapDatum => {
@@ -759,45 +714,31 @@ export function RegionIndustryExplorer({
               : undefined,
         };
       }),
-    [
-      mapHeatValues,
-      mapMode,
-      mapRegionCounts,
-      mapRegions,
-      selectedRegion,
-    ],
+    [mapHeatValues, mapMode, mapRegionCounts, mapRegions, selectedRegion],
   );
 
-  const baseRegionAlumni = useMemo(
-    () => {
-      const parentCity = drillMap?.level === 'city' ? drillMap.name : '';
-      return alumniWithRegion
-        .filter(({ profile, region }) => {
-          const inSelectedRegion =
-            mapMode === 'shandong'
-              ? region?.province === '山东省' && region.city === selectedRegion
-              : region?.province === selectedRegion;
-          if (!inSelectedRegion) return false;
+  const baseRegionAlumni = useMemo(() => {
+    const parentCity = drillMap?.level === 'city' ? drillMap.name : '';
+    return alumniWithRegion
+      .filter(({ profile, region }) => {
+        const inSelectedRegion =
+          mapMode === 'shandong'
+            ? region?.province === '山东省' && region.city === selectedRegion
+            : region?.province === selectedRegion;
+        if (!inSelectedRegion) return false;
 
-          if (
-            parentCity &&
-            region?.city !== parentCity &&
-            !profileMatchesLocation(profile, parentCity)
-          ) {
-            return false;
-          }
+        if (
+          parentCity &&
+          region?.city !== parentCity &&
+          !profileMatchesLocation(profile, parentCity)
+        ) {
+          return false;
+        }
 
-          return true;
-        })
-        .map(({ profile }) => profile);
-    },
-    [
-      alumniWithRegion,
-      drillMap,
-      mapMode,
-      selectedRegion,
-    ],
-  );
+        return true;
+      })
+      .map(({ profile }) => profile);
+  }, [alumniWithRegion, drillMap, mapMode, selectedRegion]);
 
   const cityDistrictAssignments = useMemo(() => {
     if (drillMap?.level !== 'city') return new Map<number, string>();
@@ -808,12 +749,7 @@ export function RegionIndustryExplorer({
     return new Map(
       baseRegionAlumni.map((profile) => [
         profile.id,
-        assignProfileToDistrict(
-          profile,
-          districtNames,
-          fallbackDistrict,
-          drillMap.name,
-        ),
+        assignProfileToDistrict(profile, districtNames, fallbackDistrict, drillMap.name),
       ]),
     );
   }, [baseRegionAlumni, drillMap]);
@@ -826,15 +762,8 @@ export function RegionIndustryExplorer({
         (profile) => cityDistrictAssignments.get(profile.id) === selectedDistrict,
       );
     }
-    return baseRegionAlumni.filter((profile) =>
-      profileMatchesLocation(profile, selectedDistrict),
-    );
-  }, [
-    baseRegionAlumni,
-    cityDistrictAssignments,
-    drillMap,
-    selectedDistrict,
-  ]);
+    return baseRegionAlumni.filter((profile) => profileMatchesLocation(profile, selectedDistrict));
+  }, [baseRegionAlumni, cityDistrictAssignments, drillMap, selectedDistrict]);
 
   const industries = useMemo(() => {
     const counts = new Map<string, number>();
@@ -889,9 +818,7 @@ export function RegionIndustryExplorer({
         (shandongGeoJSON.features as MapFeature[]).find(
           (feature) => feature.properties?.name === city,
         )?.properties?.adcode;
-      const loader = resolvedAdcode
-        ? findMapLoader(cityMapLoaders, resolvedAdcode)
-        : undefined;
+      const loader = resolvedAdcode ? findMapLoader(cityMapLoaders, resolvedAdcode) : undefined;
       const fallbackLoader = shandongCityMapLoaders[city as keyof typeof shandongCityMapLoaders];
       const geoJSON = loader
         ? (await loader()).default
@@ -903,10 +830,7 @@ export function RegionIndustryExplorer({
         return;
       }
       const mapName = `alumni-city-${resolvedAdcode || city}`;
-      echarts.registerMap(
-        mapName,
-        geoJSON as unknown as Parameters<typeof echarts.registerMap>[1],
-      );
+      echarts.registerMap(mapName, geoJSON as unknown as Parameters<typeof echarts.registerMap>[1]);
       if (!parent || mapMode === 'shandong') {
         updateSelectedRegion(city);
       }
@@ -918,9 +842,8 @@ export function RegionIndustryExplorer({
         level: 'city',
         features: geoJSON.features as MapFeature[],
         seatName:
-          (citySeats as Record<string, { city: string; district: string }>)[
-            String(resolvedAdcode)
-          ]?.district || geoJSON.features[0]?.properties?.name,
+          (citySeats as Record<string, { city: string; district: string }>)[String(resolvedAdcode)]
+            ?.district || geoJSON.features[0]?.properties?.name,
       });
       setMapModalOpen(true);
     } catch {
@@ -946,10 +869,7 @@ export function RegionIndustryExplorer({
       }
       const geoJSON = (await loader()).default;
       const mapName = `alumni-province-${adcode}`;
-      echarts.registerMap(
-        mapName,
-        geoJSON as unknown as Parameters<typeof echarts.registerMap>[1],
-      );
+      echarts.registerMap(mapName, geoJSON as unknown as Parameters<typeof echarts.registerMap>[1]);
       updateSelectedDistrict('');
       setDrillParent(null);
       setDrillMap({
@@ -969,9 +889,7 @@ export function RegionIndustryExplorer({
   const drillNames = useMemo(
     () =>
       drillMap
-        ? drillMap.features
-            .map((feature) => feature.properties?.name || '')
-            .filter(Boolean)
+        ? drillMap.features.map((feature) => feature.properties?.name || '').filter(Boolean)
         : [],
     [drillMap],
   );
@@ -979,28 +897,21 @@ export function RegionIndustryExplorer({
   const drillCounts = useMemo(
     () =>
       drillNames.map((name) => {
-      if (drillMap?.level === 'city') {
-        return [...cityDistrictAssignments.values()].filter(
-          (district) => district === name,
-        ).length;
-      }
-      return alumniWithRegion.filter(({ profile, region }) => {
-        if (drillMap?.level === 'province') {
-          return (
-            region?.province === selectedRegion &&
-            (region.city === name || profileMatchesLocation(profile, name))
-          );
+        if (drillMap?.level === 'city') {
+          return [...cityDistrictAssignments.values()].filter((district) => district === name)
+            .length;
         }
-        return profileMatchesLocation(profile, name);
-      }).length;
+        return alumniWithRegion.filter(({ profile, region }) => {
+          if (drillMap?.level === 'province') {
+            return (
+              region?.province === selectedRegion &&
+              (region.city === name || profileMatchesLocation(profile, name))
+            );
+          }
+          return profileMatchesLocation(profile, name);
+        }).length;
       }),
-    [
-      alumniWithRegion,
-      cityDistrictAssignments,
-      drillMap,
-      drillNames,
-      selectedRegion,
-    ],
+    [alumniWithRegion, cityDistrictAssignments, drillMap, drillNames, selectedRegion],
   );
 
   const drillData = useMemo(() => {
@@ -1032,11 +943,7 @@ export function RegionIndustryExplorer({
 
     if (reducedMotion) {
       updateChartPulse(mainChartRef.current, mapData, new Map());
-      updateChartPulse(
-        detailChartRef.current,
-        detailAnimationData,
-        new Map(),
-      );
+      updateChartPulse(detailChartRef.current, detailAnimationData, new Map());
       return undefined;
     }
 
@@ -1054,8 +961,7 @@ export function RegionIndustryExplorer({
       starOffsets.forEach((offset, starIndex) => {
         const activeIndex = indexes[(cursor + starIndex) % indexes.length];
         const pulse =
-          pulseFrames[(frameIndex + offset) % pulseFrames.length] *
-          starStrengths[starIndex];
+          pulseFrames[(frameIndex + offset) % pulseFrames.length] * starStrengths[starIndex];
         pulses.set(activeIndex, Math.max(pulses.get(activeIndex) || 0, pulse));
       });
       return pulses;
@@ -1064,20 +970,13 @@ export function RegionIndustryExplorer({
     const renderPulse = () => {
       const now = Date.now();
       const mainPulses = createStarPulses(mainActiveIndexes, mainCursor);
-      const detailPulses = createStarPulses(
-        detailActiveIndexes,
-        detailCursor,
-      );
+      const detailPulses = createStarPulses(detailActiveIndexes, detailCursor);
 
       if (now >= mainInteractionUntilRef.current) {
         updateChartPulse(mainChartRef.current, mapData, mainPulses);
       }
       if (now >= detailInteractionUntilRef.current) {
-        updateChartPulse(
-          detailChartRef.current,
-          detailAnimationData,
-          detailPulses,
-        );
+        updateChartPulse(detailChartRef.current, detailAnimationData, detailPulses);
       }
 
       frameIndex += 1;
@@ -1151,19 +1050,9 @@ export function RegionIndustryExplorer({
           layoutSize: mapMode === 'shandong' ? (view === 'map' ? '106%' : '94%') : '106%',
           label: {
             show: true,
-            formatter:
-              mapMode === 'china'
-                ? formatChinaProvinceLabel
-                : undefined,
+            formatter: mapMode === 'china' ? formatChinaProvinceLabel : undefined,
             color: 'rgba(235, 249, 255, 0.88)',
-            fontSize:
-              mapMode === 'china'
-                ? expanded
-                  ? 8
-                  : 6
-                : expanded
-                  ? 10
-                  : 8,
+            fontSize: mapMode === 'china' ? (expanded ? 8 : 6) : expanded ? 10 : 8,
             fontWeight: mapMode === 'china' ? 600 : 400,
             align: 'center',
             verticalAlign: 'middle',
@@ -1242,17 +1131,10 @@ export function RegionIndustryExplorer({
                   : '98%',
           label: {
             show: true,
-            formatter:
-              !drillMap && mapMode === 'china'
-                ? formatChinaProvinceLabel
-                : undefined,
+            formatter: !drillMap && mapMode === 'china' ? formatChinaProvinceLabel : undefined,
             color: '#eaf8ff',
             fontSize:
-              !drillMap && mapMode === 'china'
-                ? 10
-                : drillMap?.level === 'province'
-                  ? 10
-                  : 11,
+              !drillMap && mapMode === 'china' ? 10 : drillMap?.level === 'province' ? 10 : 11,
             fontWeight: 700,
             align: 'center',
             verticalAlign: 'middle',
@@ -1304,15 +1186,11 @@ export function RegionIndustryExplorer({
           return;
         }
         if (drillMap.level === 'province') {
-          updateSelectedDistrict(
-            selectedDistrict === params.name ? '' : params.name,
-          );
+          updateSelectedDistrict(selectedDistrict === params.name ? '' : params.name);
           return;
         }
         if (drillMap.level === 'city' && drillNames.includes(params.name)) {
-          updateSelectedDistrict(
-            selectedDistrict === params.name ? '' : params.name,
-          );
+          updateSelectedDistrict(selectedDistrict === params.name ? '' : params.name);
         }
       },
       dblclick: async (params: { name?: string }) => {
@@ -1329,9 +1207,7 @@ export function RegionIndustryExplorer({
           return;
         }
         if (drillMap.level !== 'province') return;
-        const feature = drillMap.features.find(
-          (item) => item.properties?.name === params.name,
-        );
+        const feature = drillMap.features.find((item) => item.properties?.name === params.name);
         const adcode = feature?.properties?.adcode;
         if (adcode && feature.properties?.childrenNum) {
           await openCityDetail(params.name, adcode, drillMap);
@@ -1342,7 +1218,9 @@ export function RegionIndustryExplorer({
   );
 
   return (
-    <div className={`region-industry-explorer region-view-${view} ${expanded ? 'region-industry-expanded' : ''}`}>
+    <div
+      className={`region-industry-explorer region-view-${view} ${expanded ? 'region-industry-expanded' : ''}`}
+    >
       {view !== 'industry' ? (
         <div className="region-map-toolbar">
           <Segmented
@@ -1395,31 +1273,63 @@ export function RegionIndustryExplorer({
       ) : null}
 
       {view !== 'industry' ? (
-      <div className={`region-map-insights ${view === 'map' ? 'region-map-only' : ''}`}>
-        <div className="region-map-canvas">
-          <ReactECharts
-            key={`${mapMode}-${expanded}`}
-            option={mapOption}
-            onEvents={mapEvents}
-            onChartReady={(chart) => {
-              mainChartRef.current = chart;
-              bindBlankMapClick(
-                chart,
-                clearMainMapSelectionRef,
-                mainAreaClickAtRef,
-                mainInteractionUntilRef,
-              );
-            }}
-            notMerge
-            lazyUpdate
-            style={{ width: '100%', height: '100%' }}
-          />
-        </div>
+        <div className={`region-map-insights ${view === 'map' ? 'region-map-only' : ''}`}>
+          <div className="region-map-canvas">
+            <ReactECharts
+              key={`${mapMode}-${expanded}`}
+              option={mapOption}
+              onEvents={mapEvents}
+              onChartReady={(chart) => {
+                mainChartRef.current = chart;
+                bindBlankMapClick(
+                  chart,
+                  clearMainMapSelectionRef,
+                  mainAreaClickAtRef,
+                  mainInteractionUntilRef,
+                );
+              }}
+              notMerge
+              lazyUpdate
+              style={{ width: '100%', height: '100%' }}
+            />
+          </div>
 
-        {view === 'combined' ? (
+          {view === 'combined' ? (
+            <div className="region-industry-ranks">
+              <header>
+                <strong>行业分布</strong>
+                <span>{selectedIndustry || '全部行业'}</span>
+              </header>
+              <div>
+                {industries.map((item) => (
+                  <button
+                    type="button"
+                    key={item.name}
+                    className={selectedIndustry === item.name ? 'is-active' : ''}
+                    onClick={() => {
+                      setSelectedIndustry((current) => (current === item.name ? '' : item.name));
+                      setPeopleKeyword('');
+                    }}
+                  >
+                    <span>{item.name}</span>
+                    <i>
+                      <b
+                        style={{ width: `${Math.max(8, (item.value / maxIndustryValue) * 100)}%` }}
+                      />
+                    </i>
+                    <strong>{item.value}</strong>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {view === 'industry' ? (
         <div className="region-industry-ranks">
           <header>
-            <strong>行业分布</strong>
+            <strong>{selectedRegion ? `${selectedRegion}行业分布` : '请选择区域'}</strong>
             <span>{selectedIndustry || '全部行业'}</span>
           </header>
           <div>
@@ -1442,73 +1352,46 @@ export function RegionIndustryExplorer({
             ))}
           </div>
         </div>
-        ) : null}
-      </div>
-      ) : null}
-
-      {view === 'industry' ? (
-        <div className="region-industry-ranks">
-          <header>
-            <strong>{selectedRegion ? `${selectedRegion}行业分布` : '请选择区域'}</strong>
-            <span>{selectedIndustry || '全部行业'}</span>
-          </header>
-          <div>
-            {industries.map((item) => (
-              <button
-                type="button"
-                key={item.name}
-                className={selectedIndustry === item.name ? 'is-active' : ''}
-                onClick={() => {
-                  setSelectedIndustry((current) => (current === item.name ? '' : item.name));
-                  setPeopleKeyword('');
-                }}
-              >
-                <span>{item.name}</span>
-                <i><b style={{ width: `${Math.max(8, (item.value / maxIndustryValue) * 100)}%` }} /></i>
-                <strong>{item.value}</strong>
-              </button>
-            ))}
-          </div>
-        </div>
       ) : null}
 
       {view !== 'map' ? (
-      <div className="region-alumni-results">
-        <div className="region-result-title">
-          <strong>
-            {selectedDistrict || selectedRegion || '请选择区域'} · {selectedIndustry || '全部行业'}人员
-            <b>{visibleAlumni.length}</b>
-          </strong>
-          <span>点击地图筛选区域，点击人员查看完整信息</span>
-        </div>
-        <div className="region-person-search">
-          <Input
-            allowClear
-            prefix={<SearchOutlined />}
-            value={peopleKeyword}
-            placeholder="在当前人员中检索姓名、单位、职务、导师等..."
-            onChange={(event) => setPeopleKeyword(event.target.value)}
-          />
-          <span>
-            {peopleKeyword.trim()
-              ? `匹配 ${visibleAlumni.length} 人`
-              : `当前 ${industryAlumni.length} 人`}
-          </span>
-        </div>
-        {visibleAlumni.length ? (
-          <div className="region-person-list">
-            {visibleAlumni.map((item) => (
-              <button type="button" key={item.id} onClick={() => onSelectAlumni(item)}>
-                <span>{item.name}</span>
-                <small>{item.industry || UNKNOWN_INDUSTRY}</small>
-                <em>{item.work_unit || '未填单位'}</em>
-              </button>
-            ))}
+        <div className="region-alumni-results">
+          <div className="region-result-title">
+            <strong>
+              {selectedDistrict || selectedRegion || '请选择区域'} ·{' '}
+              {selectedIndustry || '全部行业'}人员
+              <b>{visibleAlumni.length}</b>
+            </strong>
+            <span>点击地图筛选区域，点击人员查看完整信息</span>
           </div>
-        ) : (
-          <div className="region-result-empty">当前区域和行业暂无匹配人员</div>
-        )}
-      </div>
+          <div className="region-person-search">
+            <Input
+              allowClear
+              prefix={<SearchOutlined />}
+              value={peopleKeyword}
+              placeholder="在当前人员中检索姓名、单位、职务、导师等..."
+              onChange={(event) => setPeopleKeyword(event.target.value)}
+            />
+            <span>
+              {peopleKeyword.trim()
+                ? `匹配 ${visibleAlumni.length} 人`
+                : `当前 ${industryAlumni.length} 人`}
+            </span>
+          </div>
+          {visibleAlumni.length ? (
+            <div className="region-person-list">
+              {visibleAlumni.map((item) => (
+                <button type="button" key={item.id} onClick={() => onSelectAlumni(item)}>
+                  <span>{item.name}</span>
+                  <small>{item.industry || UNKNOWN_INDUSTRY}</small>
+                  <em>{item.work_unit || '未填单位'}</em>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="region-result-empty">当前区域和行业暂无匹配人员</div>
+          )}
+        </div>
       ) : null}
 
       {view !== 'industry' ? (
@@ -1586,7 +1469,13 @@ export function RegionIndustryExplorer({
                       }}
                     >
                       <span>{item.name}</span>
-                      <i><b style={{ width: `${Math.max(8, (item.value / maxIndustryValue) * 100)}%` }} /></i>
+                      <i>
+                        <b
+                          style={{
+                            width: `${Math.max(8, (item.value / maxIndustryValue) * 100)}%`,
+                          }}
+                        />
+                      </i>
                       <strong>{item.value}</strong>
                     </button>
                   ))}

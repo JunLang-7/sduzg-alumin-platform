@@ -1,9 +1,5 @@
 import { request } from './http';
-import type {
-  DashboardDimension,
-  DashboardOverview,
-  DistributionItem,
-} from '../types/dashboard';
+import type { DashboardDimension, DashboardOverview, DistributionItem } from '../types/dashboard';
 
 export const dashboardApi = {
   overview() {

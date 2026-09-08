@@ -1,4 +1,10 @@
-import { LockOutlined, LoginOutlined, MailOutlined, MobileOutlined, UserOutlined } from '@ant-design/icons';
+import {
+  LockOutlined,
+  LoginOutlined,
+  MailOutlined,
+  MobileOutlined,
+  UserOutlined,
+} from '@ant-design/icons';
 import { Button, Form, Input, Modal, Space, Tabs, Typography, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -14,13 +20,6 @@ interface LocationState {
   from?: {
     pathname?: string;
   };
-}
-
-function normalizeLoginInput(raw: string): Partial<LoginRequest> {
-  const trimmed = raw.trim();
-  if (/^1[3-9]\d{9}$/.test(trimmed)) return { mobile: trimmed };
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return { email: trimmed };
-  return { account: trimmed };
 }
 
 interface CountdownButtonProps {
@@ -79,59 +78,74 @@ export function LoginPage() {
   const [setupLoading, setSetupLoading] = useState(false);
   const [registrationToken, setRegistrationToken] = useState<string | null>(null);
 
-  const navigateAfterLogin = useCallback((user: CurrentUser) => {
-    const state = location.state as LocationState | null;
-    navigate(state?.from?.pathname || getDefaultPath(user.role), { replace: true });
-  }, [location.state, navigate]);
+  const navigateAfterLogin = useCallback(
+    (user: CurrentUser) => {
+      const state = location.state as LocationState | null;
+      navigate(state?.from?.pathname || getDefaultPath(user.role), { replace: true });
+    },
+    [location.state, navigate],
+  );
 
-  const handleCodeLogin = useCallback(async (loginPayload: LoginRequest) => {
-    const { user, registrationToken: regToken } = await login(loginPayload);
-    if (regToken) {
-      setRegistrationToken(regToken);
-      setupForm.resetFields();
-      setSetupModalOpen(true);
-    } else if (user) {
-      navigateAfterLogin(user);
-    }
-  }, [login, setupForm, navigateAfterLogin]);
-
-  const onPasswordFinish = useCallback(async (values: LoginRequest) => {
-    try {
-      const { user } = await login({ ...values });
-      if (user) {
+  const handleCodeLogin = useCallback(
+    async (loginPayload: LoginRequest) => {
+      const { user, registrationToken: regToken } = await login(loginPayload);
+      if (regToken) {
+        setRegistrationToken(regToken);
+        setupForm.resetFields();
+        setSetupModalOpen(true);
+      } else if (user) {
         navigateAfterLogin(user);
       }
-    } catch (error) {
-      const err = error as Error;
-      message.error(err.message || '登录失败');
-    }
-  }, [login, navigateAfterLogin]);
+    },
+    [login, setupForm, navigateAfterLogin],
+  );
 
-  const onSmsFinish = useCallback(async (values: Record<string, string>) => {
-    try {
-      await handleCodeLogin({
-        mobile: values.phone,
-        code: values.code,
-        grant_type: 'sms_code',
-      });
-    } catch (error) {
-      const err = error as Error;
-      message.error(err.message || '登录失败');
-    }
-  }, [handleCodeLogin]);
+  const onPasswordFinish = useCallback(
+    async (values: LoginRequest) => {
+      try {
+        const { user } = await login({ ...values });
+        if (user) {
+          navigateAfterLogin(user);
+        }
+      } catch (error) {
+        const err = error as Error;
+        message.error(err.message || '登录失败');
+      }
+    },
+    [login, navigateAfterLogin],
+  );
 
-  const onEmailFinish = useCallback(async (values: Record<string, string>) => {
-    try {
-      await handleCodeLogin({
-        email: values.email,
-        code: values.code,
-        grant_type: 'email_code',
-      });
-    } catch (error) {
-      const err = error as Error;
-      message.error(err.message || '登录失败');
-    }
-  }, [handleCodeLogin]);
+  const onSmsFinish = useCallback(
+    async (values: Record<string, string>) => {
+      try {
+        await handleCodeLogin({
+          mobile: values.phone,
+          code: values.code,
+          grant_type: 'sms_code',
+        });
+      } catch (error) {
+        const err = error as Error;
+        message.error(err.message || '登录失败');
+      }
+    },
+    [handleCodeLogin],
+  );
+
+  const onEmailFinish = useCallback(
+    async (values: Record<string, string>) => {
+      try {
+        await handleCodeLogin({
+          email: values.email,
+          code: values.code,
+          grant_type: 'email_code',
+        });
+      } catch (error) {
+        const err = error as Error;
+        message.error(err.message || '登录失败');
+      }
+    },
+    [handleCodeLogin],
+  );
 
   const onSetupPassword = useCallback(async () => {
     try {
@@ -180,13 +194,22 @@ export function LoginPage() {
       key: 'password',
       label: '密码登录',
       children: (
-        <Form<LoginRequest> form={passwordForm} layout="vertical" size="large" onFinish={onPasswordFinish}>
+        <Form<LoginRequest>
+          form={passwordForm}
+          layout="vertical"
+          size="large"
+          onFinish={onPasswordFinish}
+        >
           <Form.Item
             label="用户名"
             name="account"
             rules={[{ required: true, message: '请输入用户名' }]}
           >
-            <Input prefix={<UserOutlined />} autoComplete="username" placeholder="手机号/邮箱/账号" />
+            <Input
+              prefix={<UserOutlined />}
+              autoComplete="username"
+              placeholder="手机号/邮箱/账号"
+            />
           </Form.Item>
           <Form.Item
             label="密码"
@@ -195,13 +218,7 @@ export function LoginPage() {
           >
             <Input.Password prefix={<LockOutlined />} autoComplete="current-password" />
           </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<LoginOutlined />}
-            loading={loading}
-            block
-          >
+          <Button type="primary" htmlType="submit" icon={<LoginOutlined />} loading={loading} block>
             登录
           </Button>
         </Form>
@@ -234,18 +251,10 @@ export function LoginPage() {
               prefix={<LockOutlined />}
               placeholder="6位数字验证码"
               maxLength={6}
-              suffix={
-                <CountdownButton onClick={sendSmsCode}>获取验证码</CountdownButton>
-              }
+              suffix={<CountdownButton onClick={sendSmsCode}>获取验证码</CountdownButton>}
             />
           </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<LoginOutlined />}
-            loading={loading}
-            block
-          >
+          <Button type="primary" htmlType="submit" icon={<LoginOutlined />} loading={loading} block>
             登录
           </Button>
         </Form>
@@ -278,18 +287,10 @@ export function LoginPage() {
               prefix={<LockOutlined />}
               placeholder="6位数字验证码"
               maxLength={6}
-              suffix={
-                <CountdownButton onClick={sendEmailCode}>获取验证码</CountdownButton>
-              }
+              suffix={<CountdownButton onClick={sendEmailCode}>获取验证码</CountdownButton>}
             />
           </Form.Item>
-          <Button
-            type="primary"
-            htmlType="submit"
-            icon={<LoginOutlined />}
-            loading={loading}
-            block
-          >
+          <Button type="primary" htmlType="submit" icon={<LoginOutlined />} loading={loading} block>
             登录
           </Button>
         </Form>

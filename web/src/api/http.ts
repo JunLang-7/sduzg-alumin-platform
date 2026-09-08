@@ -35,12 +35,7 @@ export function cacheAccessToken(token: string | null) {
 }
 
 function isEnvelope<T>(value: unknown): value is ApiEnvelope<T> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    'code' in value &&
-    'message' in value
-  );
+  return typeof value === 'object' && value !== null && 'code' in value && 'message' in value;
 }
 
 function redirectToLogin() {
@@ -90,9 +85,7 @@ export async function request<T>(config: AxiosRequestConfig): Promise<T> {
     const axiosError = error as AxiosError<ApiEnvelope<unknown>>;
     const status = axiosError.response?.status;
     const message =
-      axiosError.response?.data?.message ||
-      axiosError.message ||
-      '网络异常，请稍后重试';
+      axiosError.response?.data?.message || axiosError.message || '网络异常，请稍后重试';
 
     if (status === 401) {
       cacheAccessToken(null);

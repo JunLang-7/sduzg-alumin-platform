@@ -1,0 +1,166 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  issue-link:
+    name: Linked issue
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require an auto-closing Issue reference
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          if ! printf '%s' "$PR_BODY" | grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+'; then
+            echo 'PR 描述必须使用 Closes #编号、Fixes #编号 或 Resolves #编号关联 Issue。' >&2
+            exit 1
+          fi
+
+  backend:
+    name: Backend quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - run: go mod download
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l $(find . -name '*.go' -type f))"
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go build ./cmd/api
+
+  web:
+    name: Web quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+
+  integration:
+    name: Integration and migration
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test-password
+          MYSQL_DATABASE: sdu_alumni_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ptest-password --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: server
+    env:
+      TEST_MYSQL_DSN: root:test-password@tcp(127.0.0.1:3306)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=Local
+      TEST_REDIS_ADDR: 127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Apply every migration to a clean database
+        run: |
+          for migration in migrations/*.sql; do
+            mysql -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db < "$migration"
+          done
+          test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'users'")" = "users"
+          test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")" = "alumni_profiles"
+      - run: go test -race -count=1 ./...
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Scan Go dependencies reachable by this project
+        working-directory: server
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Scan production npm dependencies
+        working-directory: web
+        run: npm audit --omit=dev --audit-level=high
+
+  containers:
+    name: Containers and health checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Validate Compose configuration
+        run: docker compose config -q
+      - name: Build images
+        run: |
+          docker build --tag sdu-alumni-api-ci ./server
+          docker build --tag sdu-alumni-web-ci ./web
+      - name: Verify API liveness and readiness without optional services
+        run: |
+          docker run --detach --name sdu-alumni-api-ci --publish 18080:8080 --env DB_ENABLED=false --env REDIS_ENABLED=false --env STORAGE_ENABLED=false sdu-alumni-api-ci
+          trap 'docker logs sdu-alumni-api-ci; docker rm -f sdu-alumni-api-ci' EXIT
+          for attempt in $(seq 1 20); do
+            curl --fail --silent http://127.0.0.1:18080/api/v1/health/live && curl --fail --silent http://127.0.0.1:18080/api/v1/health/ready && exit 0
+            sleep 2
+          done
+          exit 1
+      - name: Verify web container serves the built application
+        run: |
+          docker run --detach --name sdu-alumni-web-ci --publish 18081:80 --add-host api:127.0.0.1 --add-host minio:127.0.0.1 sdu-alumni-web-ci
+          trap 'docker logs sdu-alumni-web-ci; docker rm -f sdu-alumni-web-ci' EXIT
+          for attempt in $(seq 1 10); do
+            curl --fail --silent http://127.0.0.1:18081/ > /dev/null && exit 0
+            sleep 2
+          done
+          exit 1

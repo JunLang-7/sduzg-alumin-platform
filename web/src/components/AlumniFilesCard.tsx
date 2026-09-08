@@ -6,17 +6,7 @@ import {
   FileOutlined,
   LoadingOutlined,
 } from '@ant-design/icons';
-import {
-  Button,
-  Card,
-  List,
-  Popconfirm,
-  Space,
-  Spin,
-  Tag,
-  Upload,
-  message,
-} from 'antd';
+import { Button, Card, List, Popconfirm, Space, Spin, Tag, Upload, message } from 'antd';
 import { alumniApi } from '../api/alumni';
 import { useAuthStore } from '../store/authStore';
 import { canManageFiles } from '../utils/access';
@@ -73,10 +63,7 @@ export function AlumniFilesCard({ alumniId }: Props) {
     return null;
   }
 
-  const handleUpload = async (
-    fileType: 'degree_archive' | 'academic_record',
-    file: File,
-  ) => {
+  const handleUpload = async (fileType: 'degree_archive' | 'academic_record', file: File) => {
     setUploading(fileType);
     try {
       await alumniApi.uploadFile(alumniId, fileType, file);
@@ -110,22 +97,18 @@ export function AlumniFilesCard({ alumniId }: Props) {
     }
   };
 
-  const renderFileSection = (
-    fileType: 'degree_archive' | 'academic_record',
-  ) => {
+  const renderFileSection = (fileType: 'degree_archive' | 'academic_record') => {
     const items: AlumniFileItem[] =
       fileType === 'degree_archive'
-        ? files?.degree_archive ?? []
-        : files?.academic_record ?? [];
+        ? (files?.degree_archive ?? [])
+        : (files?.academic_record ?? []);
 
     return (
       <Card
         size="small"
         title={
           <Space>
-            <Tag color={FILE_TYPE_COLORS[fileType]}>
-              {FILE_TYPE_LABELS[fileType]}
-            </Tag>
+            <Tag color={FILE_TYPE_COLORS[fileType]}>{FILE_TYPE_LABELS[fileType]}</Tag>
             <span className="text-secondary">{items.length} 个文件</span>
           </Space>
         }
@@ -142,13 +125,7 @@ export function AlumniFilesCard({ alumniId }: Props) {
             >
               <Button
                 type="link"
-                icon={
-                  uploading === fileType ? (
-                    <LoadingOutlined />
-                  ) : (
-                    <FileAddOutlined />
-                  )
-                }
+                icon={uploading === fileType ? <LoadingOutlined /> : <FileAddOutlined />}
                 disabled={uploading === fileType}
               >
                 {uploading === fileType ? '上传中...' : '上传文件'}
@@ -182,11 +159,7 @@ export function AlumniFilesCard({ alumniId }: Props) {
                           description={`确定删除文件「${item.original_name}」？`}
                           onConfirm={() => handleDelete(item.id)}
                         >
-                          <Button
-                            type="link"
-                            danger
-                            icon={<DeleteOutlined />}
-                          >
+                          <Button type="link" danger icon={<DeleteOutlined />}>
                             删除
                           </Button>
                         </Popconfirm>,

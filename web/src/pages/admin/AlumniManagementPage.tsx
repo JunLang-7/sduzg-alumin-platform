@@ -30,7 +30,12 @@ import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
 import { useAuthStore } from '../../store/authStore';
-import type { AlumniImportResult, AlumniProfile, AlumniProfilePayload, AlumniQuery } from '../../types/alumni';
+import type {
+  AlumniImportResult,
+  AlumniProfile,
+  AlumniProfilePayload,
+  AlumniQuery,
+} from '../../types/alumni';
 import { canReadSensitive } from '../../utils/access';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
@@ -169,7 +174,9 @@ export function AlumniManagementPage() {
         title: '培养类别',
         dataIndex: 'data_domain_id',
         width: 170,
-        render: (value: number) => <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>,
+        render: (value: number) => (
+          <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>
+        ),
       },
       {
         title: '班级',
@@ -192,12 +199,14 @@ export function AlumniManagementPage() {
         width: 140,
       },
       ...(sensitiveReadable
-        ? [{
-            title: '工作单位',
-            dataIndex: 'work_unit',
-            width: 220,
-            ellipsis: true,
-          }]
+        ? [
+            {
+              title: '工作单位',
+              dataIndex: 'work_unit',
+              width: 220,
+              ellipsis: true,
+            },
+          ]
         : []),
       {
         title: '状态',
@@ -365,7 +374,11 @@ export function AlumniManagementPage() {
             />
           </Form.Item>
           <Form.Item name="data_domain_id">
-            <Select allowClear placeholder="培养类别" options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+            <Select
+              allowClear
+              placeholder="培养类别"
+              options={domains.map((domain) => ({ label: domain.name, value: domain.id }))}
+            />
           </Form.Item>
           <Space>
             <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
@@ -374,7 +387,14 @@ export function AlumniManagementPage() {
             <Button icon={<UndoOutlined />} onClick={handleReset}>
               重置
             </Button>
-            <Select value={importDomainID} onChange={setImportDomainID} allowClear placeholder="导入目标培养类别" style={{ width: 170 }} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+            <Select
+              value={importDomainID}
+              onChange={setImportDomainID}
+              allowClear
+              placeholder="导入目标培养类别"
+              style={{ width: 170 }}
+              options={domains.map((domain) => ({ label: domain.name, value: domain.id }))}
+            />
             <Button icon={<UploadOutlined />} loading={importing} onClick={handleImportClick}>
               导入 Excel
             </Button>
@@ -394,9 +414,7 @@ export function AlumniManagementPage() {
                 onClick: ({ key }) => handleExport(key),
               }}
             >
-              <Button icon={<DownloadOutlined />}>
-                导出
-              </Button>
+              <Button icon={<DownloadOutlined />}>导出</Button>
             </Dropdown>
           </Space>
         </Form>
@@ -428,22 +446,21 @@ export function AlumniManagementPage() {
         destroyOnClose
       >
         <Form form={modalForm} layout="vertical" className="modal-grid">
-          <Form.Item
-            label="姓名"
-            name="name"
-            rules={[{ required: true, message: '请输入姓名' }]}
-          >
+          <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input maxLength={100} />
           </Form.Item>
-          <Form.Item
-            label="年级"
-            name="grade"
-            rules={[{ required: true, message: '请输入年级' }]}
-          >
+          <Form.Item label="年级" name="grade" rules={[{ required: true, message: '请输入年级' }]}>
             <Input maxLength={50} />
           </Form.Item>
-          <Form.Item label="培养类别" name="data_domain_id" rules={[{ required: true, message: '请选择培养类别' }]}>
-            <Select disabled={Boolean(editing) || domains.length === 1} options={domains.map((domain) => ({ label: domain.name, value: domain.id }))} />
+          <Form.Item
+            label="培养类别"
+            name="data_domain_id"
+            rules={[{ required: true, message: '请选择培养类别' }]}
+          >
+            <Select
+              disabled={Boolean(editing) || domains.length === 1}
+              options={domains.map((domain) => ({ label: domain.name, value: domain.id }))}
+            />
           </Form.Item>
           <Form.Item label="班级" name="class_name">
             <Input maxLength={100} />
@@ -452,13 +469,18 @@ export function AlumniManagementPage() {
             <Input maxLength={50} />
           </Form.Item>
           <Form.Item label="性别" name="gender">
-            <Select
-              allowClear
-              options={genderOptions.map((value) => ({ label: value, value }))}
-            />
+            <Select allowClear options={genderOptions.map((value) => ({ label: value, value }))} />
           </Form.Item>
-          {sensitiveReadable ? <Form.Item label="手机号" name="mobile"><Input maxLength={30} /></Form.Item> : null}
-          {sensitiveReadable ? <Form.Item label="邮箱" name="email"><Input maxLength={255} /></Form.Item> : null}
+          {sensitiveReadable ? (
+            <Form.Item label="手机号" name="mobile">
+              <Input maxLength={30} />
+            </Form.Item>
+          ) : null}
+          {sensitiveReadable ? (
+            <Form.Item label="邮箱" name="email">
+              <Input maxLength={255} />
+            </Form.Item>
+          ) : null}
           <Form.Item label="专业" name="major">
             <Input maxLength={100} />
           </Form.Item>
@@ -480,9 +502,21 @@ export function AlumniManagementPage() {
               options={industryOptions.map((value) => ({ label: value, value }))}
             />
           </Form.Item>
-          {sensitiveReadable ? <Form.Item label="工作单位" name="work_unit"><Input maxLength={255} /></Form.Item> : null}
-          {sensitiveReadable ? <Form.Item label="职务" name="position"><Input maxLength={100} /></Form.Item> : null}
-          {sensitiveReadable ? <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide"><Input.TextArea rows={3} maxLength={255} showCount /></Form.Item> : null}
+          {sensitiveReadable ? (
+            <Form.Item label="工作单位" name="work_unit">
+              <Input maxLength={255} />
+            </Form.Item>
+          ) : null}
+          {sensitiveReadable ? (
+            <Form.Item label="职务" name="position">
+              <Input maxLength={100} />
+            </Form.Item>
+          ) : null}
+          {sensitiveReadable ? (
+            <Form.Item label="通讯地址" name="mailing_address" className="modal-grid-wide">
+              <Input.TextArea rows={3} maxLength={255} showCount />
+            </Form.Item>
+          ) : null}
           <Form.Item label="管理员备注" name="remark" className="modal-grid-wide">
             <Input.TextArea rows={3} />
           </Form.Item>
