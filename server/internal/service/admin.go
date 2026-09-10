@@ -346,7 +346,11 @@ func mapAdminDataDomains(domains []*model.DataDomain) []dto.AdminDataDomain {
 	result := make([]dto.AdminDataDomain, 0, len(domains))
 	for _, domain := range domains {
 		if domain != nil {
-			result = append(result, dto.AdminDataDomain{ID: domain.ID, Code: domain.Code, Name: domain.Name})
+			name := domain.Name
+			if name == "" {
+				name = common.DataDomainDisplayName(domain.Code)
+			}
+			result = append(result, dto.AdminDataDomain{ID: domain.ID, Code: domain.Code, Name: name})
 		}
 	}
 	return result

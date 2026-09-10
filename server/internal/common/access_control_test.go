@@ -25,6 +25,28 @@ func TestDataDomainCodes(t *testing.T) {
 	}
 }
 
+func TestDataDomainDisplayNames(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		code string
+		want string
+	}{
+		{DataDomainUndergraduate, "本科生"},
+		{DataDomainAcademicGraduate, "学术学位研究生"},
+		{DataDomainMPA, "MPA专业学位研究生"},
+		{"unknown", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.code, func(t *testing.T) {
+			if got := DataDomainDisplayName(tt.code); got != tt.want {
+				t.Fatalf("DataDomainDisplayName(%q) = %q, want %q", tt.code, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAdminPermissionCodes(t *testing.T) {
 	t.Parallel()
 
