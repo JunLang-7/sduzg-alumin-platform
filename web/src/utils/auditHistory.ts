@@ -44,3 +44,11 @@ export function buildAuditQuery(input: AuditQueryInput): AuditQuery {
     ...(input.targetId !== undefined ? { target_id: input.targetId } : {}),
   };
 }
+
+export function buildAlumniHistoryQuery(
+  alumniId: number,
+  page = 1,
+  pageSize = 20,
+): AuditQuery {
+  return buildAuditQuery({ page, pageSize, targetId: alumniId });
+}
