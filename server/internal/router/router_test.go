@@ -826,10 +826,14 @@ func TestSuperAdminAdminsDeleteRouteWithoutDatabase(t *testing.T) {
 }
 
 func testAccessToken(t *testing.T, secret string, expiresAt time.Time) string {
+	return testAccessTokenForUser(t, secret, 1, expiresAt)
+}
+
+func testAccessTokenForUser(t *testing.T, secret string, userID uint64, expiresAt time.Time) string {
 	t.Helper()
 
 	claims := jwt.MapClaims{
-		"uid": float64(1),
+		"uid": float64(userID),
 		"exp": jwt.NewNumericDate(expiresAt),
 	}
 
