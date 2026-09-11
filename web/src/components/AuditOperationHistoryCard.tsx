@@ -16,9 +16,12 @@ interface Props {
   alumniId: number;
 }
 
+const historyPageSize = 20;
+
 export function AuditOperationHistoryCard({ alumniId }: Props) {
   const [items, setItems] = useState<AuditOperation[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState<AuditOperation | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -26,7 +29,7 @@ export function AuditOperationHistoryCard({ alumniId }: Props) {
   const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
-      const query = buildAlumniHistoryQuery(alumniId);
+      const query = buildAlumniHistoryQuery(alumniId, page, historyPageSize);
       const result = await auditApi.list(query);
       setItems(result.items || []);
       setTotal(result.total || 0);
@@ -36,6 +39,10 @@ export function AuditOperationHistoryCard({ alumniId }: Props) {
     } finally {
       setLoading(false);
     }
+  }, [alumniId, page]);
+
+  useEffect(() => {
+    setPage(1);
   }, [alumniId]);
 
   useEffect(() => {
@@ -124,7 +131,14 @@ export function AuditOperationHistoryCard({ alumniId }: Props) {
           columns={columns}
           dataSource={items}
           scroll={{ x: 660 }}
-          pagination={false}
+          pagination={{
+            current: page,
+            pageSize: historyPageSize,
+            total,
+            showSizeChanger: false,
+            showTotal: (count, range) => `第 ${range[0]}-${range[1]} 条 / 共 ${count} 条`,
+          }}
+          onChange={(pagination) => setPage(pagination.current || 1)}
           locale={{ emptyText: <Empty description="暂无操作历史" /> }}
         />
       </Card>
