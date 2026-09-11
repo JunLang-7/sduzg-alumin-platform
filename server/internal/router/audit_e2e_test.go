@@ -55,6 +55,19 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if err := tx.Create(operator).Error; err != nil {
 			return fmt.Errorf("create e2e operator: %w", err)
 		}
+		viewer := &model.User{
+			Account:      fmt.Sprintf("audit-e2e-viewer-%d", suffix),
+			PasswordHash: "not-used-by-e2e",
+			Role:         common.RoleAdmin,
+			RealName:     ptrString("E2E领域管理员"),
+			Status:       common.UserStatusActive,
+		}
+		if err := tx.Create(viewer).Error; err != nil {
+			return fmt.Errorf("create e2e viewer: %w", err)
+		}
+		if err := tx.Create(&model.AdminDataScope{UserID: viewer.ID, DataDomainID: domain.ID}).Error; err != nil {
+			return fmt.Errorf("create e2e viewer data scope: %w", err)
+		}
 
 		profile := &model.AlumniProfile{
 			DataDomainID: domain.ID,
@@ -70,38 +83,6 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			return fmt.Errorf("create e2e alumni: %w", err)
 		}
 
-		detail, err := json.Marshal(map[string]any{
-			"schema_version":      1,
-			"operator_name":       "E2E超级管理员",
-			"operator_role_label": "超级管理员",
-			"target_id":           profile.ID,
-			"target_name":         profile.Name,
-			"target_meta":         "2020级",
-			"management_scope":    "MPA专业学位研究生",
-			"source":              "admin",
-			"status":              "applied",
-			"changes": []map[string]any{
-				{"field_name": "work_unit", "field_label": "工作单位", "old_value": "旧单位", "new_value": "新单位", "current_value": "新单位"},
-				{"field_name": "mobile", "field_label": "手机号", "old_value": "已填写", "new_value": "已修改", "current_value": "已修改", "sensitive": true},
-			},
-		})
-		if err != nil {
-			return fmt.Errorf("marshal e2e audit detail: %w", err)
-		}
-		detailText := string(detail)
-		log := &model.OperationLog{
-			OperatorID:   operator.ID,
-			OperatorRole: common.RoleSuperAdmin,
-			Action:       "update",
-			TargetType:   "alumni_profile",
-			TargetID:     &profile.ID,
-			Detail:       &detailText,
-			CreatedAt:    time.Now().Add(-time.Minute),
-		}
-		if err := tx.Create(log).Error; err != nil {
-			return fmt.Errorf("create e2e operation log: %w", err)
-		}
-
 		gin.SetMode(gin.TestMode)
 		secret := "audit-e2e-secret"
 		engine := New(Dependencies{
@@ -112,11 +93,32 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			Logger: zap.NewNop(),
 			DB:     tx,
 		})
-		token := testAccessToken(t, secret, time.Now().Add(time.Hour))
+		token := testAccessTokenForUser(t, secret, operator.ID, time.Now().Add(time.Hour))
+
+		updateRequest := httptest.NewRequest(
+			http.MethodPut,
+			fmt.Sprintf("/api/v1/admin/alumni/%d", profile.ID),
+			strings.NewReader(fmt.Sprintf(`{"name":%q,"grade":"2020级","work_unit":"新单位","mobile":"13900000000"}`, profile.Name)),
+		)
+		updateRequest.Header.Set("Authorization", "Bearer "+token)
+		updateRequest.Header.Set("Content-Type", "application/json")
+		updateResponse := httptest.NewRecorder()
+		engine.ServeHTTP(updateResponse, updateRequest)
+		if updateResponse.Code != http.StatusOK {
+			return fmt.Errorf("update status = %d, body = %s", updateResponse.Code, updateResponse.Body.String())
+		}
+
+		var log model.OperationLog
+		if err := tx.Where("operator_id = ? AND target_type = ? AND target_id = ? AND action = ?", operator.ID, "alumni_profile", profile.ID, "update").
+			Order("id DESC").
+			First(&log).Error; err != nil {
+			return fmt.Errorf("find operation log written by update flow: %w", err)
+		}
 
 		query := url.Values{}
 		query.Set("action", "update")
 		query.Set("management_scope", "MPA专业学位研究生")
+		query.Set("target_id", fmt.Sprintf("%d", profile.ID))
 		listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/operations?"+query.Encode(), nil)
 		listRequest.Header.Set("Authorization", "Bearer "+token)
 		listResponse := httptest.NewRecorder()
@@ -129,6 +131,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			Code int `json:"code"`
 			Data struct {
 				Items []struct {
+					Operator   string
 					ID         uint64 `json:"id"`
 					TargetName string `json:"target_name"`
 					Action     string `json:"action"`
@@ -142,8 +145,17 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if listBody.Code != 0 || listBody.Data.Total != 1 || len(listBody.Data.Items) != 1 {
 			return fmt.Errorf("unexpected list response: %s", listResponse.Body.String())
 		}
-		if listBody.Data.Items[0].ID != log.ID || listBody.Data.Items[0].TargetName != profile.Name || listBody.Data.Items[0].Action != "update" {
+		if listBody.Data.Items[0].ID != log.ID || listBody.Data.Items[0].Operator != "E2E超级管理员" || listBody.Data.Items[0].TargetName != profile.Name || listBody.Data.Items[0].Action != "update" {
 			return fmt.Errorf("unexpected list item: %+v", listBody.Data.Items[0])
+		}
+
+		viewerToken := testAccessTokenForUser(t, secret, viewer.ID, time.Now().Add(time.Hour))
+		viewerRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/operations?"+query.Encode(), nil)
+		viewerRequest.Header.Set("Authorization", "Bearer "+viewerToken)
+		viewerResponse := httptest.NewRecorder()
+		engine.ServeHTTP(viewerResponse, viewerRequest)
+		if viewerResponse.Code != http.StatusOK || !strings.Contains(viewerResponse.Body.String(), `"operator":"E2E超级管理员"`) {
+			return fmt.Errorf("viewer could not see in-domain super-admin operation: status=%d body=%s", viewerResponse.Code, viewerResponse.Body.String())
 		}
 
 		detailRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/audit/operations/%d", log.ID), nil)
