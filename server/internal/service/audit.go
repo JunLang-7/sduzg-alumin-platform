@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 )
@@ -20,7 +21,7 @@ func NewAuditService(audits repository.AuditStore) *AuditService {
 }
 
 // List 查询全局或指定校友的操作历史。
-func (s *AuditService) List(ctx context.Context, req dto.AuditListRequest) (common.Pager[dto.AuditOperation], error) {
+func (s *AuditService) List(ctx context.Context, access common.AccessContext, req dto.AuditListRequest) (common.Pager[dto.AuditOperation], error) {
 	query, err := req.ToQuery()
 	if err != nil {
 		return common.NewPager[dto.AuditOperation](nil, query.Page, 0), err
@@ -28,6 +29,10 @@ func (s *AuditService) List(ctx context.Context, req dto.AuditListRequest) (comm
 	if s == nil || s.audits == nil {
 		return common.NewPager[dto.AuditOperation](nil, query.Page, 0), common.ErrDatabaseUnavailable
 	}
+	if !access.IsAdministrator() {
+		return common.NewPager[dto.AuditOperation](nil, query.Page, 0), common.ErrPermissionDenied
+	}
+	query = applyAuditAccess(query, access)
 
 	items, total, err := s.audits.List(ctx, query)
 	if err != nil {
@@ -42,16 +47,28 @@ func (s *AuditService) List(ctx context.Context, req dto.AuditListRequest) (comm
 }
 
 // Detail 查询单条操作历史及字段差异。
-func (s *AuditService) Detail(ctx context.Context, id uint64) (*dto.AuditOperation, error) {
+func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, id uint64) (*dto.AuditOperation, error) {
 	if s == nil || s.audits == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
-	item, err := s.audits.GetByID(ctx, id)
+	if !access.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	item, err := s.audits.GetByID(ctx, id, applyAuditAccess(do.AuditQuery{}, access))
 	if err != nil {
 		return nil, err
 	}
 	result := mapAuditOperation(*item, true)
 	return &result, nil
+}
+
+func applyAuditAccess(query do.AuditQuery, access common.AccessContext) do.AuditQuery {
+	if access.IsSuperAdmin() {
+		return query
+	}
+	query.RestrictToDataDomains = true
+	query.DataDomainIDs = append([]uint64(nil), access.DomainIDs...)
+	return query
 }
 
 func mapAuditOperation(item repository.AuditEntry, includeChanges bool) dto.AuditOperation {
@@ -100,6 +117,9 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool) dto.Audi
 		targetMeta = joinedTargetMeta(item.TargetGrade, item.TargetClass, item.TargetCohort)
 	}
 	managementScope := detail.ManagementScope
+	if (managementScope == "" || managementScope == defaultAuditScope) && item.TargetDomainName != nil && *item.TargetDomainName != "" {
+		managementScope = *item.TargetDomainName
+	}
 	if managementScope == "" {
 		managementScope = defaultAuditScope
 	}
