@@ -2941,3 +2941,226 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+/* 操作历史页面：只保留列表、筛选、详情和校友档案跳转所需样式 */
+.audit-page .audit-filter-card,
+.audit-page .audit-table-card {
+  margin-top: 16px;
+}
+
+.audit-page .audit-filter-card .ant-card-head,
+.audit-page .audit-table-card .ant-card-head {
+  min-height: 55px;
+}
+
+.audit-page .audit-filter-card .ant-card-head-title,
+.audit-page .audit-table-card .ant-card-head-title {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.audit-page .audit-filter-card .ant-card-head-title .anticon,
+.audit-page .audit-table-card .ant-card-head-title .anticon {
+  color: var(--sdu-red);
+}
+
+.audit-page .audit-filter-card .ant-card-extra {
+  padding: 8px 0;
+}
+
+.audit-page .audit-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.audit-page .audit-filter-row > .ant-select {
+  min-width: 135px;
+}
+
+.audit-page .audit-filter-row .ant-select-selector {
+  border-color: var(--line) !important;
+  border-radius: 6px !important;
+}
+
+.audit-page .audit-table-card .ant-card-body {
+  padding: 0;
+}
+
+.audit-page .audit-table-card .ant-table-thead > tr > th {
+  background: #fffaf7;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.audit-page .audit-table-card .ant-table-tbody > tr > td {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.audit-page .audit-table-card .ant-table-tbody > tr:hover > td {
+  background: #fffaf7 !important;
+}
+
+.audit-page .audit-table-person,
+.audit-page .audit-table-target {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.audit-page .audit-table-person .ant-typography,
+.audit-page .audit-table-target .ant-typography {
+  font-size: 11px;
+}
+
+.audit-page .audit-table-person strong,
+.audit-page .audit-table-target strong {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.audit-page .audit-table-alumni-link {
+  display: block;
+  overflow: hidden;
+  color: var(--sdu-red);
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-page .audit-table-alumni-link:hover {
+  color: var(--sdu-red-dark);
+  text-decoration: underline;
+}
+
+.audit-page .audit-drawer-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 19px;
+}
+
+.audit-page .audit-drawer-heading h2 {
+  margin: 4px 0 0;
+  color: var(--sdu-red);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.audit-page .audit-drawer-heading p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.audit-page .audit-drawer .ant-descriptions {
+  margin-bottom: 18px;
+}
+
+.audit-page .audit-drawer .ant-descriptions-item-label,
+.audit-page .audit-drawer .ant-descriptions-item-content {
+  font-size: 12px;
+}
+
+.audit-page .audit-drawer-diff {
+  margin-bottom: 10px;
+  border-color: var(--line);
+}
+
+.audit-page .audit-drawer-field-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.audit-page .audit-drawer-field-head strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.audit-page .audit-drawer-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.audit-page .audit-drawer-values .ant-typography {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-page .audit-drawer-values .ant-typography:last-child {
+  color: var(--teal);
+}
+
+.audit-page .audit-drawer-values > .anticon {
+  color: #bda087;
+  font-size: 11px;
+  text-align: center;
+}
+
+.audit-page .audit-drawer-readonly {
+  display: block;
+  padding: 9px 0;
+  text-align: center;
+}
+
+.audit-page .audit-date-range {
+  width: 300px;
+}
+
+.audit-page .audit-scope-select {
+  min-width: 190px;
+}
+
+.audit-page .audit-action-select {
+  min-width: 170px;
+}
+
+.audit-page .audit-scope-tag {
+  margin-inline-end: 0;
+  border-color: #ead9d0;
+  background: #fffaf7;
+  color: var(--muted);
+}
+
+.audit-page .audit-profile-card,
+.audit-page .audit-alumni-history-card {
+  margin-top: 16px;
+}
+
+.audit-page .audit-profile-card .ant-card-head-title,
+.audit-page .audit-alumni-history-card .ant-card-head-title {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.audit-page .audit-records-card .ant-card-body,
+.audit-page .audit-alumni-history-card .ant-card-body {
+  padding: 0 0 16px;
+}
+
+@media (max-width: 900px) {
+  .audit-page .audit-filter-card .ant-card-extra {
+    float: none;
+    margin-top: -4px;
+    padding-bottom: 12px;
+  }
+}
+
+@media (max-width: 767px) {
+  .audit-page .audit-filter-row > .ant-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .audit-page .audit-date-range {
+    width: 100%;
+  }
+}
