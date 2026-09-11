@@ -77,7 +77,7 @@ export const router = createBrowserRouter([
     ],
   },
   {
-    element: <RequireAuth exactRole="super_admin" />,
+    element: <RequireAuth minRole="admin" />,
     children: [
       {
         element: <AppLayout />,

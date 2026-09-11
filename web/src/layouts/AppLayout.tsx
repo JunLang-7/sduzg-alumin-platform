@@ -45,6 +45,11 @@ export function AppLayout() {
           icon: <TeamOutlined />,
           label: '校友管理',
         },
+        {
+          key: '/admin/audit/changes',
+          icon: <AuditOutlined />,
+          label: '操作历史',
+        },
       );
     }
 
@@ -62,11 +67,6 @@ export function AppLayout() {
           key: '/admin/users',
           icon: <UserOutlined />,
           label: '管理员管理',
-        },
-        {
-          key: '/admin/audit/changes',
-          icon: <AuditOutlined />,
-          label: '操作历史',
         },
       );
     }
