@@ -7,7 +7,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
 	"github.com/gin-gonic/gin"
@@ -22,7 +24,7 @@ func (s *handlerAuditStore) List(_ context.Context, query do.AuditQuery) ([]repo
 	return []repository.AuditEntry{}, 0, nil
 }
 
-func (s *handlerAuditStore) GetByID(context.Context, uint64) (*repository.AuditEntry, error) {
+func (s *handlerAuditStore) GetByID(context.Context, uint64, do.AuditQuery) (*repository.AuditEntry, error) {
 	return nil, nil
 }
 
@@ -30,6 +32,10 @@ func TestAuditHandlerListBindsFiltersAndReturnsEnvelope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &handlerAuditStore{}
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &common.AccessContext{Role: common.RoleSuperAdmin})
+		c.Next()
+	})
 	router.GET("/audit", NewAuditHandler(service.NewAuditService(store)).List)
 
 	req := httptest.NewRequest(http.MethodGet, "/audit?action=update&management_scope=MPA%E4%B8%93%E4%B8%9A%E5%AD%A6%E4%BD%8D%E7%A0%94%E7%A9%B6%E7%94%9F", nil)
@@ -56,6 +62,10 @@ func TestAuditHandlerListBindsFiltersAndReturnsEnvelope(t *testing.T) {
 func TestAuditHandlerDetailRejectsInvalidID(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &common.AccessContext{Role: common.RoleSuperAdmin})
+		c.Next()
+	})
 	router.GET("/audit/:id", NewAuditHandler(service.NewAuditService(&handlerAuditStore{})).Detail)
 
 	req := httptest.NewRequest(http.MethodGet, "/audit/not-a-number", nil)

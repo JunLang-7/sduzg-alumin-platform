@@ -27,8 +27,9 @@ func (s *fakeAuditStore) List(_ context.Context, query do.AuditQuery) ([]reposit
 	return s.items, s.total, s.listErr
 }
 
-func (s *fakeAuditStore) GetByID(_ context.Context, id uint64) (*repository.AuditEntry, error) {
+func (s *fakeAuditStore) GetByID(_ context.Context, id uint64, query do.AuditQuery) (*repository.AuditEntry, error) {
 	s.detailQuery = id
+	s.listQuery = query
 	return s.detail, s.detailErr
 }
 
@@ -84,7 +85,7 @@ func TestAuditServiceListPassesFiltersAndMapsOperation(t *testing.T) {
 		total: 1,
 	}
 
-	pager, err := NewAuditService(store).List(context.Background(), dto.AuditListRequest{
+	pager, err := NewAuditService(store).List(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, dto.AuditListRequest{
 		Page:            2,
 		PageSize:        10,
 		StartDate:       "2026-09-01",
@@ -120,7 +121,7 @@ func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 		detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, OperatorRole: common.RoleAdmin, TargetType: "alumni_profile", TargetID: &targetID, Detail: &detail},
 	}
 
-	item, err := NewAuditService(store).Detail(context.Background(), 19)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 19)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -140,8 +141,36 @@ func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 
 func TestAuditServiceDetailPropagatesNotFound(t *testing.T) {
 	store := &fakeAuditStore{detailErr: common.ErrAuditNotFound}
-	_, err := NewAuditService(store).Detail(context.Background(), 404)
+	_, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 404)
 	if !errors.Is(err, common.ErrAuditNotFound) {
 		t.Fatalf("Detail() error = %v, want ErrAuditNotFound", err)
+	}
+}
+
+func TestAuditServiceRestrictsAdminHistoryToAssignedDomains(t *testing.T) {
+	store := &fakeAuditStore{}
+	access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2, 7}}
+
+	_, err := NewAuditService(store).List(context.Background(), access, dto.AuditListRequest{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if !store.listQuery.RestrictToDataDomains {
+		t.Fatal("expected admin audit query to be restricted to data domains")
+	}
+	if len(store.listQuery.DataDomainIDs) != 2 || store.listQuery.DataDomainIDs[0] != 2 || store.listQuery.DataDomainIDs[1] != 7 {
+		t.Fatalf("unexpected allowed domains: %+v", store.listQuery.DataDomainIDs)
+	}
+}
+
+func TestAuditServiceAllowsSuperAdminHistoryAcrossDomains(t *testing.T) {
+	store := &fakeAuditStore{}
+
+	_, err := NewAuditService(store).List(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, dto.AuditListRequest{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if store.listQuery.RestrictToDataDomains {
+		t.Fatal("super admin history should not be restricted to assigned domains")
 	}
 }
