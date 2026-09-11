@@ -40,9 +40,9 @@ export interface AuditQuery extends PageQuery {
 }
 
 export const AUDIT_SCOPE_TAGS = [
-  { value: '全部校友', label: '全部校友' },
-  { value: '指定年级', label: '指定年级' },
-  { value: '指定班级', label: '指定班级' },
+  { value: '本科生', label: '本科生' },
+  { value: '学术学位研究生', label: '学术学位研究生' },
+  { value: 'MPA专业学位研究生', label: 'MPA专业学位研究生' },
 ] as const;
 
 export const AUDIT_ACTION_OPTIONS: Array<{ value: AuditAction; label: string }> = [

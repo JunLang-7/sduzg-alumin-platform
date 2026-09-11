@@ -11,6 +11,8 @@ const pageSource = await readFile(
 );
 const apiSource = await readFile(resolve(scriptDir, '../src/api/audit.ts'), 'utf8');
 const typeSource = await readFile(resolve(scriptDir, '../src/types/audit.ts'), 'utf8');
+const routerSource = await readFile(resolve(scriptDir, '../src/router/index.tsx'), 'utf8');
+const layoutSource = await readFile(resolve(scriptDir, '../src/layouts/AppLayout.tsx'), 'utf8');
 
 test('audit history page keeps the list-level review contract', () => {
   assert.match(pageSource, /title: '时间'/);
@@ -32,4 +34,9 @@ test('audit history frontend exposes list and detail API contracts', () => {
   assert.match(apiSource, /detail\(id/);
   assert.match(typeSource, /AUDIT_ACTION_OPTIONS/);
   assert.match(typeSource, /AUDIT_SCOPE_TAGS/);
+});
+
+test('audit history is available to administrators and super administrators', () => {
+  assert.match(routerSource, /<RequireAuth minRole="admin" \/>/);
+  assert.match(layoutSource, /key: '\/admin\/audit\/changes'/);
 });
