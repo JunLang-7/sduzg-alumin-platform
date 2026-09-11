@@ -45,6 +45,10 @@ export function buildAuditQuery(input: AuditQueryInput): AuditQuery {
   };
 }
 
-export function buildAlumniHistoryQuery(alumniId: number): AuditQuery {
-  return buildAuditQuery({ page: 1, pageSize: 100, targetId: alumniId });
+export function buildAlumniHistoryQuery(
+  alumniId: number,
+  page = 1,
+  pageSize = 20,
+): AuditQuery {
+  return buildAuditQuery({ page, pageSize, targetId: alumniId });
 }

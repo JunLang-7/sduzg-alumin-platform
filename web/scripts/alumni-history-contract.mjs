@@ -33,7 +33,9 @@ test('alumni operation history is a read-only linked record list', () => {
   assert.match(historySource, /详情/);
   assert.match(historySource, /auditApi\.list/);
   assert.match(historySource, /auditApi\.detail/);
-  assert.match(historySource, /pagination=\{false\}/);
+  assert.match(historySource, /current: page/);
+  assert.match(historySource, /pageSize: historyPageSize/);
+  assert.match(historySource, /onChange=\{\(pagination\) => setPage/);
   assert.doesNotMatch(historySource, /撤销/);
   assert.doesNotMatch(historySource, /onEdit|handleEdit|编辑/);
 });
