@@ -107,6 +107,9 @@ func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, upd
 	s.updateID = id
 	s.updateUserID = updaterID
 	s.updateProfile = profile
+	if s.updateResult != nil {
+		s.detail = s.updateResult
+	}
 	return s.updateErr
 }
 
