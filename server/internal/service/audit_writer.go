@@ -59,6 +59,11 @@ type AuditEvent struct {
 	Changes         []AuditChange
 }
 
+// AuditEventWriter 是业务服务依赖的最小审计写入契约，便于单元测试注入内存写入器。
+type AuditEventWriter interface {
+	WriteAudit(ctx context.Context, event AuditEvent) error
+}
+
 type auditLogDetail struct {
 	SchemaVersion     int           `json:"schema_version"`
 	OperatorName      string        `json:"operator_name,omitempty"`
@@ -264,7 +269,7 @@ func profileAuditMeta(profile *model.AlumniProfile) string {
 
 func writeProfileAudit(
 	ctx context.Context,
-	opLogger *OperationLogger,
+	writer AuditEventWriter,
 	users repository.UserStore,
 	operatorID uint64,
 	action string,
@@ -274,7 +279,7 @@ func writeProfileAudit(
 	before *model.AlumniProfile,
 	after *model.AlumniProfile,
 ) {
-	if opLogger == nil || opLogger.db == nil || users == nil {
+	if writer == nil || users == nil {
 		return
 	}
 
@@ -307,20 +312,20 @@ func writeProfileAudit(
 		TargetMeta:      profileAuditMeta(target),
 		Changes:         changes,
 	}
-	if err := opLogger.WriteAudit(ctx, event); err != nil {
+	if err := writer.WriteAudit(ctx, event); err != nil {
 		logger.Warn("failed to write alumni audit", zap.Uint64("alumni_id", target.ID), zap.String("action", action), zap.Error(err))
 	}
 }
 
 func writeBatchAudit(
 	ctx context.Context,
-	opLogger *OperationLogger,
+	writer AuditEventWriter,
 	users repository.UserStore,
 	operatorID uint64,
 	success int,
 	errorCount int,
 ) {
-	if success == 0 || opLogger == nil || opLogger.db == nil || users == nil {
+	if success == 0 || writer == nil || users == nil {
 		return
 	}
 	operator, err := users.FindByID(ctx, operatorID)
@@ -332,7 +337,7 @@ func writeBatchAudit(
 	if errorCount > 0 {
 		resultText += fmt.Sprintf("，%d 条未导入", errorCount)
 	}
-	if err := opLogger.WriteAudit(ctx, AuditEvent{
+	if err := writer.WriteAudit(ctx, AuditEvent{
 		Operator:        operator,
 		Action:          "import",
 		Source:          "admin_import",
