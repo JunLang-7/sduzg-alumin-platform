@@ -6,6 +6,7 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
 )
 
@@ -84,8 +85,9 @@ func (r *AuditRepository) GetByID(ctx context.Context, id uint64, listQuery do.A
 
 	var item AuditEntry
 	listQuery = listQuery.Normalize()
+	operationLogQuery := query.Use(r.db).OperationLog.As("logs")
 	result := r.baseQuery(ctx).
-		Where("logs.id = ?", id).
+		Where(operationLogQuery.ID.Eq(id)).
 		Where("logs.target_type IN ?", []string{auditTargetAlumni, auditTargetBatch}).
 		Scopes(func(db *gorm.DB) *gorm.DB { return applyAuditFilters(db, listQuery) }).
 		Limit(1).
