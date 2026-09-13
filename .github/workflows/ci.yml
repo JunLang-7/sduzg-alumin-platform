@@ -14,6 +14,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  commit-message:
+    name: Commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Validate Conventional Commit subjects
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore)\([a-z0-9][a-z0-9._/-]*\)!?: .+$'
+          invalid=0
+          while IFS= read -r subject; do
+            if ! [[ "$subject" =~ $pattern ]]; then
+              echo "不符合提交规范：$subject" >&2
+              invalid=1
+            fi
+          done < <(git log --format=%s "$BASE_SHA..$HEAD_SHA")
+          if [ "$invalid" -ne 0 ]; then
+            echo '提交标题必须为 type(scope): 描述，例如 feat(alumni): 新增校友导出。' >&2
+            echo '允许的 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore；scope 使用小写模块名。' >&2
+            exit 1
+          fi
+
   issue-link:
     name: Linked issue
     if: github.event_name == 'pull_request'

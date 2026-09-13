@@ -133,9 +133,10 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - 开始改动前检查当前工作区状态，避免覆盖用户已有修改。
 - 开始功能、缺陷或技术工作前，先阅读关联 Issue 的范围和验收条件；没有关联 Issue 时，先创建或补齐 Issue，再开始实现。
 - 依据 Issue 验收条件编写或更新测试。PR 使用 `Closes #编号` 关联 Issue，并逐项写明验收证据；需求范围变化时先更新 Issue。
+- 所有提交标题使用 `type(scope): 描述`：type 仅限 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`，scope 为小写模块名；例如 `feat(alumni): 新增校友导出`。
 - 新功能必须覆盖正常路径、关键边界和失败路径；缺陷修复必须添加回归测试。权限、个人信息和数据域改动必须覆盖未登录、越权和跨域访问边界。
 - 提交前优先运行根目录 `make check`；涉及 MySQL、Redis 或迁移的改动还应运行对应集成验证。
-- GitHub 上的 `main`、`dev` 分支要求关联 Issue、六项 CI 检查通过、一位评审批准、全部讨论解决及线性历史后才能合并。日常开发 PR 目标为 `dev`，发布 PR 由 `dev` 提交到 `main`。
+- GitHub 上的 `main`、`dev` 分支要求关联 Issue、提交标题、六项质量 CI 检查通过、一位评审批准、全部讨论解决及线性历史后才能合并。日常开发 PR 目标为 `dev`，发布 PR 由 `dev` 提交到 `main`。
 - 保持改动聚焦，不做无关格式化、重命名或大范围重构。
 - 不提交 `.env`、日志、构建产物、`web/node_modules/`、`web/dist/` 等本地文件。
 - 需求或权限不明确时，以 `docs/` 中的一期 MPA 试点范围为准；不要擅自引入活动、内容管理、AI、支付等未纳入一期的模块。

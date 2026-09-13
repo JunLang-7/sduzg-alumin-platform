@@ -6,9 +6,10 @@
 
 1. 使用功能、缺陷或技术任务模板创建 Issue，写清背景、范围和可验证的验收条件。
 2. 验收条件清楚后，从 `dev` 创建分支：`feat/<issue号>-<简短描述>`、`fix/<issue号>-<简短描述>` 或 `chore/<issue号>-<简短描述>`。
-3. 依照验收条件实现并补充测试。修复缺陷必须有能覆盖旧问题的回归测试；权限、个人信息和数据域改动必须覆盖未登录、越权或跨域访问等边界。
-4. 提交 PR 到 `dev`，用 `Closes #编号` 关联 Issue，并逐项填写验收证据。
-5. CI 全部通过、至少一位评审者批准且讨论已解决后，使用 Squash merge 合并。需要发布时，再由 `dev` 向 `main` 发 PR。
+3. 每条提交使用 `type(scope): 描述` 格式，例如 `feat(alumni): 新增校友导出` 或 `ci(github): 增加提交消息校验`。`type` 只能是 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`；`scope` 使用小写模块名，如 `auth`、`alumni`、`dashboard`、`web`、`server`、`db`、`github`。
+4. 依照验收条件实现并补充测试。修复缺陷必须有能覆盖旧问题的回归测试；权限、个人信息和数据域改动必须覆盖未登录、越权或跨域访问等边界。
+5. 提交 PR 到 `dev`，用 `Closes #编号` 关联 Issue，并逐项填写验收证据。
+6. CI 全部通过、至少一位评审者批准且讨论已解决后，使用 Squash merge 合并。需要发布时，再由 `dev` 向 `main` 发 PR。
 
 实现中若目标或范围变化，先更新 Issue 的范围和验收条件，再更新 PR；不要把未讨论的新范围混入已有 PR。
 
