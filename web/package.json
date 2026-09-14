@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "preview": "vite preview --host 0.0.0.0",
+    "test:audit": "node --test scripts/*-contract.mjs"
   },
   "dependencies": {
     "@ant-design/icons": "^5.5.2",

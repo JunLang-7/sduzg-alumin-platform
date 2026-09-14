@@ -9,6 +9,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
 )
 
@@ -31,6 +32,24 @@ func (s *fakeAuditStore) GetByID(_ context.Context, id uint64, query do.AuditQue
 	s.detailQuery = id
 	s.listQuery = query
 	return s.detail, s.detailErr
+}
+
+type fakeAuditAlumniStore struct {
+	*fakeAlumniStore
+	profile      *model.AlumniProfile
+	getDomainIDs []uint64
+	err          error
+}
+
+func (s *fakeAuditAlumniStore) GetByID(_ context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error) {
+	s.getDomainIDs = append([]uint64(nil), dataDomainIDs...)
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.profile == nil || s.profile.ID != id {
+		return nil, common.ErrAlumniNotFound
+	}
+	return s.profile, nil
 }
 
 func TestMapAuditChangeMasksSensitiveValues(t *testing.T) {
@@ -56,11 +75,30 @@ func TestMapAuditChangePreservesNonSensitiveValues(t *testing.T) {
 		NewValue:     "济南某单位",
 		CurrentValue: "济南某单位",
 	})
-	if change.Sensitive {
-		t.Fatal("did not expect work unit change to be marked sensitive")
+	if !change.Sensitive {
+		t.Fatal("expected work unit change to be marked sensitive")
 	}
-	if change.OldValue != "山东某单位" || change.NewValue != "济南某单位" {
-		t.Fatalf("unexpected non-sensitive values: %+v", change)
+	if change.OldValue != "已填写" || change.NewValue != "已修改" || change.CurrentValue != "已修改" {
+		t.Fatalf("unexpected masked values: %+v", change)
+	}
+}
+
+func TestMapAuditChangeMasksAllSensitiveFields(t *testing.T) {
+	for _, field := range []string{"mobile", "email", "work_unit", "position", "mailing_address"} {
+		t.Run(field, func(t *testing.T) {
+			change := mapAuditChange(AuditChange{
+				FieldName:    field,
+				OldValue:     "旧敏感值",
+				NewValue:     "新敏感值",
+				CurrentValue: "新敏感值",
+			})
+			if !change.Sensitive {
+				t.Fatalf("field %q was not marked sensitive", field)
+			}
+			if change.OldValue != "已填写" || change.NewValue != "已修改" || change.CurrentValue != "已修改" {
+				t.Fatalf("field %q was not masked: %+v", field, change)
+			}
+		})
 	}
 }
 
@@ -131,11 +169,96 @@ func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 	if len(item.Changes) != 2 {
 		t.Fatalf("changes = %d, want 2", len(item.Changes))
 	}
-	if item.Changes[0].OldValue != "旧单位" || item.Changes[0].NewValue != "新单位" {
-		t.Fatalf("non-sensitive diff was changed: %+v", item.Changes[0])
+	if !item.Changes[0].Sensitive || item.Changes[0].OldValue != "已填写" || item.Changes[0].NewValue != "已修改" {
+		t.Fatalf("work unit diff was not masked: %+v", item.Changes[0])
 	}
 	if !item.Changes[1].Sensitive || item.Changes[1].OldValue != "已填写" || item.Changes[1].NewValue != "已修改" {
 		t.Fatalf("sensitive diff was not masked: %+v", item.Changes[1])
+	}
+}
+
+func TestAuditServiceBatchDetailHidesSensitiveFieldsWithoutPermission(t *testing.T) {
+	detail := `{"schema_version":1,"target_name":"校友档案批量导入","batch_created_alumni":[{"id":401,"name":"周七","target_meta":"2020级 · 公共管理","field_values":{"name":"周七","grade":"2020级","mobile":"13800000000","email":"secret@example.com","work_unit":"山东某单位","position":"主任","mailing_address":"济南市"}}],"batch_hidden_sensitive_count":5}`
+	store := &fakeAuditStore{detail: &repository.AuditEntry{
+		ID:         21,
+		Action:     AuditActionImport,
+		TargetType: auditTargetBatch,
+		Detail:     &detail,
+	}}
+
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}, 21)
+	if err != nil {
+		t.Fatalf("Detail() error = %v", err)
+	}
+	if len(item.BatchImportFields) != len(auditBatchPublicFields) {
+		t.Fatalf("visible batch fields = %d, want %d: %+v", len(item.BatchImportFields), len(auditBatchPublicFields), item.BatchImportFields)
+	}
+	if len(item.BatchCreatedAlumni) != 1 {
+		t.Fatalf("batch records = %d, want 1", len(item.BatchCreatedAlumni))
+	}
+	for _, field := range auditBatchSensitiveFields {
+		if _, ok := item.BatchCreatedAlumni[0].FieldValues[field.FieldName]; ok {
+			t.Fatalf("unauthorized detail exposed sensitive field %q: %+v", field.FieldName, item.BatchCreatedAlumni[0].FieldValues)
+		}
+	}
+	if item.BatchHiddenSensitiveCount != len(auditBatchSensitiveFields) {
+		t.Fatalf("hidden sensitive count = %d, want %d", item.BatchHiddenSensitiveCount, len(auditBatchSensitiveFields))
+	}
+}
+
+func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *testing.T) {
+	mobile := "13800000000"
+	email := "zhouqi@example.com"
+	workUnit := "山东某单位"
+	position := "主任"
+	address := "济南市历下区"
+	alumniStore := &fakeAuditAlumniStore{
+		fakeAlumniStore: &fakeAlumniStore{},
+		profile: &model.AlumniProfile{
+			ID:             401,
+			Name:           "周七",
+			Grade:          "2020级",
+			Mobile:         &mobile,
+			Email:          &email,
+			WorkUnit:       &workUnit,
+			Position:       &position,
+			MailingAddress: &address,
+		},
+	}
+	detail := `{"schema_version":1,"target_name":"校友档案批量导入","batch_created_alumni":[{"id":401,"name":"周七","target_meta":"2020级 · 公共管理","field_values":{"name":"周七","grade":"2020级"}}],"batch_hidden_sensitive_count":5}`
+	store := &fakeAuditStore{detail: &repository.AuditEntry{
+		ID:         22,
+		Action:     AuditActionImport,
+		TargetType: auditTargetBatch,
+		Detail:     &detail,
+	}}
+	access := common.AccessContext{
+		Role:        common.RoleAdmin,
+		DomainIDs:   []uint64{2},
+		Permissions: map[string]bool{common.PermissionAlumniSensitiveRead: true},
+	}
+
+	item, err := NewAuditService(store, alumniStore).Detail(context.Background(), access, 22)
+	if err != nil {
+		t.Fatalf("Detail() error = %v", err)
+	}
+	if len(item.BatchImportFields) != len(auditBatchPublicFields)+len(auditBatchSensitiveFields) {
+		t.Fatalf("authorized batch fields = %d, want %d: %+v", len(item.BatchImportFields), len(auditBatchPublicFields)+len(auditBatchSensitiveFields), item.BatchImportFields)
+	}
+	values := item.BatchCreatedAlumni[0].FieldValues
+	for field, want := range map[string]string{
+		"mobile":          mobile,
+		"email":           email,
+		"work_unit":       workUnit,
+		"position":        position,
+		"mailing_address": address,
+	} {
+		if values[field] != want {
+			t.Fatalf("authorized field %q = %q, want %q; values=%+v", field, values[field], want, values)
+		}
+	}
+	if len(alumniStore.getDomainIDs) != 1 || alumniStore.getDomainIDs[0] != 2 {
+		t.Fatalf("authorized lookup used unexpected domains: %+v", alumniStore.getDomainIDs)
 	}
 }
 
