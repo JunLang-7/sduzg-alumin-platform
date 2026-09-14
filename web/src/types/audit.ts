@@ -13,6 +13,19 @@ export interface AuditChange {
   sensitive?: boolean;
 }
 
+export interface AuditBatchAlumni {
+  id: number;
+  name: string;
+  target_meta?: string;
+  field_values?: Record<string, string>;
+}
+
+export interface AuditBatchField {
+  field_name: string;
+  field_label: string;
+  sensitive?: boolean;
+}
+
 export interface AuditOperation {
   id: number;
   created_at: string;
@@ -29,6 +42,9 @@ export interface AuditOperation {
   reason?: string;
   status: AuditStatus | string;
   changes?: AuditChange[];
+  batch_created_alumni?: AuditBatchAlumni[];
+  batch_import_fields?: AuditBatchField[];
+  batch_hidden_sensitive_count?: number;
 }
 
 export interface AuditQuery extends PageQuery {

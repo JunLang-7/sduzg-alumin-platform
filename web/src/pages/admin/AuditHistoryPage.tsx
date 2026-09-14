@@ -18,6 +18,7 @@ import { Link } from 'react-router-dom';
 import { auditApi } from '../../api/audit';
 import { AuditOperationDetailDrawer } from '../../components/AuditOperationDetailDrawer';
 import { PageHeader } from '../../components/PageHeader';
+import { useAuthStore } from '../../store/authStore';
 import {
   AUDIT_ACTION_OPTIONS,
   AUDIT_SCOPE_TAGS,
@@ -31,10 +32,13 @@ import {
   getAuditActionColor,
   getAuditActionLabel,
 } from '../../utils/auditHistory';
+import { canReadSensitive } from '../../utils/access';
 
 const defaultPageSize = 20;
 
 export function AuditHistoryPage() {
+  const user = useAuthStore((state) => state.user);
+  const sensitiveReadable = canReadSensitive(user);
   const [dateRange, setDateRange] = useState<RangePickerProps['value']>(null);
   const [scopeFilter, setScopeFilter] = useState('');
   const [actionFilter, setActionFilter] = useState<AuditAction | undefined>();
@@ -254,6 +258,7 @@ export function AuditHistoryPage() {
         open={Boolean(selectedRecord)}
         loading={detailLoading}
         record={selectedRecord}
+        sensitiveReadable={sensitiveReadable}
         onClose={() => setSelectedRecord(null)}
       />
     </div>

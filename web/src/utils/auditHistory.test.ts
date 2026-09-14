@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAuditQuery,
   formatAuditDateTime,
+  getAuditBatchVisibleFields,
   getAuditActionColor,
   getAuditActionLabel,
 } from './auditHistory';
@@ -38,5 +39,34 @@ describe('audit history view model', () => {
     });
 
     expect(buildAuditQuery({ page: 1, pageSize: 20 })).toEqual({ page: 1, page_size: 20 });
+  });
+
+  it('shows five public batch-import fields without sensitive permission', () => {
+    const fields = getAuditBatchVisibleFields(undefined, false);
+
+    expect(fields.map((field) => field.field_name)).toEqual([
+      'name',
+      'grade',
+      'class_name',
+      'major',
+      'training_mode',
+    ]);
+  });
+
+  it('adds the five sensitive fields only with sensitive permission', () => {
+    const fields = getAuditBatchVisibleFields(undefined, true);
+
+    expect(fields.map((field) => field.field_name)).toEqual([
+      'name',
+      'grade',
+      'class_name',
+      'major',
+      'training_mode',
+      'mobile',
+      'email',
+      'work_unit',
+      'position',
+      'mailing_address',
+    ]);
   });
 });
