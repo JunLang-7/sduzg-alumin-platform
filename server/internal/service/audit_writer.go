@@ -106,11 +106,6 @@ type AuditEventWriter interface {
 	WriteAudit(ctx context.Context, event AuditEvent) error
 }
 
-// AuditEventWriter 是业务服务依赖的最小审计写入契约，便于单元测试注入内存写入器。
-type AuditEventWriter interface {
-	WriteAudit(ctx context.Context, event AuditEvent) error
-}
-
 type auditLogDetail struct {
 	SchemaVersion             int                `json:"schema_version"`
 	OperatorName              string             `json:"operator_name,omitempty"`
