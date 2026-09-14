@@ -113,10 +113,41 @@ func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, upd
 	return s.updateErr
 }
 
-func (s *fakeAlumniStore) BatchCreate(_ context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
+func (s *fakeAlumniStore) BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
+	_, err := s.BatchCreateAndReturnProfiles(ctx, profiles, operatorID)
+	return err
+}
+
+func (s *fakeAlumniStore) BatchCreateAndReturnProfiles(_ context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) ([]*model.AlumniProfile, error) {
 	s.batchProfiles = slices.Clone(profiles)
 	s.batchOperatorID = operatorID
-	return s.batchErr
+	if s.batchErr != nil {
+		return nil, s.batchErr
+	}
+	created := make([]*model.AlumniProfile, 0, len(profiles))
+	for i, profile := range profiles {
+		id := uint64(i + 1)
+		dataDomainID := uint64(0)
+		if profile.DataDomainID != nil {
+			dataDomainID = *profile.DataDomainID
+		}
+		created = append(created, &model.AlumniProfile{
+			ID:             id,
+			DataDomainID:   dataDomainID,
+			Name:           profile.Name,
+			Grade:          profile.Grade,
+			ClassName:      profile.ClassName,
+			Cohort:         profile.Cohort,
+			Major:          profile.Major,
+			TrainingMode:   profile.TrainingMode,
+			WorkUnit:       profile.WorkUnit,
+			Position:       profile.Position,
+			MailingAddress: profile.MailingAddress,
+			Mobile:         profile.Mobile,
+			Email:          profile.Email,
+		})
+	}
+	return created, nil
 }
 
 func (s *fakeAlumniStore) CountActive(_ context.Context) (int64, error) {

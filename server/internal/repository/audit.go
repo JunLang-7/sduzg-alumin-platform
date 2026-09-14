@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -152,7 +153,21 @@ func applyAuditFilters(db *gorm.DB, query do.AuditQuery) *gorm.DB {
 		if len(query.DataDomainIDs) == 0 {
 			return db.Where("1 = 0")
 		}
-		db = db.Where("logs.target_type = ? AND alumni_profiles.data_domain_id IN ?", auditTargetAlumni, query.DataDomainIDs)
+		domainJSON, _ := json.Marshal(auditQuery.DataDomainIDs)
+		db = db.Where(clause.Or(
+			clause.And(
+				operationLogQuery.TargetType.Eq(auditTargetAlumni),
+				alumniProfileQuery.DataDomainID.In(auditQuery.DataDomainIDs...),
+			),
+			clause.And(
+				operationLogQuery.TargetType.Eq(auditTargetBatch),
+				gorm.Expr(
+					"JSON_OVERLAPS(JSON_EXTRACT(?, '$.data_domain_ids'), CAST(? AS JSON))",
+					operationLogQuery.Detail,
+					string(domainJSON),
+				),
+			),
+		))
 	}
 	return db
 }

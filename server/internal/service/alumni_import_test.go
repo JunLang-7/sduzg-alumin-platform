@@ -150,11 +150,14 @@ func TestImportWritesAuditWithoutProfileValues(t *testing.T) {
 		t.Fatalf("expected one successful import audit, result=%+v logs=%+v", result, writer.logs)
 	}
 	log := writer.logs[0]
-	if log.Action != "import_alumni" || log.OperatorID != 7 || log.OperatorRole != common.RoleSuperAdmin || log.Detail == nil {
+	if log.Action != AuditActionImport || log.TargetType != auditTargetBatch || log.OperatorID != 7 || log.OperatorRole != common.RoleSuperAdmin || log.Detail == nil {
 		t.Fatalf("unexpected import audit log: %+v", log)
 	}
-	if strings.Contains(*log.Detail, "张三") || strings.Contains(*log.Detail, "山东大学") {
-		t.Fatalf("import audit detail contains profile value: %s", *log.Detail)
+	if !strings.Contains(*log.Detail, "张三") {
+		t.Fatalf("import audit detail does not contain the created alumni name: %s", *log.Detail)
+	}
+	if strings.Contains(*log.Detail, "山东大学") {
+		t.Fatalf("import audit detail contains sensitive profile value: %s", *log.Detail)
 	}
 	var detail importAuditDetail
 	if err := json.Unmarshal([]byte(*log.Detail), &detail); err != nil {
@@ -162,6 +165,12 @@ func TestImportWritesAuditWithoutProfileValues(t *testing.T) {
 	}
 	if detail.Total != 1 || detail.Success != 1 || detail.Failed != 0 || len(detail.DataDomainIDs) != 1 || detail.DataDomainIDs[0] != domainID || !detail.SensitiveFieldsIncluded {
 		t.Fatalf("unexpected import audit detail: %+v", detail)
+	}
+	if len(detail.BatchCreatedAlumni) != 1 || detail.BatchCreatedAlumni[0].Name != "张三" {
+		t.Fatalf("expected created alumni in import detail: %+v", detail.BatchCreatedAlumni)
+	}
+	if _, ok := detail.BatchCreatedAlumni[0].FieldValues["work_unit"]; ok {
+		t.Fatalf("sensitive work unit was persisted in import detail: %+v", detail.BatchCreatedAlumni[0].FieldValues)
 	}
 }
 

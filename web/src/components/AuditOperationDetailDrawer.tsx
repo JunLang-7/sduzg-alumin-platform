@@ -1,13 +1,17 @@
-import { ArrowRightOutlined } from '@ant-design/icons';
-import { Card, Descriptions, Divider, Drawer, Empty, Space, Tag, Typography } from 'antd';
+import { Descriptions, Divider, Drawer, Empty, Space, Tag, Typography } from 'antd';
 import { Link } from 'react-router-dom';
 import type { AuditOperation } from '../types/audit';
-import { getAuditActionColor, getAuditActionLabel } from '../utils/auditHistory';
+import {
+  getAuditActionColor,
+  getAuditActionLabel,
+  getAuditBatchVisibleFields,
+} from '../utils/auditHistory';
 
 interface Props {
   open: boolean;
   loading?: boolean;
   record: AuditOperation | null;
+  sensitiveReadable?: boolean;
   onClose: () => void;
 }
 
@@ -29,13 +33,71 @@ function statusColor(status: string) {
   return status === 'conflicted' ? 'orange' : 'green';
 }
 
-export function AuditOperationDetailDrawer({ open, loading = false, record, onClose }: Props) {
+function renderBatchImportedRecords(record: AuditOperation, sensitiveReadable: boolean) {
+  if (!record.batch_created_alumni?.length) {
+    return null;
+  }
+
+  const visibleFields = getAuditBatchVisibleFields(
+    record.batch_import_fields,
+    sensitiveReadable,
+  ).filter((field) => field.field_name !== 'name');
+  const hiddenSensitiveCount = record.batch_hidden_sensitive_count || 0;
+
+  return (
+    <div className="audit-batch-records-scroll">
+      <table className="audit-batch-records-table">
+        <thead>
+          <tr>
+            <th scope="col">姓名</th>
+            {visibleFields.map((field) => (
+              <th scope="col" key={field.field_name}>
+                {field.field_label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {record.batch_created_alumni.map((alumnus) => (
+            <tr key={alumnus.id}>
+              <td>
+                <Link to={`/alumni/${alumnus.id}`}>{alumnus.name}</Link>
+              </td>
+              {visibleFields.map((field) => (
+                <td key={field.field_name}>{alumnus.field_values?.[field.field_name] || '—'}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {hiddenSensitiveCount > 0 ? (
+          <tfoot>
+            <tr>
+              <td colSpan={visibleFields.length + 1}>
+                {sensitiveReadable
+                  ? `已授权查看 ${visibleFields.filter((field) => field.sensitive).length} 项敏感字段`
+                  : `隐私字段已隐藏 ${hiddenSensitiveCount} 项，当前账号无权查看具体内容`}
+              </td>
+            </tr>
+          </tfoot>
+        ) : null}
+      </table>
+    </div>
+  );
+}
+
+export function AuditOperationDetailDrawer({
+  open,
+  loading = false,
+  record,
+  sensitiveReadable = false,
+  onClose,
+}: Props) {
   return (
     <Drawer
       open={open}
       loading={loading}
       onClose={onClose}
-      width={540}
+      width={record?.target_type === 'alumni_batch' ? 'min(1180px, 92vw)' : 540}
       title="操作详情"
       destroyOnClose
     >
@@ -86,25 +148,33 @@ export function AuditOperationDetailDrawer({ open, loading = false, record, onCl
           </Descriptions>
 
           <Divider orientation="left">字段变化</Divider>
-          {record.changes && record.changes.length > 0 ? (
-            record.changes.map((change) => (
-              <Card
-                size="small"
-                key={`${change.field_name}-${change.field_label}`}
-                className="audit-drawer-diff"
-              >
-                <div className="audit-drawer-field-head">
-                  <strong>{change.field_label}</strong>
-                </div>
-                <div className="audit-drawer-values">
-                  <Typography.Text delete type="secondary">
-                    {change.old_value || '未填写'}
-                  </Typography.Text>
-                  <ArrowRightOutlined />
-                  <Typography.Text strong>{change.new_value || '未填写'}</Typography.Text>
-                </div>
-              </Card>
-            ))
+          {record.target_type === 'alumni_batch' && record.batch_created_alumni?.length ? (
+            renderBatchImportedRecords(record, sensitiveReadable)
+          ) : record.changes && record.changes.length > 0 ? (
+            <table className="audit-change-table">
+              <thead>
+                <tr>
+                  <th scope="col">字段</th>
+                  <th scope="col">原值</th>
+                  <th scope="col">新值</th>
+                </tr>
+              </thead>
+              <tbody>
+                {record.changes.map((change) => (
+                  <tr key={`${change.field_name}-${change.field_label}`}>
+                    <th scope="row">{change.field_label}</th>
+                    <td>
+                      <Typography.Text delete type="secondary">
+                        {change.old_value || '未填写'}
+                      </Typography.Text>
+                    </td>
+                    <td>
+                      <Typography.Text strong>{change.new_value || '未填写'}</Typography.Text>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : (
             <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无字段变化明细" />
           )}
