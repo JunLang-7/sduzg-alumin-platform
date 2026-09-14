@@ -2,7 +2,6 @@ package router
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -37,8 +36,27 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	rollback := errors.New("rollback audit e2e fixture")
-	err = db.Transaction(func(tx *gorm.DB) error {
+	var operatorID, viewerID, profileID uint64
+	t.Cleanup(func() {
+		if profileID != 0 {
+			_ = db.Where("id = ?", profileID).Delete(&model.AlumniProfile{}).Error
+		}
+		if operatorID != 0 {
+			_ = db.Where("operator_id = ?", operatorID).Delete(&model.OperationLog{}).Error
+		}
+		if viewerID != 0 {
+			_ = db.Where("user_id = ?", viewerID).Delete(&model.AdminDataScope{}).Error
+			_ = db.Where("user_id = ?", viewerID).Delete(&model.AdminPermission{}).Error
+		}
+		if operatorID != 0 {
+			_ = db.Where("id = ?", operatorID).Delete(&model.User{}).Error
+		}
+		if viewerID != 0 {
+			_ = db.Where("id = ?", viewerID).Delete(&model.User{}).Error
+		}
+	})
+
+	err = func(tx *gorm.DB) error {
 		var domain model.DataDomain
 		if err := tx.Where("code = ? AND status = ?", common.DataDomainMPA, common.DataDomainStatusActive).First(&domain).Error; err != nil {
 			return fmt.Errorf("find MPA data domain: %w", err)
@@ -55,6 +73,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if err := tx.Create(operator).Error; err != nil {
 			return fmt.Errorf("create e2e operator: %w", err)
 		}
+		operatorID = operator.ID
 		viewer := &model.User{
 			Account:      fmt.Sprintf("audit-e2e-viewer-%d", suffix),
 			PasswordHash: "not-used-by-e2e",
@@ -65,6 +84,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if err := tx.Create(viewer).Error; err != nil {
 			return fmt.Errorf("create e2e viewer: %w", err)
 		}
+		viewerID = viewer.ID
 		if err := tx.Create(&model.AdminDataScope{UserID: viewer.ID, DataDomainID: domain.ID}).Error; err != nil {
 			return fmt.Errorf("create e2e viewer data scope: %w", err)
 		}
@@ -82,6 +102,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if err := tx.Create(profile).Error; err != nil {
 			return fmt.Errorf("create e2e alumni: %w", err)
 		}
+		profileID = profile.ID
 
 		gin.SetMode(gin.TestMode)
 		secret := "audit-e2e-secret"
@@ -205,10 +226,10 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			}
 		}
 
-		return rollback
-	})
-	if !errors.Is(err, rollback) {
-		t.Fatalf("transaction error = %v, want rollback sentinel", err)
+		return nil
+	}(db)
+	if err != nil {
+		t.Fatalf("e2e error = %v", err)
 	}
 }
 
