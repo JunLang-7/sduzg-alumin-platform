@@ -7,7 +7,9 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
+	querypkg "github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -65,7 +67,14 @@ func (r *AuditRepository) List(ctx context.Context, listQuery do.AuditQuery) ([]
 	query = applyAuditFilters(query, listQuery)
 	var items []AuditEntry
 	if err := query.
-		Order("logs.created_at DESC, logs.id DESC").
+		Order(clause.OrderBy{
+			Expression: clause.CommaExpression{
+				Exprs: []clause.Expression{
+					querypkg.Use(r.db).OperationLog.As("logs").CreatedAt.Desc(),
+					querypkg.Use(r.db).OperationLog.As("logs").ID.Desc(),
+				},
+			},
+		}).
 		Offset(listQuery.Page.Offset()).
 		Limit(listQuery.Page.PageSize).
 		Scan(&items).Error; err != nil {
@@ -85,9 +94,10 @@ func (r *AuditRepository) GetByID(ctx context.Context, id uint64, listQuery do.A
 
 	var item AuditEntry
 	listQuery = listQuery.Normalize()
+	operationLogQuery := querypkg.Use(r.db).OperationLog.As("logs")
 	result := r.baseQuery(ctx).
-		Where("logs.id = ?", id).
-		Where("logs.target_type IN ?", []string{auditTargetAlumni, auditTargetBatch}).
+		Where(operationLogQuery.ID.Eq(id)).
+		Where(operationLogQuery.TargetType.In(auditTargetAlumni, auditTargetBatch)).
 		Scopes(func(db *gorm.DB) *gorm.DB { return applyAuditFilters(db, listQuery) }).
 		Limit(1).
 		Scan(&item)
@@ -129,28 +139,45 @@ func (r *AuditRepository) scopeQuery(ctx context.Context) *gorm.DB {
 		Joins("LEFT JOIN data_domains ON data_domains.id = alumni_profiles.data_domain_id")
 }
 
-func applyAuditFilters(db *gorm.DB, query do.AuditQuery) *gorm.DB {
-	db = db.Where("logs.target_type IN ?", []string{auditTargetAlumni, auditTargetBatch})
-	if query.StartAt != nil {
-		db = db.Where("logs.created_at >= ?", *query.StartAt)
+func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
+	operationLogQuery := querypkg.Use(db).OperationLog.As("logs")
+	alumniProfileQuery := querypkg.Use(db).AlumniProfile
+	dataDomainQuery := querypkg.Use(db).DataDomain
+
+	db = db.Where(operationLogQuery.TargetType.In(auditTargetAlumni, auditTargetBatch))
+	if auditQuery.StartAt != nil {
+		db = db.Where(operationLogQuery.CreatedAt.Gte(*auditQuery.StartAt))
 	}
-	if query.EndAt != nil {
-		db = db.Where("logs.created_at < ?", *query.EndAt)
+	if auditQuery.EndAt != nil {
+		db = db.Where(operationLogQuery.CreatedAt.Lt(*auditQuery.EndAt))
 	}
-	if query.Action != "" {
-		db = db.Where("logs.action = ?", query.Action)
+	if auditQuery.Action != "" {
+		db = db.Where(operationLogQuery.Action.Eq(auditQuery.Action))
 	}
-	if query.TargetID != nil {
-		db = db.Where("logs.target_type = ? AND logs.target_id = ?", auditTargetAlumni, *query.TargetID)
+	if auditQuery.TargetID != nil {
+		db = db.Where(
+			operationLogQuery.TargetType.Eq(auditTargetAlumni),
+			operationLogQuery.TargetID.Eq(*auditQuery.TargetID),
+		)
 	}
-	if query.ManagementScope != "" {
-		db = db.Where(`(
-			(logs.target_type = ? AND data_domains.name = ?)
-			OR (logs.target_type <> ? AND JSON_UNQUOTE(JSON_EXTRACT(logs.detail, '$.management_scope')) = ?)
-		)`, auditTargetAlumni, query.ManagementScope, auditTargetAlumni, query.ManagementScope)
+	if auditQuery.ManagementScope != "" {
+		db = db.Where(clause.Or(
+			clause.And(
+				operationLogQuery.TargetType.Eq(auditTargetAlumni),
+				dataDomainQuery.Name.Eq(auditQuery.ManagementScope),
+			),
+			clause.And(
+				operationLogQuery.TargetType.Neq(auditTargetAlumni),
+				gorm.Expr(
+					"JSON_UNQUOTE(JSON_EXTRACT(?, '$.management_scope')) = ?",
+					operationLogQuery.Detail,
+					auditQuery.ManagementScope,
+				),
+			),
+		))
 	}
-	if query.RestrictToDataDomains {
-		if len(query.DataDomainIDs) == 0 {
+	if auditQuery.RestrictToDataDomains {
+		if len(auditQuery.DataDomainIDs) == 0 {
 			return db.Where("1 = 0")
 		}
 		domainJSON, _ := json.Marshal(auditQuery.DataDomainIDs)
