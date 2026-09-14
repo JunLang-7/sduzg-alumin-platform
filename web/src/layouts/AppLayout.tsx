@@ -62,13 +62,11 @@ export function AppLayout() {
     }
 
     if (hasRole(user, 'super_admin')) {
-      items.push(
-        {
-          key: '/admin/users',
-          icon: <UserOutlined />,
-          label: '管理员管理',
-        },
-      );
+      items.push({
+        key: '/admin/users',
+        icon: <UserOutlined />,
+        label: '管理员管理',
+      });
     }
 
     return items;

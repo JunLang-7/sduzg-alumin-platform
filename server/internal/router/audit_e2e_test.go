@@ -98,7 +98,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		updateRequest := httptest.NewRequest(
 			http.MethodPut,
 			fmt.Sprintf("/api/v1/admin/alumni/%d", profile.ID),
-			strings.NewReader(fmt.Sprintf(`{"name":%q,"grade":"2020级","work_unit":"新单位","mobile":"13900000000"}`, profile.Name)),
+			strings.NewReader(fmt.Sprintf(`{"name":%q,"grade":"2021级","work_unit":"新单位","mobile":"13900000000"}`, profile.Name)),
 		)
 		updateRequest.Header.Set("Authorization", "Bearer "+token)
 		updateRequest.Header.Set("Content-Type", "application/json")
@@ -182,14 +182,27 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailBody); err != nil {
 			return fmt.Errorf("decode detail response: %w", err)
 		}
-		if detailBody.Code != 0 || len(detailBody.Data.Changes) != 2 {
+		if detailBody.Code != 0 || len(detailBody.Data.Changes) != 3 {
 			return fmt.Errorf("unexpected detail response: %s", bodyText)
 		}
-		if detailBody.Data.Changes[0].FieldName != "work_unit" || detailBody.Data.Changes[0].OldValue != "旧单位" {
-			return fmt.Errorf("unexpected non-sensitive diff: %+v", detailBody.Data.Changes[0])
+		changesByField := make(map[string]struct {
+			oldValue string
+			newValue string
+		}, len(detailBody.Data.Changes))
+		for _, change := range detailBody.Data.Changes {
+			changesByField[change.FieldName] = struct {
+				oldValue string
+				newValue string
+			}{oldValue: change.OldValue, newValue: change.NewValue}
 		}
-		if detailBody.Data.Changes[1].FieldName != "mobile" || detailBody.Data.Changes[1].OldValue != "已填写" || detailBody.Data.Changes[1].NewValue != "已修改" {
-			return fmt.Errorf("unexpected sensitive diff: %+v", detailBody.Data.Changes[1])
+		if change, ok := changesByField["grade"]; !ok || change.oldValue != "2020级" || change.newValue != "2021级" {
+			return fmt.Errorf("unexpected public diff: %+v", changesByField["grade"])
+		}
+		for _, field := range []string{"work_unit", "mobile"} {
+			change, ok := changesByField[field]
+			if !ok || change.oldValue != "已填写" || change.newValue != "已修改" {
+				return fmt.Errorf("unexpected sensitive diff for %s: %+v", field, change)
+			}
 		}
 
 		return rollback
