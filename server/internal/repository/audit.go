@@ -65,14 +65,13 @@ func (r *AuditRepository) List(ctx context.Context, listQuery do.AuditQuery) ([]
 
 	query := r.baseQuery(ctx)
 	query = applyAuditFilters(query, listQuery)
-	operationLogQuery := querypkg.Use(r.db).OperationLog.As("logs")
 	var items []AuditEntry
 	if err := query.
 		Order(clause.OrderBy{
 			Expression: clause.CommaExpression{
 				Exprs: []clause.Expression{
-					operationLogQuery.CreatedAt.Desc(),
-					operationLogQuery.ID.Desc(),
+					querypkg.Use(r.db).OperationLog.As("logs").CreatedAt.Desc(),
+					querypkg.Use(r.db).OperationLog.As("logs").ID.Desc(),
 				},
 			},
 		}).
