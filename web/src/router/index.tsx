@@ -11,6 +11,7 @@ import { ChangePasswordPage } from '../pages/profile/ChangePasswordPage';
 import { AlumniManagementPage } from '../pages/admin/AlumniManagementPage';
 import { DashboardPage } from '../pages/dashboard/DashboardPage';
 import { AdminUsersPage } from '../pages/admin/AdminUsersPage';
+import { AuditHistoryPage } from '../pages/admin/AuditHistoryPage';
 import { PublicHomePage } from '../pages/common/PublicHomePage';
 
 export const router = createBrowserRouter([
@@ -70,6 +71,20 @@ export const router = createBrowserRouter([
           {
             path: '/alumni/:id',
             element: <AlumniDetailPage />,
+          },
+        ],
+      },
+    ],
+  },
+  {
+    element: <RequireAuth minRole="admin" />,
+    children: [
+      {
+        element: <AppLayout />,
+        children: [
+          {
+            path: '/admin/audit/changes',
+            element: <AuditHistoryPage />,
           },
         ],
       },
