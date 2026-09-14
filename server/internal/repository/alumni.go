@@ -31,6 +31,12 @@ type AlumniStore interface {
 	UpdateEmail(ctx context.Context, id uint64, email string) error
 }
 
+// AlumniBatchCreator 在批量创建后返回已落库的档案，用于生成可跳转的批量操作历史明细。
+// 该能力作为扩展接口保留，不改变 AlumniStore 的既有调用方契约。
+type AlumniBatchCreator interface {
+	BatchCreateAndReturnProfiles(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) ([]*model.AlumniProfile, error)
+}
+
 type AlumniRepository struct {
 	db *gorm.DB
 }
@@ -268,11 +274,17 @@ func (r *AlumniRepository) Create(ctx context.Context, profile *do.AlumniCreateP
 
 // BatchCreate 批量新增校友档案。
 func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
+	_, err := r.BatchCreateAndReturnProfiles(ctx, profiles, operatorID)
+	return err
+}
+
+// BatchCreateAndReturnProfiles 批量新增校友档案并返回包含数据库 ID 的记录。
+func (r *AlumniRepository) BatchCreateAndReturnProfiles(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) ([]*model.AlumniProfile, error) {
 	if r.db == nil {
-		return common.ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 	if len(profiles) == 0 {
-		return nil
+		return nil, nil
 	}
 	dataDomainIDs := make([]uint64, len(profiles))
 	needsDefaultDomain := false
@@ -286,7 +298,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 	if needsDefaultDomain {
 		defaultDomainID, err := r.defaultMPADataDomainID(ctx)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		for i := range dataDomainIDs {
 			if dataDomainIDs[i] == 0 {
@@ -295,7 +307,7 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 		}
 	}
 	if err := r.validateActiveDataDomainIDs(ctx, dataDomainIDs); err != nil {
-		return err
+		return nil, err
 	}
 
 	items := make([]*model.AlumniProfile, 0, len(profiles))
@@ -325,7 +337,10 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, profiles []do.Alumni
 		})
 	}
 
-	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
+	if err := r.db.WithContext(ctx).CreateInBatches(items, 100).Error; err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 // validateActiveDataDomainIDs 校验目标数据域存在且处于可用状态。

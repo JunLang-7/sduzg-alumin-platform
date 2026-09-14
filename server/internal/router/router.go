@@ -85,7 +85,7 @@ func New(deps Dependencies) *gin.Engine {
 	alumniHandler := handler.NewAlumniHandler(alumniService)
 	// 操作历史查询服务
 	auditRepository := repository.NewAuditRepository(deps.DB)
-	auditService := service.NewAuditService(auditRepository)
+	auditService := service.NewAuditService(auditRepository, alumniRepository)
 	auditHandler := handler.NewAuditHandler(auditService)
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository, accessControlRepository)

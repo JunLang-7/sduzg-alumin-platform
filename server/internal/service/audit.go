@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -14,10 +15,15 @@ import (
 // AuditService 提供操作历史查询，不提供历史记录修改、删除或恢复能力。
 type AuditService struct {
 	audits repository.AuditStore
+	alumni repository.AlumniStore
 }
 
-func NewAuditService(audits repository.AuditStore) *AuditService {
-	return &AuditService{audits: audits}
+func NewAuditService(audits repository.AuditStore, alumni ...repository.AlumniStore) *AuditService {
+	service := &AuditService{audits: audits}
+	if len(alumni) > 0 {
+		service.alumni = alumni[0]
+	}
+	return service
 }
 
 // List 查询全局或指定校友的操作历史。
@@ -41,7 +47,7 @@ func (s *AuditService) List(ctx context.Context, access common.AccessContext, re
 
 	result := make([]dto.AuditOperation, 0, len(items))
 	for _, item := range items {
-		result = append(result, mapAuditOperation(item, false))
+		result = append(result, mapAuditOperation(item, false, false))
 	}
 	return common.NewPager(result, query.Page, total), nil
 }
@@ -58,7 +64,11 @@ func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, 
 	if err != nil {
 		return nil, err
 	}
-	result := mapAuditOperation(*item, true)
+	sensitiveReadable := access.HasPermission(common.PermissionAlumniSensitiveRead)
+	result := mapAuditOperation(*item, true, sensitiveReadable)
+	if err := s.populateBatchSensitiveValues(ctx, access, sensitiveReadable, &result); err != nil {
+		return nil, err
+	}
 	return &result, nil
 }
 
@@ -71,7 +81,7 @@ func applyAuditAccess(query do.AuditQuery, access common.AccessContext) do.Audit
 	return query
 }
 
-func mapAuditOperation(item repository.AuditEntry, includeChanges bool) dto.AuditOperation {
+func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiveReadable bool) dto.AuditOperation {
 	detail := auditLogDetail{}
 	if item.Detail != nil && strings.TrimSpace(*item.Detail) != "" {
 		_ = json.Unmarshal([]byte(*item.Detail), &detail)
@@ -157,6 +167,14 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool) dto.Audi
 		for _, change := range detail.Changes {
 			result.Changes = append(result.Changes, mapAuditChange(change))
 		}
+		if item.TargetType == auditTargetBatch {
+			result.BatchImportFields = mapBatchFields(sensitiveReadable)
+			result.BatchCreatedAlumni = mapBatchRecords(detail.BatchCreatedAlumni)
+			result.BatchHiddenSensitiveCount = detail.BatchHiddenSensitiveCount
+			if result.BatchHiddenSensitiveCount == 0 && len(result.BatchCreatedAlumni) > 0 {
+				result.BatchHiddenSensitiveCount = len(auditBatchSensitiveFields)
+			}
+		}
 	}
 	return result
 }
@@ -164,7 +182,81 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool) dto.Audi
 var sensitiveAuditFields = map[string]bool{
 	"mobile":          true,
 	"email":           true,
+	"work_unit":       true,
+	"position":        true,
 	"mailing_address": true,
+}
+
+func mapBatchFields(sensitiveReadable bool) []dto.AuditBatchField {
+	fields := make([]dto.AuditBatchField, 0, len(auditBatchPublicFields)+len(auditBatchSensitiveFields))
+	for _, field := range auditBatchPublicFields {
+		fields = append(fields, dto.AuditBatchField{
+			FieldName:  field.FieldName,
+			FieldLabel: field.FieldLabel,
+		})
+	}
+	if sensitiveReadable {
+		for _, field := range auditBatchSensitiveFields {
+			fields = append(fields, dto.AuditBatchField{
+				FieldName:  field.FieldName,
+				FieldLabel: field.FieldLabel,
+				Sensitive:  true,
+			})
+		}
+	}
+	return fields
+}
+
+func mapBatchRecords(records []auditBatchRecord) []dto.AuditBatchAlumni {
+	result := make([]dto.AuditBatchAlumni, 0, len(records))
+	for _, record := range records {
+		values := make(map[string]string, len(record.FieldValues))
+		for _, field := range auditBatchPublicFields {
+			if value, ok := record.FieldValues[field.FieldName]; ok {
+				values[field.FieldName] = value
+			}
+		}
+		if _, ok := values["name"]; !ok && record.Name != "" {
+			values["name"] = record.Name
+		}
+		result = append(result, dto.AuditBatchAlumni{
+			ID:          record.ID,
+			Name:        record.Name,
+			TargetMeta:  record.TargetMeta,
+			FieldValues: values,
+		})
+	}
+	return result
+}
+
+func (s *AuditService) populateBatchSensitiveValues(ctx context.Context, access common.AccessContext, sensitiveReadable bool, operation *dto.AuditOperation) error {
+	if !sensitiveReadable || operation == nil || operation.TargetType != auditTargetBatch || s.alumni == nil {
+		return nil
+	}
+
+	dataDomainIDs := access.DomainIDs
+	if access.IsSuperAdmin() {
+		dataDomainIDs = nil
+	}
+	for i := range operation.BatchCreatedAlumni {
+		record := &operation.BatchCreatedAlumni[i]
+		profile, err := s.alumni.GetByID(ctx, record.ID, dataDomainIDs)
+		if errors.Is(err, common.ErrAlumniNotFound) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if record.FieldValues == nil {
+			record.FieldValues = make(map[string]string)
+		}
+		record.FieldValues["mobile"] = stringOrEmpty(profile.Mobile)
+		record.FieldValues["email"] = stringOrEmpty(profile.Email)
+		record.FieldValues["work_unit"] = stringOrEmpty(profile.WorkUnit)
+		record.FieldValues["position"] = stringOrEmpty(profile.Position)
+		record.FieldValues["mailing_address"] = stringOrEmpty(profile.MailingAddress)
+	}
+	return nil
 }
 
 func mapAuditChange(change AuditChange) dto.AuditChange {
