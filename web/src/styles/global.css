@@ -3111,6 +3111,89 @@ button {
   text-align: center;
 }
 
+.audit-page .audit-change-table,
+.audit-page .audit-batch-records-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.audit-page .audit-change-table th,
+.audit-page .audit-change-table td,
+.audit-page .audit-batch-records-table th,
+.audit-page .audit-batch-records-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.audit-page .audit-change-table thead th,
+.audit-page .audit-batch-records-table thead th {
+  background: #fffaf7;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.audit-page .audit-change-table tbody th {
+  width: 26%;
+  color: var(--ink);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.audit-page .audit-change-table tbody tr:last-child th,
+.audit-page .audit-change-table tbody tr:last-child td,
+.audit-page .audit-batch-records-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.audit-page .audit-change-table tbody td:last-child {
+  color: var(--teal);
+}
+
+.audit-page .audit-batch-records-scroll {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.audit-page .audit-batch-records-table {
+  min-width: 940px;
+  table-layout: auto;
+}
+
+.audit-page .audit-batch-records-table td,
+.audit-page .audit-batch-records-table th {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-page .audit-batch-records-table tbody td:first-child {
+  min-width: 90px;
+  font-weight: 800;
+}
+
+.audit-page .audit-batch-records-table tbody td:first-child a {
+  color: var(--sdu-red);
+}
+
+.audit-page .audit-batch-records-table tfoot td {
+  border-bottom: 0;
+  background: #fffaf7;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .audit-page .audit-date-range {
   width: 300px;
 }
