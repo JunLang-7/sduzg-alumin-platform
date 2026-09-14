@@ -50,6 +50,14 @@ export function buildAuditQuery(input: AuditQueryInput): AuditQuery {
   };
 }
 
+export function buildAlumniHistoryQuery(
+  alumniId: number,
+  page = 1,
+  pageSize = 20,
+): AuditQuery {
+  return buildAuditQuery({ page, pageSize, targetId: alumniId });
+}
+
 export const AUDIT_BATCH_PUBLIC_FIELDS: AuditBatchField[] = [
   { field_name: 'name', field_label: '姓名' },
   { field_name: 'grade', field_label: '年级' },
