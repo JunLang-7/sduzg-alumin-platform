@@ -35,4 +35,9 @@ var (
 	ErrFileTooLarge       = errors.New("file too large")
 	ErrFileTypeNotAllowed = errors.New("file type not allowed")
 	ErrStorageUnavailable = errors.New("storage unavailable")
+
+	ErrHistoryEntryNotFound        = errors.New("history entry not found")
+	ErrHistoryContributionNotFound = errors.New("history contribution not found")
+	ErrHistoryAttachmentNotFound   = errors.New("history attachment not found")
+	ErrInvalidHistoryState         = errors.New("invalid history contribution state")
 )
