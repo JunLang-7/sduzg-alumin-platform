@@ -90,6 +90,10 @@ func New(deps Dependencies) *gin.Engine {
 	// 超级管理员服务和处理器
 	adminService := service.NewAdminService(userRepository, accessControlRepository)
 	adminHandler := handler.NewAdminHandler(adminService)
+	// 院史共编：复用现有认证与数据域授权。
+	historyRepository := repository.NewHistoryRepository(deps.DB)
+	historyService := service.NewHistoryService(historyRepository, deps.StorageClient)
+	historyHandler := handler.NewHistoryHandler(historyService)
 	// 数据大屏服务和处理器
 	dashboardRepository := repository.NewDashboardRepository(deps.DB)
 	dashboardService := service.NewDashboardService(dashboardRepository)
@@ -127,6 +131,21 @@ func New(deps Dependencies) *gin.Engine {
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.PUT("/alumni/me/contact", authHandler.UpdateContact)
 		api.GET("/alumni/:id", alumniHandler.Detail)
+
+		// 院史共编（所有接口均需已登录；投稿仅校友可用，审核由服务层校验管理员数据域）
+		history := api.Group("/history")
+		{
+			history.GET("/entries", historyHandler.ListEntries)
+			history.GET("/entries/:id", historyHandler.GetEntry)
+			history.GET("/contributions/me", historyHandler.ListMine)
+			history.POST("/contributions", historyHandler.CreateDraft)
+			history.POST("/contributions/:id/submit", historyHandler.Submit)
+			history.POST("/contributions/:id/attachments/upload-url", historyHandler.RequestAttachmentUpload)
+			history.POST("/contributions/:id/attachments/:attachmentId/confirm", historyHandler.ConfirmAttachmentUpload)
+			history.GET("/contributions/:id/attachments/:attachmentId/download", historyHandler.AttachmentDownloadURL)
+			history.GET("/reviews", historyHandler.ListPending)
+			history.POST("/reviews/:id", historyHandler.Review)
+		}
 
 		// 管理员专用接口
 		admin := api.Group("/admin")
