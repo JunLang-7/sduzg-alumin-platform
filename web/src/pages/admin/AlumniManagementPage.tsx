@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeleteOutlined,
   DownloadOutlined,
@@ -30,6 +30,7 @@ import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
 import { useAuthStore } from '../../store/authStore';
+import type { DataDomain } from '../../types/auth';
 import type {
   AlumniImportResult,
   AlumniProfile,
@@ -40,10 +41,11 @@ import { canReadSensitive } from '../../utils/access';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
+const emptyDomains: DataDomain[] = [];
 
 export function AlumniManagementPage() {
   const user = useAuthStore((state) => state.user);
-  const domains = user?.domains || [];
+  const domains = user?.domains ?? emptyDomains;
   const sensitiveReadable = canReadSensitive(user);
   const [searchForm] = Form.useForm<AlumniQuery>();
   const [modalForm] = Form.useForm<AlumniProfilePayload>();
@@ -67,7 +69,7 @@ export function AlumniManagementPage() {
   const dataRequestIdRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const loadData = async (nextQuery: AlumniQuery) => {
+  const loadData = useCallback(async (nextQuery: AlumniQuery) => {
     const requestId = dataRequestIdRef.current + 1;
     dataRequestIdRef.current = requestId;
     setLoading(true);
@@ -89,11 +91,11 @@ export function AlumniManagementPage() {
         setLoading(false);
       }
     }
-  };
+  }, []);
 
   useEffect(() => {
     void loadData(query);
-  }, [query]);
+  }, [loadData, query]);
 
   useEffect(() => {
     searchForm.setFieldsValue({ keyword: urlKeyword });
@@ -113,11 +115,14 @@ export function AlumniManagementPage() {
     setModalOpen(true);
   };
 
-  const openEditModal = (record: AlumniProfile) => {
-    setEditing(record);
-    modalForm.setFieldsValue(record);
-    setModalOpen(true);
-  };
+  const openEditModal = useCallback(
+    (record: AlumniProfile) => {
+      setEditing(record);
+      modalForm.setFieldsValue(record);
+      setModalOpen(true);
+    },
+    [modalForm],
+  );
 
   const closeModal = () => {
     setModalOpen(false);
@@ -146,16 +151,19 @@ export function AlumniManagementPage() {
     }
   };
 
-  const handleRemove = async (record: AlumniProfile) => {
-    try {
-      await alumniApi.remove(record.id);
-      message.success('校友档案已删除');
-      await loadData(query);
-    } catch (error) {
-      const err = error as Error;
-      message.error(err.message || '删除失败');
-    }
-  };
+  const handleRemove = useCallback(
+    async (record: AlumniProfile) => {
+      try {
+        await alumniApi.remove(record.id);
+        message.success('校友档案已删除');
+        await loadData(query);
+      } catch (error) {
+        const err = error as Error;
+        message.error(err.message || '删除失败');
+      }
+    },
+    [loadData, query],
+  );
 
   const columns = useMemo<ColumnsType<AlumniProfile>>(
     () => [

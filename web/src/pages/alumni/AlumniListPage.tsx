@@ -6,16 +6,18 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
+import type { DataDomain } from '../../types/auth';
 import type { AlumniProfile, AlumniQuery } from '../../types/alumni';
 import { canReadSensitive } from '../../utils/access';
 import { industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
 const defaultPageSize = 20;
+const emptyDomains: DataDomain[] = [];
 
 export function AlumniListPage() {
   const [form] = Form.useForm<AlumniQuery>();
   const user = useAuthStore((state) => state.user);
-  const domains = user?.domains || [];
+  const domains = user?.domains ?? emptyDomains;
   const sensitiveReadable = canReadSensitive(user);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
