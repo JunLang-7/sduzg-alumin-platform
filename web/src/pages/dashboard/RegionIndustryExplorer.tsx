@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ArrowLeftOutlined,
   ArrowsAltOutlined,
@@ -602,20 +602,29 @@ export function RegionIndustryExplorer({
     return () => mediaQuery.removeEventListener?.('change', updatePreference);
   }, []);
 
-  const updateMapMode = (mode: MapMode) => {
-    setInternalMapMode(mode);
-    onMapModeChange?.(mode);
-  };
+  const updateMapMode = useCallback(
+    (mode: MapMode) => {
+      setInternalMapMode(mode);
+      onMapModeChange?.(mode);
+    },
+    [onMapModeChange],
+  );
 
-  const updateSelectedRegion = (region: string) => {
-    setInternalSelectedRegion(region);
-    onRegionChange?.(region);
-  };
+  const updateSelectedRegion = useCallback(
+    (region: string) => {
+      setInternalSelectedRegion(region);
+      onRegionChange?.(region);
+    },
+    [onRegionChange],
+  );
 
-  const updateSelectedDistrict = (district: string) => {
-    setInternalSelectedDistrict(district);
-    onDistrictChange?.(district);
-  };
+  const updateSelectedDistrict = useCallback(
+    (district: string) => {
+      setInternalSelectedDistrict(district);
+      onDistrictChange?.(district);
+    },
+    [onDistrictChange],
+  );
 
   clearMainMapSelectionRef.current = () => {
     updateSelectedRegion('');
@@ -810,81 +819,94 @@ export function RegionIndustryExplorer({
 
   const maxIndustryValue = industries[0]?.value || 1;
 
-  const openCityDetail = async (city: string, adcode?: number, parent?: DrillMap | null) => {
-    setDrillLoading(true);
-    try {
-      const resolvedAdcode =
-        adcode ||
-        (shandongGeoJSON.features as MapFeature[]).find(
-          (feature) => feature.properties?.name === city,
-        )?.properties?.adcode;
-      const loader = resolvedAdcode ? findMapLoader(cityMapLoaders, resolvedAdcode) : undefined;
-      const fallbackLoader = shandongCityMapLoaders[city as keyof typeof shandongCityMapLoaders];
-      const geoJSON = loader
-        ? (await loader()).default
-        : fallbackLoader
-          ? (await fallbackLoader()).default
-          : null;
-      if (!geoJSON) {
-        message.info('该地区暂无区县地图');
-        return;
+  const openCityDetail = useCallback(
+    async (city: string, adcode?: number, parent?: DrillMap | null) => {
+      setDrillLoading(true);
+      try {
+        const resolvedAdcode =
+          adcode ||
+          (shandongGeoJSON.features as MapFeature[]).find(
+            (feature) => feature.properties?.name === city,
+          )?.properties?.adcode;
+        const loader = resolvedAdcode ? findMapLoader(cityMapLoaders, resolvedAdcode) : undefined;
+        const fallbackLoader = shandongCityMapLoaders[city as keyof typeof shandongCityMapLoaders];
+        const geoJSON = loader
+          ? (await loader()).default
+          : fallbackLoader
+            ? (await fallbackLoader()).default
+            : null;
+        if (!geoJSON) {
+          message.info('该地区暂无区县地图');
+          return;
+        }
+        const mapName = `alumni-city-${resolvedAdcode || city}`;
+        echarts.registerMap(
+          mapName,
+          geoJSON as unknown as Parameters<typeof echarts.registerMap>[1],
+        );
+        if (!parent || mapMode === 'shandong') {
+          updateSelectedRegion(city);
+        }
+        updateSelectedDistrict('');
+        setDrillParent(parent || null);
+        setDrillMap({
+          name: city,
+          mapName,
+          level: 'city',
+          features: geoJSON.features as MapFeature[],
+          seatName:
+            (citySeats as Record<string, { city: string; district: string }>)[
+              String(resolvedAdcode)
+            ]?.district || geoJSON.features[0]?.properties?.name,
+        });
+        setMapModalOpen(true);
+      } catch {
+        message.error('该城市地图加载失败，请稍后重试');
+      } finally {
+        setDrillLoading(false);
       }
-      const mapName = `alumni-city-${resolvedAdcode || city}`;
-      echarts.registerMap(mapName, geoJSON as unknown as Parameters<typeof echarts.registerMap>[1]);
-      if (!parent || mapMode === 'shandong') {
-        updateSelectedRegion(city);
-      }
-      updateSelectedDistrict('');
-      setDrillParent(parent || null);
-      setDrillMap({
-        name: city,
-        mapName,
-        level: 'city',
-        features: geoJSON.features as MapFeature[],
-        seatName:
-          (citySeats as Record<string, { city: string; district: string }>)[String(resolvedAdcode)]
-            ?.district || geoJSON.features[0]?.properties?.name,
-      });
-      setMapModalOpen(true);
-    } catch {
-      message.error('该城市地图加载失败，请稍后重试');
-    } finally {
-      setDrillLoading(false);
-    }
-  };
+    },
+    [mapMode, updateSelectedDistrict, updateSelectedRegion],
+  );
 
-  const openProvinceDetail = async (province: string) => {
-    const feature = (chinaProvinceGeoJSON.features as MapFeature[]).find(
-      (item) => item.properties?.name === province,
-    );
-    const adcode = feature?.properties?.adcode;
-    if (!adcode) return;
-    setDrillLoading(true);
-    try {
-      const loader = findMapLoader(provinceMapLoaders, adcode);
-      if (!loader) {
-        updateSelectedRegion(province);
-        message.info('该地区暂无下一级地图');
-        return;
+  const openProvinceDetail = useCallback(
+    async (province: string) => {
+      const feature = (chinaProvinceGeoJSON.features as MapFeature[]).find(
+        (item) => item.properties?.name === province,
+      );
+      const adcode = feature?.properties?.adcode;
+      if (!adcode) return;
+      setDrillLoading(true);
+      try {
+        const loader = findMapLoader(provinceMapLoaders, adcode);
+        if (!loader) {
+          updateSelectedRegion(province);
+          message.info('该地区暂无下一级地图');
+          return;
+        }
+        const geoJSON = (await loader()).default;
+        const mapName = `alumni-province-${adcode}`;
+        echarts.registerMap(
+          mapName,
+          geoJSON as unknown as Parameters<typeof echarts.registerMap>[1],
+        );
+        updateSelectedDistrict('');
+        setDrillParent(null);
+        setDrillMap({
+          name: province,
+          mapName,
+          level: 'province',
+          features: geoJSON.features,
+        });
+        setMapModalOpen(true);
+      } catch {
+        message.error('该省地图加载失败，请检查网络后重试');
+      } finally {
+        setDrillLoading(false);
       }
-      const geoJSON = (await loader()).default;
-      const mapName = `alumni-province-${adcode}`;
-      echarts.registerMap(mapName, geoJSON as unknown as Parameters<typeof echarts.registerMap>[1]);
-      updateSelectedDistrict('');
-      setDrillParent(null);
-      setDrillMap({
-        name: province,
-        mapName,
-        level: 'province',
-        features: geoJSON.features,
-      });
-      setMapModalOpen(true);
-    } catch {
-      message.error('该省地图加载失败，请检查网络后重试');
-    } finally {
-      setDrillLoading(false);
-    }
-  };
+    },
+    [updateSelectedDistrict, updateSelectedRegion],
+  );
 
   const drillNames = useMemo(
     () =>
@@ -996,7 +1018,7 @@ export function RegionIndustryExplorer({
     setSelectedIndustry('');
     setPeopleKeyword('');
     updateSelectedDistrict('');
-  }, [selectedRegion]);
+  }, [selectedRegion, updateSelectedDistrict]);
 
   const changeMapMode = (value: MapMode) => {
     updateMapMode(value);
@@ -1172,7 +1194,7 @@ export function RegionIndustryExplorer({
         }
       },
     }),
-    [mapMode, mapRegions],
+    [mapMode, mapRegions, openCityDetail, openProvinceDetail, updateSelectedRegion],
   );
 
   const detailMapEvents = useMemo(
@@ -1214,7 +1236,16 @@ export function RegionIndustryExplorer({
         }
       },
     }),
-    [drillMap, drillNames, mapMode, selectedDistrict],
+    [
+      drillMap,
+      drillNames,
+      mapMode,
+      openCityDetail,
+      openProvinceDetail,
+      selectedDistrict,
+      updateSelectedDistrict,
+      updateSelectedRegion,
+    ],
   );
 
   return (
