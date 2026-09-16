@@ -1,4 +1,4 @@
-.PHONY: all gendb fmt fmt-check lint test test-backend test-frontend build check
+.PHONY: all gendb fmt fmt-check lint test test-backend test-frontend build check e2e
 
 all: check
 
@@ -31,3 +31,6 @@ build:
 	@cd web && npm run build
 
 check: fmt-check lint test build
+
+e2e:
+	@cd web && npm run test:e2e

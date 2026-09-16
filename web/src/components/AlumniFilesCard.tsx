@@ -114,23 +114,25 @@ export function AlumniFilesCard({ alumniId }: Props) {
         }
         extra={
           isAdmin ? (
-            <Upload
-              accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
-              showUploadList={false}
-              beforeUpload={(file) => {
-                void handleUpload(fileType, file as File);
-                return false;
-              }}
-              disabled={uploading === fileType}
-            >
-              <Button
-                type="link"
-                icon={uploading === fileType ? <LoadingOutlined /> : <FileAddOutlined />}
+            <span data-testid={`alumni-file-upload-${fileType}`}>
+              <Upload
+                accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+                showUploadList={false}
+                beforeUpload={(file) => {
+                  void handleUpload(fileType, file as File);
+                  return false;
+                }}
                 disabled={uploading === fileType}
               >
-                {uploading === fileType ? '上传中...' : '上传文件'}
-              </Button>
-            </Upload>
+                <Button
+                  type="link"
+                  icon={uploading === fileType ? <LoadingOutlined /> : <FileAddOutlined />}
+                  disabled={uploading === fileType}
+                >
+                  {uploading === fileType ? '上传中...' : '上传文件'}
+                </Button>
+              </Upload>
+            </span>
           ) : null
         }
       >

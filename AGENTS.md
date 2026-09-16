@@ -45,6 +45,7 @@ make lint       # Go vet 与 ESLint
 make test       # 后端 race 测试与前端 Vitest
 make build      # 构建 API 和 Web
 make check      # 依次执行 fmt-check、lint、test、build
+make e2e        # 启动隔离 Compose 环境并运行 Playwright 浏览器冒烟测试
 ```
 
 ## 常用开发命令
@@ -88,6 +89,14 @@ curl http://127.0.0.1:8080/api/v1/health/live
 curl http://127.0.0.1:8080/api/v1/health/ready
 ```
 
+浏览器端到端测试：
+
+```bash
+make e2e
+```
+
+该命令使用独立的 `sdu-alumni-e2e` Compose 项目、独立端口与卷；会等待 API 就绪和 Web 可访问后运行 Chromium 测试，并在结束时清理。失败时检查 `web/test-results/` 中的截图、录像、trace 与 Compose 日志；这些产物不提交。
+
 ## 后端约定
 
 - 保持现有分层：`handler -> service -> repository -> model/database`。不要把数据库细节写进 handler，也不要把 HTTP 细节写进 service。
@@ -126,7 +135,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - 修改配置加载、路由、中间件、认证或权限时，补充或更新后端测试。
 - 修改前端路由、权限、API 类型或构建配置时，补充 Vitest 测试，并运行 `npm run lint`、`npm run test`、`npm run build`。
 - 修改数据库 schema 后，同步更新有序迁移、生成模型、相关 DTO/API 类型和文档。CI 会从空 MySQL 按顺序应用全部迁移，并在 Redis 可用时运行集成测试。
-- 若改动影响联调流程，使用 `docker compose up --build` 验证完整环境；CI 还会构建镜像，并检查 API 的存活与就绪接口及 Web 容器的静态页面服务。
+- 若改动影响联调流程，使用 `docker compose up --build` 验证完整环境；涉及登录、路由权限、校友管理或附件上传下载删除时，运行 `make e2e`。CI 还会构建镜像，并检查 API 的存活与就绪接口及 Web 容器的静态页面服务。
 
 ## 工作注意事项
 
@@ -136,7 +145,7 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 - 所有提交标题使用 `type(scope): 描述`：type 仅限 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`，scope 为小写模块名；例如 `feat(alumni): 新增校友导出`。
 - 新功能必须覆盖正常路径、关键边界和失败路径；缺陷修复必须添加回归测试。权限、个人信息和数据域改动必须覆盖未登录、越权和跨域访问边界。
 - 提交前优先运行根目录 `make check`；涉及 MySQL、Redis 或迁移的改动还应运行对应集成验证。
-- GitHub 上的 `main`、`dev` 分支要求关联 Issue、提交标题、六项质量 CI 检查通过、一位评审批准、全部讨论解决及线性历史后才能合并。日常开发 PR 目标为 `dev`，发布 PR 由 `dev` 提交到 `main`。
+- GitHub 上的 `main`、`dev` 分支要求关联 Issue、提交标题、基础质量与 E2E CI 检查通过、一位评审批准、全部讨论解决及线性历史后才能合并。日常开发 PR 目标为 `dev`，发布 PR 由 `dev` 提交到 `main`。
 - 保持改动聚焦，不做无关格式化、重命名或大范围重构。
 - 不提交 `.env`、日志、构建产物、`web/node_modules/`、`web/dist/` 等本地文件。
 - 需求或权限不明确时，以 `docs/` 中的一期 MPA 试点范围为准；不要擅自引入活动、内容管理、AI、支付等未纳入一期的模块。

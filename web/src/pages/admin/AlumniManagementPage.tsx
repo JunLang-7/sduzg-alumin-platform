@@ -447,10 +447,10 @@ export function AlumniManagementPage() {
       >
         <Form form={modalForm} layout="vertical" className="modal-grid">
           <Form.Item label="姓名" name="name" rules={[{ required: true, message: '请输入姓名' }]}>
-            <Input maxLength={100} />
+            <Input data-testid="alumni-name-input" maxLength={100} />
           </Form.Item>
           <Form.Item label="年级" name="grade" rules={[{ required: true, message: '请输入年级' }]}>
-            <Input maxLength={50} />
+            <Input data-testid="alumni-grade-input" maxLength={50} />
           </Form.Item>
           <Form.Item
             label="培养类别"
