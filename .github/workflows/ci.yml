@@ -126,12 +126,30 @@ jobs:
     env:
       TEST_MYSQL_DSN: root:test-password@tcp(127.0.0.1:3306)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=Local
       TEST_REDIS_ADDR: 127.0.0.1:6379
+      TEST_MINIO_ENDPOINT: 127.0.0.1:9000
+      TEST_MINIO_ACCESS_KEY: minioadmin
+      TEST_MINIO_SECRET_KEY: minioadmin123
+      TEST_MINIO_BUCKET: sdu-alumni-integration-test
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
+      - name: Start isolated MinIO
+        run: |
+          docker run --detach --name sdu-alumni-minio-ci --publish 9000:9000 \
+            --env MINIO_ROOT_USER="$TEST_MINIO_ACCESS_KEY" \
+            --env MINIO_ROOT_PASSWORD="$TEST_MINIO_SECRET_KEY" \
+            minio/minio:latest server /data
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent http://127.0.0.1:9000/minio/health/live > /dev/null; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs sdu-alumni-minio-ci
+          exit 1
       - name: Apply every migration to a clean database
         run: |
           for migration in migrations/*.sql; do
@@ -140,6 +158,11 @@ jobs:
           test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'users'")" = "users"
           test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")" = "alumni_profiles"
       - run: go test -race -count=1 ./...
+      - name: Stop isolated MinIO
+        if: always()
+        run: |
+          docker logs sdu-alumni-minio-ci || true
+          docker rm -f sdu-alumni-minio-ci || true
 
   security:
     name: Security
