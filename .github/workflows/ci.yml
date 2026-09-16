@@ -120,6 +120,19 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
+      minio:
+        image: quay.io/minio/minio:latest
+        command: server /data
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl --fail --silent http://127.0.0.1:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
     defaults:
       run:
         working-directory: server
@@ -136,20 +149,6 @@ jobs:
         with:
           go-version-file: server/go.mod
           cache-dependency-path: server/go.sum
-      - name: Start isolated MinIO
-        run: |
-          docker run --detach --name sdu-alumni-minio-ci --publish 9000:9000 \
-            --env MINIO_ROOT_USER="$TEST_MINIO_ACCESS_KEY" \
-            --env MINIO_ROOT_PASSWORD="$TEST_MINIO_SECRET_KEY" \
-            minio/minio:latest server /data
-          for attempt in $(seq 1 20); do
-            if curl --fail --silent http://127.0.0.1:9000/minio/health/live > /dev/null; then
-              exit 0
-            fi
-            sleep 2
-          done
-          docker logs sdu-alumni-minio-ci
-          exit 1
       - name: Apply every migration to a clean database
         run: |
           for migration in migrations/*.sql; do
@@ -158,11 +157,6 @@ jobs:
           test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'users'")" = "users"
           test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")" = "alumni_profiles"
       - run: go test -race -count=1 ./...
-      - name: Stop isolated MinIO
-        if: always()
-        run: |
-          docker logs sdu-alumni-minio-ci || true
-          docker rm -f sdu-alumni-minio-ci || true
 
   security:
     name: Security
