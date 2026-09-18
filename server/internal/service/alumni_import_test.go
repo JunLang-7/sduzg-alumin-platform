@@ -366,6 +366,17 @@ func TestImportEmptyFile(t *testing.T) {
 	}
 }
 
+func TestImportRejectsMalformedWorkbook(t *testing.T) {
+	// A ZIP signature alone must not be treated as a valid workbook. This also
+	// guards the import path against malformed uploaded spreadsheet data.
+	reader := bytes.NewReader([]byte{'P', 'K', 0x03, 0x04, 0xff, 0x00, 0x00})
+
+	_, err := importAsSuperAdmin(NewAlumniService(&fakeAlumniStore{}, nil), reader)
+	if err != common.ErrInvalidRequest {
+		t.Fatalf("expected invalid request for malformed workbook, got %v", err)
+	}
+}
+
 func TestImportHeaderMismatch(t *testing.T) {
 	badHeaders := []string{"名称", "年级"}
 	reader, err := buildXLSXReader(badHeaders, [][]string{{"张三", "2020级"}})
