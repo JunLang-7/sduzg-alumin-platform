@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL || 'http://127.0.0.1:18081';
+const channel = process.env.E2E_BROWSER_CHANNEL;
 
 export default defineConfig({
   testDir: './e2e',
@@ -14,6 +15,7 @@ export default defineConfig({
   outputDir: 'test-results',
   use: {
     baseURL,
+    ...(channel ? { channel } : {}),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

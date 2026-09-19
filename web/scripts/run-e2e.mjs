@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,9 +11,19 @@ const projectName = process.env.E2E_COMPOSE_PROJECT || 'sdu-alumni-e2e';
 const webPort = process.env.E2E_WEB_PORT || '18081';
 const apiPort = process.env.E2E_API_PORT || '18080';
 const resultDir = resolve(webDir, 'test-results');
+const isWindows = process.platform === 'win32';
+const dockerCommand = isWindows ? 'docker.exe' : 'docker';
+const npmCommand = isWindows ? 'npm.cmd' : 'npm';
+const npxCommand = isWindows ? 'npx.cmd' : 'npx';
+const npmCli = isWindows ? process.env.npm_execpath : undefined;
+const browserChannel = process.env.E2E_BROWSER_CHANNEL || (isWindows ? 'msedge' : undefined);
+const dockerBin = resolve(process.env.LOCALAPPDATA || '', 'Programs/DockerDesktop/resources/bin');
+const dockerPath =
+  isWindows && existsSync(dockerBin) ? `${dockerBin};${process.env.PATH || ''}` : process.env.PATH;
 
 const composeEnv = {
   ...process.env,
+  PATH: dockerPath,
   MYSQL_ROOT_PASSWORD: process.env.E2E_MYSQL_ROOT_PASSWORD || 'e2e-root-password',
   MYSQL_PASSWORD: process.env.E2E_MYSQL_PASSWORD || 'e2e-db-password',
   MYSQL_HOST_PORT: process.env.E2E_MYSQL_PORT || '13307',
@@ -27,10 +38,12 @@ const composeEnv = {
 
 function run(command, args, options = {}) {
   return new Promise((resolveRun, rejectRun) => {
+    const useShell = isWindows && /\.(cmd|bat)$/i.test(command);
     const child = spawn(command, args, {
       cwd: options.cwd || projectRoot,
       env: options.env || composeEnv,
       stdio: options.stdio || 'inherit',
+      shell: useShell,
     });
     child.on('error', rejectRun);
     child.on('close', (code) => {
@@ -45,6 +58,13 @@ function run(command, args, options = {}) {
 
 function composeArgs(...args) {
   return ['compose', '--project-name', projectName, ...args];
+}
+
+function npmArgs(...args) {
+  if (npmCli) {
+    return { command: process.execPath, args: [npmCli, ...args] };
+  }
+  return { command: npmCommand, args };
 }
 
 function wait(milliseconds) {
@@ -69,10 +89,11 @@ async function waitForReady(url, label) {
 
 async function saveComposeLogs() {
   await mkdir(resultDir, { recursive: true });
-  const child = spawn('docker', composeArgs('logs', '--no-color'), {
+  const child = spawn(dockerCommand, composeArgs('logs', '--no-color'), {
     cwd: projectRoot,
     env: composeEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
+    shell: false,
   });
   let output = '';
   child.stdout.on('data', (chunk) => {
@@ -87,16 +108,21 @@ async function saveComposeLogs() {
 
 let failed = false;
 try {
-  if (process.env.E2E_SKIP_BROWSER_INSTALL !== 'true') {
-    await run('npx', ['playwright', 'install', 'chromium'], { cwd: webDir });
+  if (process.env.E2E_SKIP_BROWSER_INSTALL !== 'true' && browserChannel == null) {
+    await run(npxCommand, ['playwright', 'install', 'chromium'], { cwd: webDir });
   }
-  await run('docker', composeArgs('down', '--volumes', '--remove-orphans'));
-  await run('docker', composeArgs('up', '--build', '--detach'));
+  await run(dockerCommand, composeArgs('down', '--volumes', '--remove-orphans'));
+  await run(dockerCommand, composeArgs('up', '--build', '--detach'));
   await waitForReady(`http://127.0.0.1:${apiPort}/api/v1/health/ready`, 'API');
   await waitForReady(`http://127.0.0.1:${webPort}/`, 'Web');
-  await run('npm', ['run', 'test:e2e:run'], {
+  const playwright = npmArgs('run', 'test:e2e:run');
+  await run(playwright.command, playwright.args, {
     cwd: webDir,
-    env: { ...composeEnv, E2E_BASE_URL: `http://127.0.0.1:${webPort}` },
+    env: {
+      ...composeEnv,
+      E2E_BASE_URL: `http://127.0.0.1:${webPort}`,
+      ...(browserChannel ? { E2E_BROWSER_CHANNEL: browserChannel } : {}),
+    },
   });
 } catch (error) {
   failed = true;
@@ -104,7 +130,7 @@ try {
   throw error;
 } finally {
   if (process.env.E2E_KEEP_ENV !== 'true') {
-    await run('docker', composeArgs('down', '--volumes', '--remove-orphans')).catch(() => {});
+    await run(dockerCommand, composeArgs('down', '--volumes', '--remove-orphans')).catch(() => {});
   }
   if (failed) {
     console.error(`E2E diagnostics are available in ${resultDir}`);

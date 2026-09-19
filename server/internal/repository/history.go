@@ -63,8 +63,8 @@ func (r *HistoryRepository) AlumniDomainID(ctx context.Context, alumniID uint64)
 		return 0, common.ErrDatabaseUnavailable
 	}
 	qs := query.Use(r.db).AlumniProfile
-	var profile model.AlumniProfile
-	if err := r.db.WithContext(ctx).Select(qs.DataDomainID).Where(qs.ID.Eq(alumniID)).First(&profile).Error; err != nil {
+	profile, err := qs.WithContext(ctx).Select(qs.DataDomainID).Where(qs.ID.Eq(alumniID)).First()
+	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, common.ErrAlumniNotFound
 		}

@@ -28,6 +28,9 @@ async function removeAlumni(page: Page, name: string) {
 }
 
 test('未登录和普通校友不能进入管理员功能', async ({ page }) => {
+  await page.goto('/history');
+  await expect(page).toHaveURL(/\/login$/);
+
   await page.goto('/admin/alumni');
   await expect(page).toHaveURL(/\/login$/);
 
@@ -127,4 +130,54 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
   } finally {
     await removeAlumni(page, alumniName).catch(() => undefined);
   }
+});
+
+test('校友可投稿院史资料，管理员审核后成为正式词条', async ({ page }) => {
+  const title = `E2E院史词条${Date.now()}`;
+
+  await login(page, '13800001111');
+  await page.waitForURL((url) => url.pathname !== '/login');
+  await page.goto('/history');
+  const contributeButton = page.getByRole('button', { name: '参与编写' });
+  await expect(contributeButton).toBeVisible();
+  await contributeButton.click();
+  const drawer = page.getByRole('dialog', { name: '提交院史资料' });
+  await drawer.getByLabel('词条标题').fill(title);
+  await drawer.getByLabel('正文').fill('用于端到端验证的院史投稿正文。');
+  await drawer.getByLabel('资料来源').fill('E2E 测试资料来源');
+  await drawer.locator('input[type="file"]').setInputFiles({
+    name: 'history-e2e.pdf',
+    mimeType: 'application/pdf',
+    buffer: attachmentContent,
+  });
+  const consent = drawer.locator('input[type="checkbox"]');
+  const consentLabel = drawer.locator('.ant-checkbox-wrapper');
+  await consentLabel.scrollIntoViewIfNeeded();
+  await consentLabel.click();
+  await expect(consent).toBeChecked();
+  await drawer.getByRole('button', { name: '提交审核' }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByText(title).last()).toBeVisible();
+
+  await page.goto('/login');
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  await page.waitForURL((url) => url.pathname !== '/login');
+  await page.goto('/admin/history/reviews');
+  const row = page.getByRole('row').filter({ hasText: title });
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: '审核' }).click();
+  await expect(page.getByRole('heading', { name: 'history-e2e.pdf' })).toBeVisible();
+  await page.getByRole('button', { name: '通过' }).click();
+  await page.locator('.ant-modal-confirm-btns .ant-btn-primary').click();
+  await expect(page.getByText('处理成功')).toBeVisible();
+
+  await page.goto('/login');
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, '13800001111');
+  await page.waitForURL((url) => url.pathname !== '/login');
+  await page.goto('/history');
+  await page.getByPlaceholder('搜索已发布词条').fill(title);
+  await page.getByPlaceholder('搜索已发布词条').press('Enter');
+  await expect(page.getByText(title).first()).toBeVisible();
 });
