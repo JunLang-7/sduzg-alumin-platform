@@ -783,15 +783,9 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrInvalidRequest
 	}
 
-	f, err := excelize.OpenReader(bytes.NewReader(data))
+	rows, err := readImportWorkbookRows(data)
 	if err != nil {
-		return nil, common.ErrInvalidRequest
-	}
-	defer f.Close()
-
-	rows, err := f.GetRows(f.GetSheetName(0))
-	if err != nil {
-		return nil, fmt.Errorf("read sheet rows: %w", err)
+		return nil, err
 	}
 
 	const maxRows = 5001 // 表头 + 最多 5000 行数据
@@ -939,6 +933,29 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 	s.writeImportAudit(ctx, operator, nil, nil, result)
 	return result, nil
+}
+
+// readImportWorkbookRows isolates spreadsheet parsing from the request path.
+// A malformed workbook must be rejected instead of allowing a parser panic to
+// terminate the API process.
+func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = common.ErrInvalidRequest
+		}
+	}()
+
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, common.ErrInvalidRequest
+	}
+	defer f.Close()
+
+	rows, err = f.GetRows(f.GetSheetName(0))
+	if err != nil {
+		return nil, common.ErrInvalidRequest
+	}
+	return rows, nil
 }
 
 // writeImportAudit 记录导入结果和可跳转的公开字段，不写入任何校友敏感字段原值。
