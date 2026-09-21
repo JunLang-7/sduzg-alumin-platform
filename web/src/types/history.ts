@@ -5,6 +5,7 @@ export interface HistoryEntry {
   title: string;
   summary: string;
   content: string;
+  source_note: string;
   current_version: number;
   updated_at: string;
 }
@@ -19,6 +20,7 @@ export interface HistoryContribution {
   change_note: string;
   status: HistoryContributionStatus;
   review_comment?: string;
+  submitted_at?: string;
   updated_at: string;
 }
 
@@ -39,6 +41,13 @@ export interface CreateHistoryContributionPayload {
   entry_id?: number;
   title: string;
   section_name?: string;
+  content: string;
+  source_note: string;
+  change_note?: string;
+}
+
+export interface UpdateHistoryEntryPayload {
+  title: string;
   content: string;
   source_note: string;
   change_note?: string;

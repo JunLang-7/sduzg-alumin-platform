@@ -28,6 +28,20 @@ const actionText: Record<HistoryReviewAction, string> = {
   reject: '驳回',
 };
 
+const formatDate = (value?: string) => {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date
+    .toLocaleDateString('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    .replace(/\//g, '-');
+};
+
 export function HistoryReviewPage() {
   const { message } = App.useApp();
   const [items, setItems] = useState<HistoryContribution[]>([]);
@@ -49,6 +63,7 @@ export function HistoryReviewPage() {
   }, [load]);
   const open = async (item: HistoryContribution) => {
     setActive(item);
+    setAttachments([]);
     try {
       setAttachments(await historyApi.listReviewAttachments(item.id));
     } catch (e) {
@@ -82,8 +97,11 @@ export function HistoryReviewPage() {
   };
   const columns: ColumnsType<HistoryContribution> = [
     { title: '词条', dataIndex: 'title' },
-    { title: '章节', dataIndex: 'section_name' },
-    { title: '提交时间', dataIndex: 'updated_at', width: 180 },
+    {
+      title: '提交时间',
+      width: 120,
+      render: (_, item) => formatDate(item.submitted_at || item.updated_at),
+    },
     {
       title: '操作',
       width: 100,
@@ -96,7 +114,7 @@ export function HistoryReviewPage() {
   ];
   return (
     <section>
-      <PageHeader title="院史领域待审" description="仅显示您有管理权限的培养类别投稿。" />
+      <PageHeader title="院史领域待审" description="仅显示您有管理权限的培养类别投稿" />
       <Table
         rowKey="id"
         loading={loading}
@@ -129,23 +147,26 @@ export function HistoryReviewPage() {
               <Descriptions.Item label="正文">{active.content}</Descriptions.Item>
               <Descriptions.Item label="资料来源">{active.source_note}</Descriptions.Item>
             </Descriptions>
-            <h3>图片和扫描件</h3>
-            <List
-              dataSource={attachments}
-              locale={{ emptyText: <Empty description="未附附件" /> }}
-              renderItem={(file) => (
-                <List.Item>
-                  <List.Item.Meta
-                    avatar={<FileTextOutlined />}
-                    title={file.original_name}
-                    description={`${file.description}；来源：${file.source_note}；授权：${file.rights_note}`}
-                  />
-                  <Tag color={file.consent_confirmed ? 'green' : 'red'}>
-                    {file.consent_confirmed ? '已确认授权' : '未确认授权'}
-                  </Tag>
-                </List.Item>
-              )}
-            />
+            {attachments.length > 0 && (
+              <>
+                <h3>图片和扫描件</h3>
+                <List
+                  dataSource={attachments}
+                  renderItem={(file) => (
+                    <List.Item>
+                      <List.Item.Meta
+                        avatar={<FileTextOutlined />}
+                        title={file.original_name}
+                        description={`${file.description}；来源：${file.source_note}；授权：${file.rights_note}`}
+                      />
+                      <Tag color={file.consent_confirmed ? 'green' : 'red'}>
+                        {file.consent_confirmed ? '已确认授权' : '未确认授权'}
+                      </Tag>
+                    </List.Item>
+                  )}
+                />
+              </>
+            )}
           </>
         )}
       </Drawer>

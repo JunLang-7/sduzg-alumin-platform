@@ -137,6 +137,7 @@ func New(deps Dependencies) *gin.Engine {
 		{
 			history.GET("/entries", historyHandler.ListEntries)
 			history.GET("/entries/:id", historyHandler.GetEntry)
+			history.PUT("/entries/:id", historyHandler.UpdateEntry)
 			history.GET("/contributions/me", historyHandler.ListMine)
 			history.POST("/contributions", historyHandler.CreateDraft)
 			history.POST("/contributions/:id/submit", historyHandler.Submit)

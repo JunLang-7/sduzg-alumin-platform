@@ -256,6 +256,17 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || approved.Status != repository.HistoryContributionApproved || approved.EntryID == nil {
 			t.Errorf("approve result = %+v, err %v; want approved contribution with entry", approved, err)
 		}
+		if _, err := svc.UpdateEntry(ctx, unassignedAdmin, *approved.EntryID, dto.HistoryEntryUpdateRequest{
+			Title: "out-of-domain update", Content: "should not be saved", SourceNote: "test source",
+		}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("out-of-domain entry update = %v, want permission denied", err)
+		}
+		updated, err := svc.UpdateEntry(ctx, mpaAdmin, *approved.EntryID, dto.HistoryEntryUpdateRequest{
+			Title: tag + "-mpa-updated", Content: "MPA administrator update", SourceNote: "administrator source", ChangeNote: "corrected wording",
+		})
+		if err != nil || updated.CurrentVersion != 2 {
+			t.Errorf("in-domain entry update = %+v, err %v; want version 2", updated, err)
+		}
 		if _, err := svc.Review(ctx, superAdmin, returned.ID, dto.HistoryReviewRequest{Action: "reject", ReviewComment: "资料不完整"}); err != nil {
 			t.Errorf("super-admin review after resubmission: %v", err)
 		}
@@ -263,8 +274,8 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err := tx.Model(&model.HistoryEntryVersion{}).Where("contribution_id = ?", mpaContribution.ID).Count(&versions).Error; err != nil {
 			return err
 		}
-		if versions != 1 {
-			t.Errorf("approved contribution versions = %d, want 1", versions)
+		if versions != 2 {
+			t.Errorf("approved contribution versions = %d, want 2", versions)
 		}
 		var rejectedVersions int64
 		if err := tx.Model(&model.HistoryEntryVersion{}).Where("contribution_id = ?", rejected.ID).Count(&rejectedVersions).Error; err != nil {

@@ -7,6 +7,7 @@ import type {
   HistoryReviewAction,
   HistoryEntry,
   UploadHistoryAttachmentPayload,
+  UpdateHistoryEntryPayload,
 } from '../types/history';
 
 const storageURL = (url: string) => {
@@ -31,6 +32,9 @@ export const historyApi = {
       url: '/history/contributions',
       data: payload,
     });
+  },
+  updateEntry(id: number, payload: UpdateHistoryEntryPayload) {
+    return request<HistoryEntry>({ method: 'PUT', url: `/history/entries/${id}`, data: payload });
   },
   submit(id: number) {
     return request<HistoryContribution>({

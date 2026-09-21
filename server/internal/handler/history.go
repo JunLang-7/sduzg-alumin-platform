@@ -46,6 +46,29 @@ func (h *HistoryHandler) GetEntry(c *gin.Context) {
 	response.Success(c, result)
 }
 
+func (h *HistoryHandler) UpdateEntry(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	id, ok := historyID(c, "id")
+	if !ok {
+		return
+	}
+	var req dto.HistoryEntryUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+	result, err := h.history.UpdateEntry(c.Request.Context(), *access, id, req)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *HistoryHandler) CreateDraft(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {

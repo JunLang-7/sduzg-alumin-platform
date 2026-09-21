@@ -34,7 +34,11 @@ func (s *HistoryService) ListEntries(ctx context.Context, keyword string) ([]dto
 	}
 	result := make([]dto.HistoryEntryItem, 0, len(entries))
 	for _, entry := range entries {
-		result = append(result, historyEntryItem(entry))
+		sourceNote, err := s.repository.LatestSourceNote(ctx, entry.ID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, historyEntryItem(entry, sourceNote))
 	}
 	return result, nil
 }
@@ -44,7 +48,32 @@ func (s *HistoryService) GetEntry(ctx context.Context, id uint64) (*dto.HistoryE
 	if err != nil {
 		return nil, err
 	}
-	result := historyEntryItem(entry)
+	sourceNote, err := s.repository.LatestSourceNote(ctx, entry.ID)
+	if err != nil {
+		return nil, err
+	}
+	result := historyEntryItem(entry, sourceNote)
+	return &result, nil
+}
+
+func (s *HistoryService) UpdateEntry(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryEntryUpdateRequest) (*dto.HistoryEntryItem, error) {
+	if !access.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	if !access.IsSuperAdmin() {
+		domainID, err := s.repository.EntryDataDomainID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if domainID == nil || !access.CanAccessDomain(*domainID) {
+			return nil, common.ErrPermissionDenied
+		}
+	}
+	entry, err := s.repository.UpdatePublished(ctx, id, access.UserID, req)
+	if err != nil {
+		return nil, err
+	}
+	result := historyEntryItem(entry, strings.TrimSpace(req.SourceNote))
 	return &result, nil
 }
 
@@ -283,8 +312,8 @@ func allowedHistoryMime(mimeType string) bool {
 	}
 }
 
-func historyEntryItem(entry *model.HistoryEntry) dto.HistoryEntryItem {
-	return dto.HistoryEntryItem{ID: entry.ID, Title: entry.Title, Summary: entry.Summary, Content: entry.Content, CurrentVersion: uint(entry.CurrentVersion), UpdatedAt: entry.UpdatedAt}
+func historyEntryItem(entry *model.HistoryEntry, sourceNote string) dto.HistoryEntryItem {
+	return dto.HistoryEntryItem{ID: entry.ID, Title: entry.Title, Summary: entry.Summary, Content: entry.Content, SourceNote: sourceNote, CurrentVersion: uint(entry.CurrentVersion), UpdatedAt: entry.UpdatedAt}
 }
 
 func historyContributionItem(item *model.HistoryContribution) dto.HistoryContributionItem {
