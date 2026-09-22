@@ -956,36 +956,21 @@ func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
 		return nil, common.ErrInvalidRequest
 	}
 
-	dimension, dimensionErr := f.GetSheetDimension(sheetName)
-	if dimensionErr != nil {
-		return nil, common.ErrInvalidRequest
-	}
-	if dimension == "" {
-		return rows, nil
-	}
-	start, end, found := strings.Cut(dimension, ":")
-	if !found {
-		end = start
-	}
-	endColumn, endRow, err := excelize.CellNameToCoordinates(end)
+	iterator, err := f.Rows(sheetName)
 	if err != nil {
 		return nil, common.ErrInvalidRequest
 	}
+	defer iterator.Close()
 
-	for rowIndex := 1; rowIndex <= endRow; rowIndex++ {
-		row := make([]string, endColumn)
-		for columnIndex := 1; columnIndex <= endColumn; columnIndex++ {
-			cell, cellErr := excelize.CoordinatesToCellName(columnIndex, rowIndex)
-			if cellErr != nil {
-				return nil, common.ErrInvalidRequest
-			}
-			value, valueErr := f.GetCellValue(sheetName, cell)
-			if valueErr != nil {
-				return nil, common.ErrInvalidRequest
-			}
-			row[columnIndex-1] = value
+	for iterator.Next() {
+		row, columnErr := iterator.Columns()
+		if columnErr != nil {
+			return nil, common.ErrInvalidRequest
 		}
 		rows = append(rows, row)
+	}
+	if err := iterator.Error(); err != nil {
+		return nil, common.ErrInvalidRequest
 	}
 	return rows, nil
 }

@@ -99,9 +99,7 @@ export function HistoryWikiPage() {
   const [active, setActive] = useState<HistoryEntry | null>(null);
   const [keyword, setKeyword] = useState('');
   const [searched, setSearched] = useState(false);
-  const [mobileDirectoryOpen, setMobileDirectoryOpen] = useState(
-    () => window.innerWidth <= 1180,
-  );
+  const [mobileDirectoryOpen, setMobileDirectoryOpen] = useState(() => window.innerWidth <= 1180);
   const [activeTocID, setActiveTocID] = useState('');
   const [selectedContribution, setSelectedContribution] = useState<HistoryContribution | null>(
     null,

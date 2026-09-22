@@ -123,7 +123,7 @@ func (s *HistoryService) GetContribution(ctx context.Context, access common.Acce
 }
 
 func (s *HistoryService) UpdateContribution(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryContributionRequest) (*dto.HistoryContributionItem, error) {
-	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+	if access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	item, err := s.repository.GetContribution(ctx, id)
@@ -215,7 +215,14 @@ func (s *HistoryService) ListAttachments(ctx context.Context, access common.Acce
 	if err != nil {
 		return nil, err
 	}
-	if !canViewContribution(access, item) {
+	if !access.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	if item.DataDomainID == nil {
+		if !access.IsSuperAdmin() {
+			return nil, common.ErrPermissionDenied
+		}
+	} else if !access.CanAccessDomain(*item.DataDomainID) {
 		return nil, common.ErrPermissionDenied
 	}
 	attachments, err := s.repository.ListAttachments(ctx, contributionID)
