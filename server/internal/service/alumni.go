@@ -951,8 +951,25 @@ func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
 	}
 	defer f.Close()
 
-	rows, err = f.GetRows(f.GetSheetName(0))
+	sheetName := f.GetSheetName(0)
+	if sheetName == "" {
+		return nil, common.ErrInvalidRequest
+	}
+
+	iterator, err := f.Rows(sheetName)
 	if err != nil {
+		return nil, common.ErrInvalidRequest
+	}
+	defer iterator.Close()
+
+	for iterator.Next() {
+		row, columnErr := iterator.Columns()
+		if columnErr != nil {
+			return nil, common.ErrInvalidRequest
+		}
+		rows = append(rows, row)
+	}
+	if err := iterator.Error(); err != nil {
 		return nil, common.ErrInvalidRequest
 	}
 	return rows, nil
