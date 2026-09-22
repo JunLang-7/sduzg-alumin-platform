@@ -58,8 +58,8 @@ func TestMigrationFilesDeclareProvesMetadata(t *testing.T) {
 
 	// Checkpoints that prove progressive schema presence on old volumes.
 	proves := map[string]string{
-		"001_init_schema.sql":             "proves users",
-		"003_add_alumni_files.sql":        "proves alumni_files",
+		"001_init_schema.sql":              "proves users",
+		"003_add_alumni_files.sql":         "proves alumni_files",
 		"006_add_admin_access_control.sql": "proves data_domains",
 		"008_add_history_wiki.sql":         "proves history_entries",
 		"009_add_migration_tracking.sql":   "proves schema_migrations",
