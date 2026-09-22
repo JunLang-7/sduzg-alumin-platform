@@ -204,7 +204,39 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: Scan Go dependencies reachable by this project
         working-directory: server
-        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+        run: |
+          set +e
+          output=$(go run golang.org/x/vuln/cmd/govulncheck@latest ./... 2>&1)
+          govuln_exit=$?
+          set -e
+          printf '%s\n' "$output"
+          # Allowlist: false positives on already-patched module versions.
+          # GO-2026-6452 (CVE-2026-59162 / GHSA-fx5j-qcqg-grpf): panic on a
+          # negative shared-string index, fixed in excelize v2.11.0 (this repo
+          # already uses v2.11.0; getValueFrom rejects xlsxSI < 0). vuln.go.dev
+          # still records introduced:0 with no fixed event, so the scanner
+          # reports File.GetRows as reachable. Drop this entry once the Go
+          # vulnerability database range is corrected to fixed:2.11.0.
+          allowlist='GO-2026-6452'
+          ids=$(printf '%s\n' "$output" | grep -oE 'Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u)
+          if [ -n "$ids" ]; then
+            failing=0
+            while IFS= read -r id; do
+              case " $allowlist " in
+                *" $id "*)
+                  echo "Allowlisted false positive: $id (fixed in excelize v2.11.0; Go vuln DB range is stale)"
+                  ;;
+                *)
+                  echo "Vulnerability affects project code: $id" >&2
+                  failing=1
+                  ;;
+              esac
+            done <<< "$ids"
+            exit "$failing"
+          fi
+          # No reachable vulnerability IDs parsed. Keep tool/infra failures
+          # failing (`go run` maps the scanner's own exit code to 1).
+          exit "$govuln_exit"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
