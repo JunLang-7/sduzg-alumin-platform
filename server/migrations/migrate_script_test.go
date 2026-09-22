@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,39 +16,76 @@ func readMigrateScript(t *testing.T) string {
 	return string(content)
 }
 
-func TestMigrateScriptIsLFAndHasBaseline(t *testing.T) {
+func TestMigrateScriptIsLFAndMetadataDriven(t *testing.T) {
 	content := readMigrateScript(t)
 	if strings.Contains(content, "\r\n") {
 		t.Error("migrate.sh must use LF line endings")
 	}
 	for _, want := range []string{
 		"schema_migrations",
-		"007_fix_data_domain_encoding.sql",
 		"cannot connect to MySQL",
 		"waiting for MySQL",
+		"migrate: proves",
+		"migrate: requires",
+		"baseline_from_schema",
+		"repair_stale_marks",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("migrate.sh does not contain %q", want)
+		}
+	}
+	// Filenames must not be hardcoded for baseline/repair lists.
+	for _, banned := range []string{
+		"006_add_admin_access_control.sql",
+		"007_fix_data_domain_encoding.sql",
+		"001_init_schema.sql",
+		"('005_add_indexes.sql')",
+	} {
+		if strings.Contains(content, banned) {
+			t.Errorf("migrate.sh must not hardcode migration file %q", banned)
 		}
 	}
 }
 
-func TestMigrateScriptRepairsStaleDomainBaseline(t *testing.T) {
-	content := readMigrateScript(t)
-	for _, want := range []string{
-		"data_domains missing",
-		"DELETE FROM schema_migrations",
-		"006_add_admin_access_control.sql",
-		"007_fix_data_domain_encoding.sql",
-		"schema-derived",
-	} {
-		if !strings.Contains(content, want) {
-			t.Errorf("migrate.sh does not contain %q", want)
+func TestMigrationFilesDeclareProvesMetadata(t *testing.T) {
+	files, err := filepath.Glob("[0-9][0-9][0-9]_*.sql")
+	if err != nil {
+		t.Fatalf("glob migrations: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("no migration files found")
+	}
+
+	// Checkpoints that prove progressive schema presence on old volumes.
+	proves := map[string]string{
+		"001_init_schema.sql":             "proves users",
+		"003_add_alumni_files.sql":        "proves alumni_files",
+		"006_add_admin_access_control.sql": "proves data_domains",
+		"008_add_history_wiki.sql":         "proves history_entries",
+		"009_add_migration_tracking.sql":   "proves schema_migrations",
+	}
+	for name, want := range proves {
+		content, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if !strings.Contains(string(content), "-- migrate: "+want) {
+			t.Errorf("%s missing %q", name, "-- migrate: "+want)
 		}
 	}
-	// Must not blindly mark 006/007 applied when only users exists.
-	if strings.Contains(content, "('005_add_indexes.sql'),\n        ('006_add_admin_access_control.sql'),\n        ('007_fix_data_domain_encoding.sql');") {
-		t.Error("baseline must not always include 006/007 without data_domains check")
+
+	// 007/008 must declare data_domains dependency for stale-mark repair.
+	for _, name := range []string{
+		"007_fix_data_domain_encoding.sql",
+		"008_add_history_wiki.sql",
+	} {
+		content, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if !strings.Contains(string(content), "-- migrate: requires data_domains") {
+			t.Errorf("%s missing requires data_domains", name)
+		}
 	}
 }
 

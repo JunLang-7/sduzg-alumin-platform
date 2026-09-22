@@ -1,5 +1,7 @@
 SET NAMES utf8mb4;
 
+-- migrate: proves users
+
 CREATE DATABASE IF NOT EXISTS sdu_alumni_db
   DEFAULT CHARACTER SET utf8mb4
   DEFAULT COLLATE utf8mb4_unicode_ci;

@@ -7,10 +7,12 @@ set -eu
 : "${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}"
 : "${MYSQL_DATABASE:?MYSQL_DATABASE is required}"
 
-# Official image only applies MYSQL_* when the data volume is first created.
-# Teammates often have a local .env (gitignored) that no longer matches the
-# volume password. Retry a few times to ride out first-boot races, then fail
-# with actionable context instead of a bare mysql client error.
+# Metadata is declared inside each migration file so this runner never
+# hardcodes migration filenames. New files only need the usual NNN_*.sql
+# plus optional headers:
+#   -- migrate: proves users     # table that implies this migration ran
+#   -- migrate: requires data_domains  # must exist if this row is marked applied
+
 mysql_cmd() {
   MYSQL_PWD="$MYSQL_PASSWORD" mysql \
     --protocol=TCP \
@@ -23,7 +25,7 @@ mysql_cmd() {
 fail() {
   echo "migrate: $*" >&2
   echo "migrate: host=${MYSQL_HOST}:${MYSQL_PORT} user=${MYSQL_USER} database=${MYSQL_DATABASE}" >&2
-  echo "migrate: check .env MYSQL_USER/MYSQL_PASSWORD/MYSQL_ROOT_PASSWORD/MYSQL_DATABASE" >&2
+  echo "migrate: check .env MYSQL_USER/MYSQL_PASSWORD/MYSQL_DATABASE" >&2
   echo "migrate: an existing mysql_data volume keeps credentials from first init; changing .env alone does not update MySQL." >&2
   exit 1
 }
@@ -51,6 +53,17 @@ table_exists() {
   "
 }
 
+# Print space-separated tables from migration headers (all matching lines):
+#   -- migrate: proves users,alumni_profiles
+#   -- migrate: requires data_domains
+meta_tables() {
+  file="$1"
+  kind="$2"
+  sed -n "s/^--[[:space:]]*migrate:[[:space:]]*${kind}[[:space:]]*//p" "$file" \
+    | tr ',' ' ' \
+    | tr '\n' ' '
+}
+
 wait_for_mysql
 
 if ! migration_table_exists="$(table_exists schema_migrations)"; then
@@ -66,55 +79,84 @@ if ! mysql_cmd -e '
   fail "cannot create schema_migrations (insufficient privileges or auth failure)."
 fi
 
-# Repair volumes where 006/007 were baselined as applied but data_domains was
-# never created (older initdb only had 001-005). 008 FK to data_domains fails
-# with ERROR 1824 otherwise. Re-run 006/007 when the table is missing.
-if ! data_domains_exists="$(table_exists data_domains)"; then
-  fail "cannot detect data_domains table."
-fi
-if [ "$data_domains_exists" = "0" ]; then
-  echo "migrate: data_domains missing; clear stale 006/007 marks if present"
-  if ! mysql_cmd -e "
-    DELETE FROM schema_migrations
-    WHERE name IN (
-      '006_add_admin_access_control.sql',
-      '007_fix_data_domain_encoding.sql'
-    );
-  "; then
-    fail "cannot repair schema_migrations for 006/007."
-  fi
-fi
+# If a migration is marked applied but its proves/requires tables are missing,
+# clear the mark so the apply loop can rerun it (fixes stale 006/007 marks).
+repair_stale_marks() {
+  for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
+    [ -f "$migration" ] || continue
+    name="$(basename "$migration")"
+    proves="$(meta_tables "$migration" proves)"
+    requires="$(meta_tables "$migration" requires)"
+    [ -n "$proves$requires" ] || continue
 
-# Volumes created before migration tracking already contain part of the
-# schema. Baseline only what is actually present — do not assume 006/007 ran
-# just because users exists.
-if [ "$migration_table_exists" = "0" ]; then
-  if ! users_table_exists="$(table_exists users)"; then
-    fail "cannot detect users table for baseline."
-  fi
-  if [ "$users_table_exists" != "0" ]; then
-    echo "migrate: baseline existing volume (schema-derived)"
-    if ! mysql_cmd -e "
-      INSERT IGNORE INTO schema_migrations (name) VALUES
-        ('001_init_schema.sql'),
-        ('002_seed_test_user.sql'),
-        ('003_add_alumni_files.sql'),
-        ('004_add_user_email.sql'),
-        ('005_add_indexes.sql');
-    "; then
-      fail "cannot write 001-005 baseline rows."
+    if ! applied="$(mysql_cmd --batch --skip-column-names -e "
+      SELECT COUNT(*) FROM schema_migrations WHERE name = '$name';
+    ")"; then
+      fail "cannot read schema_migrations for $name."
     fi
-    if [ "$data_domains_exists" != "0" ]; then
-      if ! mysql_cmd -e "
-        INSERT IGNORE INTO schema_migrations (name) VALUES
-          ('006_add_admin_access_control.sql'),
-          ('007_fix_data_domain_encoding.sql');
-      "; then
-        fail "cannot write 006/007 baseline rows."
+    [ "$applied" != "0" ] || continue
+
+    stale=0
+    for table in $proves $requires; do
+      if ! exists="$(table_exists "$table")"; then
+        fail "cannot probe table '$table' for $name."
+      fi
+      if [ "$exists" = "0" ]; then
+        stale=1
+        break
+      fi
+    done
+
+    if [ "$stale" = "1" ]; then
+      echo "migrate: $name marked applied but probe table missing; clearing mark"
+      if ! mysql_cmd -e "DELETE FROM schema_migrations WHERE name = '$name';"; then
+        fail "cannot clear stale mark for $name."
       fi
     fi
-  fi
-fi
+  done
+}
+
+# Pre-tracking volumes: mark migrations applied when their proves-table exists.
+# Files without proves inherit the previous file's baseline state (seeds, DDL
+# tweaks between checkpoints). New migrations never need editing this script.
+baseline_from_schema() {
+  [ "$migration_table_exists" = "0" ] || return 0
+
+  prev_marked=0
+  for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
+    [ -f "$migration" ] || continue
+    name="$(basename "$migration")"
+    proves="$(meta_tables "$migration" proves)"
+
+    if [ -n "$proves" ]; then
+      mark=1
+      for table in $proves; do
+        if ! exists="$(table_exists "$table")"; then
+          fail "cannot probe proves table '$table' for $name."
+        fi
+        if [ "$exists" = "0" ]; then
+          mark=0
+          break
+        fi
+      done
+    else
+      mark="$prev_marked"
+    fi
+
+    if [ "$mark" = "1" ]; then
+      echo "migrate: baseline $name"
+      if ! mysql_cmd -e "INSERT IGNORE INTO schema_migrations (name) VALUES ('$name');"; then
+        fail "cannot baseline $name."
+      fi
+      prev_marked=1
+    else
+      prev_marked=0
+    fi
+  done
+}
+
+repair_stale_marks
+baseline_from_schema
 
 for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
   [ -f "$migration" ] || continue
@@ -134,11 +176,6 @@ for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
   fi
   if ! mysql_cmd -e "INSERT IGNORE INTO schema_migrations (name) VALUES ('$name');"; then
     fail "applied $name but could not record it."
-  fi
-
-  # Refresh after each apply so later baseline/repair decisions stay accurate.
-  if ! data_domains_exists="$(table_exists data_domains)"; then
-    fail "cannot refresh data_domains detection."
   fi
 done
 

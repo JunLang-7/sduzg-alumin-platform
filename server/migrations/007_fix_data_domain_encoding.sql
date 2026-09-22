@@ -1,5 +1,7 @@
 -- 修复 006 迁移在非 UTF-8 客户端执行时写入的数据域中文乱码。
 
+-- migrate: requires data_domains
+
 SET NAMES utf8mb4;
 
 UPDATE data_domains

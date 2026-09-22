@@ -60,11 +60,8 @@ services:
     environment:
       MYSQL_HOST: mysql
       MYSQL_PORT: 3306
-      # Use the same root credential as the mysql healthcheck so a .env /
-      # volume mismatch fails the healthcheck first instead of only migrate.
-      # App-account issues are reported by the API when it starts.
-      MYSQL_USER: root
-      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me}
+      MYSQL_USER: ${MYSQL_USER:-sdu_alumni}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sdu_alumni_db}
     volumes:
       - ./server/migrations:/migrations:ro
