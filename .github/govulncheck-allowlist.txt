@@ -1,0 +1,16 @@
+# govulncheck allowlist — one GO-YYYY-NNNN id per line.
+# Lines starting with # and blank lines are ignored.
+# CI reads this via .github/scripts/govulncheck.sh (do not hardcode IDs in ci.yml).
+#
+# Remove an entry once the Go vulnerability database records the correct
+# fixed version and govulncheck no longer reports it against our modules.
+#
+# GO-2026-6452 (CVE-2026-59162 / GHSA-fx5j-qcqg-grpf):
+#   Negative shared-string index panic in github.com/xuri/excelize/v2.
+#   Fixed in v2.11.0 (already pinned here; cell.go rejects xlsxSI < 0).
+#   Upstream GHSA lists first_patched_version 2.11.0, but GO-2026-6452 still
+#   has only introduced:0 with no fixed event, so govulncheck flags GetRows.
+#   Tracked: https://github.com/golang/vulndb/issues/6510
+#   Review:  https://go-review.googlesource.com/c/vulndb/+/835505
+GO-2026-6452
+

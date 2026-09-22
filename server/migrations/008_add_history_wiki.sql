@@ -1,5 +1,8 @@
 SET NAMES utf8mb4;
 
+-- migrate: requires data_domains
+-- migrate: proves history_entries
+
 USE sdu_alumni_db;
 
 CREATE TABLE IF NOT EXISTS history_entries (

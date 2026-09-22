@@ -1,5 +1,7 @@
 -- 第四阶段：新增校友数据域与管理员授权映射。
 
+-- migrate: proves data_domains
+
 SET NAMES utf8mb4;
 
 CREATE TABLE IF NOT EXISTS data_domains (

@@ -1,5 +1,7 @@
 SET NAMES utf8mb4;
 
+-- migrate: proves schema_migrations
+
 USE sdu_alumni_db;
 
 -- MySQL 仅在数据卷首次初始化时执行 docker-entrypoint-initdb.d。该表由

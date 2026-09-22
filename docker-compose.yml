@@ -66,7 +66,11 @@ services:
     volumes:
       - ./server/migrations:/migrations:ro
       - ./server/scripts/migrate.sh:/migrate.sh:ro
-    entrypoint: ["/bin/sh", "/migrate.sh"]
+    # Strip CR so Windows checkouts (CRLF) still run under /bin/sh.
+    entrypoint:
+      - /bin/sh
+      - -c
+      - sed 's/\r$//' /migrate.sh > /tmp/migrate.sh && exec /bin/sh /tmp/migrate.sh
     depends_on:
       mysql:
         condition: service_healthy
