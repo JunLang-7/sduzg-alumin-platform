@@ -210,21 +210,19 @@ jobs:
           govuln_exit=$?
           set -e
           printf '%s\n' "$output"
-          # Allowlist: false positives on already-patched module versions.
-          # GO-2026-6452 (CVE-2026-59162 / GHSA-fx5j-qcqg-grpf): panic on a
-          # negative shared-string index, fixed in excelize v2.11.0 (this repo
-          # already uses v2.11.0; getValueFrom rejects xlsxSI < 0). vuln.go.dev
-          # still records introduced:0 with no fixed event, so the scanner
-          # reports File.GetRows as reachable. Drop this entry once the Go
-          # vulnerability database range is corrected to fixed:2.11.0.
-          allowlist='GO-2026-6452'
-          ids=$(printf '%s\n' "$output" | grep -oE 'Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u)
+          allowlist_file="$GITHUB_WORKSPACE/.github/govulncheck-allowlist.txt"
+          allowlist=""
+          if [ -f "$allowlist_file" ]; then
+            allowlist=$(grep -E '^GO-[0-9]{4}-[0-9]+$' "$allowlist_file" | tr '\n' ' ' || true)
+          fi
+          ids=$(printf '%s\n' "$output" | grep -oE 'Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
           if [ -n "$ids" ]; then
             failing=0
             while IFS= read -r id; do
+              [ -n "$id" ] || continue
               case " $allowlist " in
                 *" $id "*)
-                  echo "Allowlisted false positive: $id (fixed in excelize v2.11.0; Go vuln DB range is stale)"
+                  echo "Allowlisted (see .github/govulncheck-allowlist.txt): $id"
                   ;;
                 *)
                   echo "Vulnerability affects project code: $id" >&2
