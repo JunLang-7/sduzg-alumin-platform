@@ -26,10 +26,26 @@ export const historyApi = {
   listMine() {
     return request<HistoryContribution[]>({ method: 'GET', url: '/history/contributions/me' });
   },
+  getContribution(id: number) {
+    return request<HistoryContribution>({ method: 'GET', url: `/history/contributions/${id}` });
+  },
   createDraft(payload: CreateHistoryContributionPayload) {
     return request<HistoryContribution>({
       method: 'POST',
       url: '/history/contributions',
+      data: payload,
+    });
+  },
+  deleteDraft(id: number) {
+    return request<{ deleted: boolean }>({
+      method: 'DELETE',
+      url: `/history/contributions/${id}`,
+    });
+  },
+  updateContribution(id: number, payload: CreateHistoryContributionPayload) {
+    return request<HistoryContribution>({
+      method: 'PUT',
+      url: `/history/contributions/${id}`,
       data: payload,
     });
   },
@@ -50,6 +66,13 @@ export const historyApi = {
       method: 'GET',
       url: `/history/reviews/${id}/attachments`,
     });
+  },
+  async previewAttachment(contributionID: number, attachmentID: number) {
+    const result = await request<{ download_url: string }>({
+      method: 'GET',
+      url: `/history/contributions/${contributionID}/attachments/${attachmentID}/download`,
+    });
+    return storageURL(result.download_url);
   },
   review(id: number, action: HistoryReviewAction, review_comment = '') {
     return request<HistoryContribution>({

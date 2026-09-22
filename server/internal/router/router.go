@@ -132,14 +132,17 @@ func New(deps Dependencies) *gin.Engine {
 		api.PUT("/alumni/me/contact", authHandler.UpdateContact)
 		api.GET("/alumni/:id", alumniHandler.Detail)
 
-		// 院史共编（所有接口均需已登录；投稿仅校友可用，审核由服务层校验管理员数据域）
+		// 院史共编（所有接口均需已登录；投稿与审核均由服务层校验角色和数据域）
 		history := api.Group("/history")
 		{
 			history.GET("/entries", historyHandler.ListEntries)
 			history.GET("/entries/:id", historyHandler.GetEntry)
 			history.PUT("/entries/:id", historyHandler.UpdateEntry)
 			history.GET("/contributions/me", historyHandler.ListMine)
+			history.GET("/contributions/:id", historyHandler.GetContribution)
 			history.POST("/contributions", historyHandler.CreateDraft)
+			history.PUT("/contributions/:id", historyHandler.UpdateContribution)
+			history.DELETE("/contributions/:id", historyHandler.DeleteDraft)
 			history.POST("/contributions/:id/submit", historyHandler.Submit)
 			history.POST("/contributions/:id/attachments/upload-url", historyHandler.RequestAttachmentUpload)
 			history.POST("/contributions/:id/attachments/:attachmentId/confirm", historyHandler.ConfirmAttachmentUpload)

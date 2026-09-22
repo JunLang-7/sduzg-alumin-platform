@@ -1,15 +1,36 @@
 import { ArrowLeftOutlined, PaperClipOutlined } from '@ant-design/icons';
-import { App, Button, Checkbox, Empty, Form, Input, Space } from 'antd';
+import { App, Button, Checkbox, Empty, Form, Input, Select, Space } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
-import type { HistoryEntry } from '../../types/history';
+import type { HistoryContribution, HistoryEntry } from '../../types/history';
 import './history-editor.css';
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
-type EditMode = 'create' | 'contribute' | 'admin-edit';
+type EditMode = 'create' | 'contribute' | 'admin-edit' | 'contribution-edit';
+type SubmissionAction = 'save' | 'submit';
 const displayTitle = (title: string) => title.replace(/\s*v\d+$/i, '');
+
+function SelectedFilePreview({ file }: { file: File }) {
+  const [url, setURL] = useState('');
+
+  useEffect(() => {
+    const objectURL = URL.createObjectURL(file);
+    setURL(objectURL);
+    return () => URL.revokeObjectURL(objectURL);
+  }, [file]);
+
+  if (!url) return null;
+  if (file.type.startsWith('image/')) {
+    return <img className="history-editor__preview-image" src={url} alt={file.name} />;
+  }
+  return (
+    <Button type="link" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>
+      预览文件
+    </Button>
+  );
+}
 
 export function HistoryEditorPage() {
   const { message } = App.useApp();
@@ -18,12 +39,17 @@ export function HistoryEditorPage() {
   const [params] = useSearchParams();
   const mode = (params.get('mode') || 'create') as EditMode;
   const entryID = Number(params.get('entryId'));
+  const contributionID = Number(params.get('contributionId'));
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
   const canEdit =
-    (mode === 'create' && user?.role === 'alumni') ||
+    (mode === 'create' && (user?.role === 'alumni' || isAdmin)) ||
     (mode === 'contribute' && user?.role === 'alumni' && Number.isInteger(entryID)) ||
-    (mode === 'admin-edit' && isAdmin && Number.isInteger(entryID));
+    (mode === 'admin-edit' && isAdmin && Number.isInteger(entryID)) ||
+    (mode === 'contribution-edit' &&
+      (user?.role === 'alumni' || isAdmin) &&
+      Number.isInteger(contributionID));
   const [entry, setEntry] = useState<HistoryEntry | null>(null);
+  const [contribution, setContribution] = useState<HistoryContribution | null>(null);
   const [loading, setLoading] = useState(mode !== 'create');
   const [files, setFiles] = useState<File[]>([]);
   const [consent, setConsent] = useState(false);
@@ -33,6 +59,22 @@ export function HistoryEditorPage() {
     if (!canEdit) return;
     if (mode === 'create') {
       form.setFieldsValue({ title: '', content: '', source_note: '', change_note: '' });
+      return;
+    }
+    if (mode === 'contribution-edit') {
+      void historyApi
+        .getContribution(contributionID)
+        .then((current) => {
+          setContribution(current);
+          form.setFieldsValue({
+            title: current.title,
+            content: current.content,
+            source_note: current.source_note,
+            change_note: current.change_note,
+          });
+        })
+        .catch((error) => message.error(error instanceof Error ? error.message : '投稿加载失败'))
+        .finally(() => setLoading(false));
       return;
     }
     void historyApi
@@ -53,7 +95,7 @@ export function HistoryEditorPage() {
       })
       .catch((error) => message.error(error instanceof Error ? error.message : '词条加载失败'))
       .finally(() => setLoading(false));
-  }, [canEdit, entryID, form, message, mode]);
+  }, [canEdit, contributionID, entryID, form, message, mode]);
 
   const chooseFiles = (fileList: FileList | null) => {
     const selected = Array.from(fileList ?? []);
@@ -64,7 +106,7 @@ export function HistoryEditorPage() {
     if (files.length + selected.length > 6) return void message.error('每次投稿最多上传 6 个附件');
     setFiles((current) => [...current, ...selected]);
   };
-  const submit = async () => {
+  const saveContribution = async (action: SubmissionAction) => {
     try {
       const values = await form.validateFields();
       if (mode === 'admin-edit' && entry) {
@@ -73,19 +115,31 @@ export function HistoryEditorPage() {
       } else {
         if (files.length && !consent)
           return void message.warning('上传图片或扫描件前，请确认来源和授权说明');
-        const draft = await historyApi.createDraft({
-          entry_id: mode === 'contribute' ? entry?.id : undefined,
-          ...values,
-        });
+        const current =
+          mode === 'contribution-edit' && contribution
+            ? await historyApi.updateContribution(contribution.id, values)
+            : await historyApi.createDraft({
+                ...values,
+                entry_id: mode === 'contribute' ? entry?.id : undefined,
+                data_domain_id:
+                  isAdmin && values.data_domain_id ? Number(values.data_domain_id) : undefined,
+              });
         for (const file of files)
-          await historyApi.uploadAttachment(draft.id, file, {
+          await historyApi.uploadAttachment(current.id, file, {
             description: file.name,
             source_note: values.source_note,
             rights_note: values.rights_note || '投稿人确认有权提交',
             consent_confirmed: consent,
           });
-        await historyApi.submit(draft.id);
-        message.success(mode === 'create' ? '新词条已提交审核' : '词条修改已提交审核');
+        if (action === 'submit' && current.status !== 'pending')
+          await historyApi.submit(current.id);
+        if (action === 'save') {
+          message.success(mode === 'create' ? '草稿已保存' : '投稿修改已保存');
+        } else if (current.status === 'pending') {
+          message.success('投稿修改已保存，审核将以最新内容为准');
+        } else {
+          message.success(mode === 'create' ? '新词条已提交审核' : '词条修改已提交审核');
+        }
       }
       navigate('/history');
     } catch (error) {
@@ -94,7 +148,22 @@ export function HistoryEditorPage() {
     }
   };
   const title =
-    mode === 'create' ? '新建词条' : mode === 'admin-edit' ? '更改词条' : '补充词条内容';
+    mode === 'create'
+      ? '新建词条'
+      : mode === 'admin-edit'
+        ? '更改词条'
+        : mode === 'contribution-edit'
+          ? '编辑投稿'
+          : '补充词条内容';
+  const primaryAction: SubmissionAction = contribution?.status === 'pending' ? 'save' : 'submit';
+  const primaryText =
+    mode === 'admin-edit'
+      ? '保存更改'
+      : primaryAction === 'save'
+        ? '保存修改'
+        : contribution?.status === 'returned'
+          ? '重新提交审核'
+          : '提交审核';
   if (!canEdit)
     return (
       <section className="history-editor">
@@ -133,13 +202,24 @@ export function HistoryEditorPage() {
             </Form.Item>
             {mode !== 'admin-edit' && (
               <>
+                {isAdmin && (
+                  <Form.Item name="data_domain_id" label="所属数据域" rules={[{ required: true }]}>
+                    <Select
+                      placeholder="请选择词条所属数据域"
+                      options={(user?.domains ?? []).map((domain) => ({
+                        label: domain.name,
+                        value: domain.id,
+                      }))}
+                    />
+                  </Form.Item>
+                )}
                 <Form.Item name="rights_note" label="附件授权说明">
                   <Input.TextArea rows={2} />
                 </Form.Item>
                 <div className="history-editor__upload">
                   <PaperClipOutlined />
                   <div>
-                    <b>图片和扫描件</b>
+                    <div className="history-editor__upload-title">图片和扫描件</div>
                     <p>支持 JPG、PNG、WebP、PDF；单个不超过 10 MB；每次最多 6 个</p>
                     <input
                       type="file"
@@ -151,8 +231,9 @@ export function HistoryEditorPage() {
                       }}
                     />
                     {files.map((file) => (
-                      <div key={`${file.name}-${file.size}`}>
-                        {file.name}{' '}
+                      <div className="history-editor__file" key={`${file.name}-${file.size}`}>
+                        <SelectedFilePreview file={file} />
+                        <span>{file.name}</span>{' '}
                         <Button
                           type="link"
                           danger
@@ -178,8 +259,14 @@ export function HistoryEditorPage() {
           <footer>
             <Space>
               <Button onClick={() => navigate('/history')}>取消</Button>
-              <Button type="primary" onClick={() => void submit()}>
-                {mode === 'admin-edit' ? '保存更改' : '提交审核'}
+              {mode === 'create' && (
+                <Button onClick={() => void saveContribution('save')}>存为草稿</Button>
+              )}
+              {mode === 'contribution-edit' && contribution?.status !== 'pending' && (
+                <Button onClick={() => void saveContribution('save')}>保存草稿</Button>
+              )}
+              <Button type="primary" onClick={() => void saveContribution(primaryAction)}>
+                {primaryText}
               </Button>
             </Space>
           </footer>

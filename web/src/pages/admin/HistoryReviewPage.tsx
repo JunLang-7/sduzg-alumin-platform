@@ -21,6 +21,7 @@ import type {
   HistoryReviewAction,
 } from '../../types/history';
 import { PageHeader } from '../../components/PageHeader';
+import './history-review.css';
 
 const actionText: Record<HistoryReviewAction, string> = {
   approve: '通过',
@@ -105,8 +106,14 @@ export function HistoryReviewPage() {
     {
       title: '操作',
       width: 100,
+      className: 'history-review__action-column',
       render: (_, item) => (
-        <Button type="link" icon={<EyeOutlined />} onClick={() => void open(item)}>
+        <Button
+          className="history-review__review-button"
+          type="link"
+          icon={<EyeOutlined />}
+          onClick={() => void open(item)}
+        >
           审核
         </Button>
       ),
@@ -159,6 +166,20 @@ export function HistoryReviewPage() {
                         title={file.original_name}
                         description={`${file.description}；来源：${file.source_note}；授权：${file.rights_note}`}
                       />
+                      <Button
+                        type="link"
+                        icon={<EyeOutlined />}
+                        onClick={async () => {
+                          try {
+                            const url = await historyApi.previewAttachment(active.id, file.id);
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                          } catch (error) {
+                            message.error(error instanceof Error ? error.message : '附件预览失败');
+                          }
+                        }}
+                      >
+                        预览
+                      </Button>
                       <Tag color={file.consent_confirmed ? 'green' : 'red'}>
                         {file.consent_confirmed ? '已确认授权' : '未确认授权'}
                       </Tag>

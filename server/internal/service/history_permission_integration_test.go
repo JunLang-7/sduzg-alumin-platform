@@ -200,6 +200,24 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if _, err := svc.ListMine(ctx, mpaAdmin); !errors.Is(err, common.ErrPermissionDenied) {
 			t.Errorf("admin ListMine error = %v, want permission denied", err)
 		}
+		updatedPending, err := svc.UpdateContribution(ctx, alumni, mpaContribution.ID, dto.HistoryContributionRequest{
+			Title: mpaContribution.Title, Content: "审核中的投稿已修改", SourceNote: "更新后的测试来源", ChangeNote: "补充说明",
+		})
+		if err != nil || updatedPending.Content != "审核中的投稿已修改" || updatedPending.Status != repository.HistoryContributionPending {
+			t.Errorf("update pending contribution = %+v, err %v; want editable pending contribution", updatedPending, err)
+		}
+		if err := svc.DeleteDraft(ctx, otherAlumni, draft.ID); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("other alumnus delete draft error = %v, want permission denied", err)
+		}
+		if err := svc.DeleteDraft(ctx, alumni, returned.ID); !errors.Is(err, common.ErrInvalidHistoryState) {
+			t.Errorf("delete non-draft error = %v, want invalid state", err)
+		}
+		if err := svc.DeleteDraft(ctx, alumni, draft.ID); err != nil {
+			t.Errorf("delete own draft error = %v", err)
+		}
+		if _, err := repository.NewHistoryRepository(tx).GetContribution(ctx, draft.ID); !errors.Is(err, common.ErrHistoryContributionNotFound) {
+			t.Errorf("deleted draft lookup error = %v, want not found", err)
+		}
 		attachments, err := svc.ListAttachments(ctx, mpaAdmin, mpaContribution.ID)
 		if err != nil || len(attachments) != 1 || attachments[0].OriginalName != "review.pdf" {
 			t.Errorf("in-domain attachments = %+v, err %v", attachments, err)
@@ -267,6 +285,12 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || updated.CurrentVersion != 2 {
 			t.Errorf("in-domain entry update = %+v, err %v; want version 2", updated, err)
 		}
+		superUpdated, err := svc.UpdateEntry(ctx, superAdmin, *approved.EntryID, dto.HistoryEntryUpdateRequest{
+			Title: tag + "-super-admin-updated", Content: "super administrator update", SourceNote: "super administrator source",
+		})
+		if err != nil || superUpdated.CurrentVersion != 3 {
+			t.Errorf("super-admin entry update = %+v, err %v; want version 3", superUpdated, err)
+		}
 		if _, err := svc.Review(ctx, superAdmin, returned.ID, dto.HistoryReviewRequest{Action: "reject", ReviewComment: "资料不完整"}); err != nil {
 			t.Errorf("super-admin review after resubmission: %v", err)
 		}
@@ -274,8 +298,8 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err := tx.Model(&model.HistoryEntryVersion{}).Where("contribution_id = ?", mpaContribution.ID).Count(&versions).Error; err != nil {
 			return err
 		}
-		if versions != 2 {
-			t.Errorf("approved contribution versions = %d, want 2", versions)
+		if versions != 3 {
+			t.Errorf("approved contribution versions = %d, want 3", versions)
 		}
 		var rejectedVersions int64
 		if err := tx.Model(&model.HistoryEntryVersion{}).Where("contribution_id = ?", rejected.ID).Count(&rejectedVersions).Error; err != nil {

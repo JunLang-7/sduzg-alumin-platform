@@ -39,6 +39,7 @@ export type HistoryReviewAction = 'approve' | 'return' | 'reject';
 
 export interface CreateHistoryContributionPayload {
   entry_id?: number;
+  data_domain_id?: number;
   title: string;
   section_name?: string;
   content: string;

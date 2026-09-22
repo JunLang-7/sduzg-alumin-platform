@@ -165,6 +165,70 @@ func (r *HistoryRepository) CreateContribution(ctx context.Context, item *model.
 	return item, nil
 }
 
+func (r *HistoryRepository) UpdateContribution(ctx context.Context, id, userID uint64, req dto.HistoryContributionRequest) (*model.HistoryContribution, error) {
+	if r == nil || r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	var result *model.HistoryContribution
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		contributions := query.Use(tx).HistoryContribution
+		item, err := contributions.WithContext(ctx).Where(
+			contributions.ID.Eq(id),
+			contributions.AuthorUserID.Eq(userID),
+			contributions.Status.In(HistoryContributionDraft, HistoryContributionPending, HistoryContributionReturned),
+		).First()
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrInvalidHistoryState
+		}
+		if err != nil {
+			return err
+		}
+		item.Title = strings.TrimSpace(req.Title)
+		if sectionName := strings.TrimSpace(req.SectionName); sectionName != "" {
+			item.SectionName = sectionName
+		}
+		item.Content = strings.TrimSpace(req.Content)
+		item.SourceNote = strings.TrimSpace(req.SourceNote)
+		item.ChangeNote = strings.TrimSpace(req.ChangeNote)
+		if err := contributions.WithContext(ctx).Where(contributions.ID.Eq(item.ID)).Save(item); err != nil {
+			return err
+		}
+		result = item
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteDraft soft-deletes a draft and its attachments together. The status and
+// author are checked again in the transaction so a concurrent submission cannot
+// cause a pending contribution to be deleted.
+func (r *HistoryRepository) DeleteDraft(ctx context.Context, id, userID uint64) error {
+	if r == nil || r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		contributions := query.Use(tx).HistoryContribution
+		attachments := query.Use(tx).HistoryAttachment
+		item, err := contributions.WithContext(ctx).
+			Where(contributions.ID.Eq(id), contributions.AuthorUserID.Eq(userID), contributions.Status.Eq(HistoryContributionDraft)).
+			First()
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrInvalidHistoryState
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := attachments.WithContext(ctx).Where(attachments.ContributionID.Eq(item.ID)).Delete(); err != nil {
+			return err
+		}
+		_, err = contributions.WithContext(ctx).Where(contributions.ID.Eq(item.ID)).Delete()
+		return err
+	})
+}
+
 func (r *HistoryRepository) GetContribution(ctx context.Context, id uint64) (*model.HistoryContribution, error) {
 	if r == nil || r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
