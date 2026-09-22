@@ -1,0 +1,6 @@
+# Shell/SQL must stay LF so container entrypoints and MySQL init accept them.
+# Windows checkouts with core.autocrlf=true would otherwise break migrate.sh.
+*.sh text eol=lf
+*.sql text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
