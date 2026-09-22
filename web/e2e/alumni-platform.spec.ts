@@ -5,9 +5,9 @@ const attachmentContent = Buffer.from('%PDF-1.4\nE2E history attachment\n%%EOF\n
 
 async function login(page: Page, account: string) {
   await page.goto('/login');
-  await page.getByPlaceholder('手机、邮箱或账号').fill(account);
-  await page.getByLabel('密码', { exact: true }).fill(password);
-  await page.getByRole('button', { name: '登录' }).click();
+  await page.locator('input[autocomplete="username"]').fill(account);
+  await page.locator('input[autocomplete="current-password"]').fill(password);
+  await page.locator('button[type="submit"]').click();
   await page.waitForURL((url) => url.pathname !== '/login');
 }
 
