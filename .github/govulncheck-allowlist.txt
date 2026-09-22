@@ -1,5 +1,6 @@
 # govulncheck allowlist — one GO-YYYY-NNNN id per line.
 # Lines starting with # and blank lines are ignored.
+# CI reads this via .github/scripts/govulncheck.sh (do not hardcode IDs in ci.yml).
 #
 # Remove an entry once the Go vulnerability database records the correct
 # fixed version and govulncheck no longer reports it against our modules.
@@ -12,3 +13,4 @@
 #   Tracked: https://github.com/golang/vulndb/issues/6510
 #   Review:  https://go-review.googlesource.com/c/vulndb/+/835505
 GO-2026-6452
+

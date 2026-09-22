@@ -204,37 +204,7 @@ jobs:
           cache-dependency-path: server/go.sum
       - name: Scan Go dependencies reachable by this project
         working-directory: server
-        run: |
-          set +e
-          output=$(go run golang.org/x/vuln/cmd/govulncheck@latest ./... 2>&1)
-          govuln_exit=$?
-          set -e
-          printf '%s\n' "$output"
-          allowlist_file="$GITHUB_WORKSPACE/.github/govulncheck-allowlist.txt"
-          allowlist=""
-          if [ -f "$allowlist_file" ]; then
-            allowlist=$(grep -E '^GO-[0-9]{4}-[0-9]+$' "$allowlist_file" | tr '\n' ' ' || true)
-          fi
-          ids=$(printf '%s\n' "$output" | grep -oE 'Vulnerability #[0-9]+: GO-[0-9]+-[0-9]+' | grep -oE 'GO-[0-9]+-[0-9]+' | sort -u || true)
-          if [ -n "$ids" ]; then
-            failing=0
-            while IFS= read -r id; do
-              [ -n "$id" ] || continue
-              case " $allowlist " in
-                *" $id "*)
-                  echo "Allowlisted (see .github/govulncheck-allowlist.txt): $id"
-                  ;;
-                *)
-                  echo "Vulnerability affects project code: $id" >&2
-                  failing=1
-                  ;;
-              esac
-            done <<< "$ids"
-            exit "$failing"
-          fi
-          # No reachable vulnerability IDs parsed. Keep tool/infra failures
-          # failing (`go run` maps the scanner's own exit code to 1).
-          exit "$govuln_exit"
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/govulncheck.sh"
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 22
