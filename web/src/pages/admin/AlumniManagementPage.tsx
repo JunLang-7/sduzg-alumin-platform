@@ -3,6 +3,7 @@ import {
   DeleteOutlined,
   DownloadOutlined,
   EditOutlined,
+  EyeOutlined,
   FileTextOutlined,
   PlusOutlined,
   SearchOutlined,
@@ -25,7 +26,7 @@ import {
 } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { StatusText } from '../../components/StatusText';
@@ -49,6 +50,7 @@ export function AlumniManagementPage() {
   const sensitiveReadable = canReadSensitive(user);
   const [searchForm] = Form.useForm<AlumniQuery>();
   const [modalForm] = Form.useForm<AlumniProfilePayload>();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const urlKeyword = searchParams.get('keyword') || undefined;
   const [items, setItems] = useState<AlumniProfile[]>([]);
@@ -229,6 +231,13 @@ export function AlumniManagementPage() {
         width: 160,
         render: (_, record) => (
           <Space size={4}>
+            <Button
+              type="link"
+              icon={<EyeOutlined />}
+              onClick={() => navigate(`/alumni/${record.id}`)}
+            >
+              查看
+            </Button>
             <Button type="link" icon={<EditOutlined />} onClick={() => openEditModal(record)}>
               编辑
             </Button>
@@ -245,7 +254,7 @@ export function AlumniManagementPage() {
         ),
       },
     ],
-    [domains, handleRemove, openEditModal, sensitiveReadable],
+    [domains, handleRemove, navigate, openEditModal, sensitiveReadable],
   );
 
   const handleSearch = (values: AlumniQuery) => {
