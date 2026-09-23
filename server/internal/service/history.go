@@ -181,7 +181,7 @@ func (s *HistoryService) Submit(ctx context.Context, access common.AccessContext
 }
 
 func (s *HistoryService) ListMine(ctx context.Context, access common.AccessContext) ([]dto.HistoryContributionItem, error) {
-	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+	if access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	items, err := s.repository.ListMine(ctx, access.UserID)
