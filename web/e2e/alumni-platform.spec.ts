@@ -20,7 +20,10 @@ async function removeAlumni(page: Page, name: string) {
   const row = page.getByRole('row').filter({ hasText: name });
   if (!(await row.count())) return;
   await row.getByRole('button', { name: '删除' }).click();
-  await page.getByRole('button', { name: /确认/ }).last().click();
+  await page
+    .getByRole('button', { name: /确\s*定/ })
+    .last()
+    .click();
 }
 
 test('未登录校友不能访问院史共编', async ({ page }) => {
@@ -44,7 +47,7 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     await dialog.getByTestId('alumni-grade-input').fill('2026级');
     await dialog.getByRole('combobox').first().click();
     await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
-    await dialog.getByRole('button', { name: /确认/ }).click();
+    await dialog.getByRole('button', { name: /确\s*定/ }).click();
     const keyword = page.getByPlaceholder('姓名、单位、导师');
     await keyword.fill(alumniName);
     await page.getByRole('button', { name: '查询' }).click();
@@ -53,7 +56,7 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     await row.getByRole('button', { name: '编辑' }).click();
     const editDialog = page.getByRole('dialog', { name: '编辑校友' });
     await editDialog.getByTestId('alumni-grade-input').fill('2027级');
-    await editDialog.getByRole('button', { name: /确认/ }).click();
+    await editDialog.getByRole('button', { name: /确\s*定/ }).click();
     await page.reload();
     await expect(page.getByRole('row').filter({ hasText: alumniName })).toContainText('2027级');
   } finally {
@@ -72,7 +75,7 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
     await dialog.getByTestId('alumni-grade-input').fill('2026级');
     await dialog.getByRole('combobox').first().click();
     await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
-    await dialog.getByRole('button', { name: /确认/ }).click();
+    await dialog.getByRole('button', { name: /确\s*定/ }).click();
     const keyword = page.getByPlaceholder('姓名、单位、导师');
     await keyword.fill(alumniName);
     await page.getByRole('button', { name: '查询' }).click();
@@ -96,7 +99,10 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
     const download = await downloadPromise;
     expect(await readFile((await download.path())!)).toEqual(attachmentContent);
     await fileRow.getByRole('button', { name: '删除' }).click();
-    await page.getByRole('button', { name: /确认/ }).last().click();
+    await page
+      .getByRole('button', { name: /确\s*定/ })
+      .last()
+      .click();
     await expect(page.getByText(attachmentName)).toHaveCount(0);
   } finally {
     await removeAlumni(page, alumniName).catch(() => undefined);
