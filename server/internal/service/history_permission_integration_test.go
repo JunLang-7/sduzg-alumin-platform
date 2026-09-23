@@ -276,6 +276,11 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || approved.Status != repository.HistoryContributionApproved || approved.EntryID == nil {
 			t.Errorf("approve result = %+v, err %v; want approved contribution with entry", approved, err)
 		}
+		if _, err := svc.CreateDraft(ctx, common.AccessContext{UserID: 1202, Role: common.RoleAlumni, AlumniID: &undergraduateProfile.ID}, dto.HistoryContributionRequest{
+			EntryID: approved.EntryID, Title: tag + "-cross-domain", Content: "不得跨域覆盖词条", SourceNote: "测试来源",
+		}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("cross-domain entry contribution error = %v, want permission denied", err)
+		}
 		if _, err := svc.UpdateEntry(ctx, unassignedAdmin, *approved.EntryID, dto.HistoryEntryUpdateRequest{
 			Title: "out-of-domain update", Content: "should not be saved", SourceNote: "test source",
 		}); !errors.Is(err, common.ErrPermissionDenied) {

@@ -71,6 +71,7 @@ export function HistoryEditorPage() {
             content: current.content,
             source_note: current.source_note,
             change_note: current.change_note,
+            data_domain_id: current.data_domain_id,
           });
         })
         .catch((error) => message.error(error instanceof Error ? error.message : '投稿加载失败'))

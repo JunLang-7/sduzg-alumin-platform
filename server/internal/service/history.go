@@ -98,6 +98,18 @@ func (s *HistoryService) CreateDraft(ctx context.Context, access common.AccessCo
 		}
 		domainID = *req.DataDomainID
 	}
+	// A contribution that changes an existing entry must stay in that entry's
+	// established domain.  The entry itself has no domain column, so its domain
+	// is derived from the contribution that produced its latest version.
+	if req.EntryID != nil {
+		entryDomainID, err := s.repository.EntryDataDomainID(ctx, *req.EntryID)
+		if err != nil {
+			return nil, err
+		}
+		if entryDomainID == nil || *entryDomainID != domainID {
+			return nil, common.ErrPermissionDenied
+		}
+	}
 	item, err := s.repository.CreateContribution(ctx, &model.HistoryContribution{
 		EntryID: req.EntryID, Title: strings.TrimSpace(req.Title), SectionName: strings.TrimSpace(req.SectionName),
 		Content: strings.TrimSpace(req.Content), SourceNote: strings.TrimSpace(req.SourceNote), ChangeNote: strings.TrimSpace(req.ChangeNote),

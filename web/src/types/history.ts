@@ -19,6 +19,7 @@ export interface HistoryContribution {
   source_note: string;
   change_note: string;
   status: HistoryContributionStatus;
+  data_domain_id?: number;
   review_comment?: string;
   submitted_at?: string;
   updated_at: string;

@@ -336,8 +336,29 @@ func (r *HistoryRepository) Review(ctx context.Context, id, reviewerID uint64, a
 				}
 				entryID = &entry.ID
 			} else {
+				// Defend the domain boundary again at publication time.  The
+				// service validates it when a draft is created, but the target
+				// entry can only safely be trusted while this transaction holds
+				// the relevant rows.
+				var latestVersion model.HistoryEntryVersion
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("entry_id = ?", *entryID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return common.ErrPermissionDenied
+					}
+					return err
+				}
+				if latestVersion.ContributionID == nil || item.DataDomainID == nil {
+					return common.ErrPermissionDenied
+				}
+				var latestContribution model.HistoryContribution
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", *latestVersion.ContributionID).First(&latestContribution).Error; err != nil {
+					return err
+				}
+				if latestContribution.DataDomainID == nil || *latestContribution.DataDomainID != *item.DataDomainID {
+					return common.ErrPermissionDenied
+				}
 				var entry model.HistoryEntry
-				if err := tx.Where(entries.ID.Eq(*entryID)).First(&entry).Error; err != nil {
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(entries.ID.Eq(*entryID)).First(&entry).Error; err != nil {
 					return err
 				}
 				entry.Title, entry.Summary, entry.Content = item.Title, item.ChangeNote, item.Content
