@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gen/field"
@@ -58,6 +59,87 @@ func (r *HistoryRepository) GetPublished(ctx context.Context, id uint64) (*model
 	return &entry, nil
 }
 
+func (r *HistoryRepository) LatestSourceNote(ctx context.Context, entryID uint64) (string, error) {
+	if r == nil || r.db == nil {
+		return "", common.ErrDatabaseUnavailable
+	}
+	versions := query.Use(r.db).HistoryEntryVersion
+	version, err := versions.WithContext(ctx).Where(versions.EntryID.Eq(entryID)).Order(versions.VersionNumber.Desc()).First()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return version.SourceNote, nil
+}
+
+func (r *HistoryRepository) EntryDataDomainID(ctx context.Context, entryID uint64) (*uint64, error) {
+	if r == nil || r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	versions := query.Use(r.db).HistoryEntryVersion
+	version, err := versions.WithContext(ctx).Where(versions.EntryID.Eq(entryID)).Order(versions.VersionNumber.Desc()).First()
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if version.ContributionID == nil {
+		return nil, nil
+	}
+	contribution, err := r.GetContribution(ctx, *version.ContributionID)
+	if errors.Is(err, common.ErrHistoryContributionNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return contribution.DataDomainID, nil
+}
+
+func (r *HistoryRepository) UpdatePublished(ctx context.Context, id, editorID uint64, req dto.HistoryEntryUpdateRequest) (*model.HistoryEntry, error) {
+	if r == nil || r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	var result model.HistoryEntry
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		entries := query.Use(tx).HistoryEntry
+		versions := query.Use(tx).HistoryEntryVersion
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(entries.ID.Eq(id), entries.Status.Eq("published")).First(&result).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrHistoryEntryNotFound
+			}
+			return err
+		}
+		latestVersion, err := versions.WithContext(ctx).Where(versions.EntryID.Eq(id)).Order(versions.VersionNumber.Desc()).First()
+		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+		var contributionID *uint64
+		if err == nil {
+			contributionID = latestVersion.ContributionID
+		}
+		result.Title = strings.TrimSpace(req.Title)
+		result.Summary = strings.TrimSpace(req.ChangeNote)
+		result.Content = strings.TrimSpace(req.Content)
+		result.CurrentVersion++
+		result.UpdatedBy = &editorID
+		if err := tx.Save(&result).Error; err != nil {
+			return err
+		}
+		return tx.Create(&model.HistoryEntryVersion{
+			EntryID: result.ID, VersionNumber: result.CurrentVersion, Title: result.Title, Summary: result.Summary,
+			Content: result.Content, SourceNote: strings.TrimSpace(req.SourceNote), ContributionID: contributionID, ApprovedBy: editorID,
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
 func (r *HistoryRepository) AlumniDomainID(ctx context.Context, alumniID uint64) (uint64, error) {
 	if r == nil || r.db == nil {
 		return 0, common.ErrDatabaseUnavailable
@@ -81,6 +163,78 @@ func (r *HistoryRepository) CreateContribution(ctx context.Context, item *model.
 		return nil, err
 	}
 	return item, nil
+}
+
+func (r *HistoryRepository) UpdateContribution(ctx context.Context, id, userID uint64, req dto.HistoryContributionRequest) (*model.HistoryContribution, error) {
+	if r == nil || r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+	var result *model.HistoryContribution
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var item model.HistoryContribution
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+			"id = ? AND author_user_id = ? AND status IN ?", id, userID,
+			[]string{HistoryContributionDraft, HistoryContributionPending, HistoryContributionReturned},
+		).First(&item).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrInvalidHistoryState
+		}
+		if err != nil {
+			return err
+		}
+		updates := map[string]any{
+			"title":       strings.TrimSpace(req.Title),
+			"content":     strings.TrimSpace(req.Content),
+			"source_note": strings.TrimSpace(req.SourceNote),
+			"change_note": strings.TrimSpace(req.ChangeNote),
+		}
+		if sectionName := strings.TrimSpace(req.SectionName); sectionName != "" {
+			updates["section_name"] = sectionName
+		}
+		if err := tx.Model(&model.HistoryContribution{}).Where("id = ?", item.ID).Updates(updates).Error; err != nil {
+			return err
+		}
+		item.Title = updates["title"].(string)
+		item.Content = updates["content"].(string)
+		item.SourceNote = updates["source_note"].(string)
+		item.ChangeNote = updates["change_note"].(string)
+		if sectionName, ok := updates["section_name"].(string); ok {
+			item.SectionName = sectionName
+		}
+		result = &item
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// DeleteDraft soft-deletes a draft and its attachments together. The status and
+// author are checked again in the transaction so a concurrent submission cannot
+// cause a pending contribution to be deleted.
+func (r *HistoryRepository) DeleteDraft(ctx context.Context, id, userID uint64) error {
+	if r == nil || r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		contributions := query.Use(tx).HistoryContribution
+		attachments := query.Use(tx).HistoryAttachment
+		item, err := contributions.WithContext(ctx).
+			Where(contributions.ID.Eq(id), contributions.AuthorUserID.Eq(userID), contributions.Status.Eq(HistoryContributionDraft)).
+			First()
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrInvalidHistoryState
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := attachments.WithContext(ctx).Where(attachments.ContributionID.Eq(item.ID)).Delete(); err != nil {
+			return err
+		}
+		_, err = contributions.WithContext(ctx).Where(contributions.ID.Eq(item.ID)).Delete()
+		return err
+	})
 }
 
 func (r *HistoryRepository) GetContribution(ctx context.Context, id uint64) (*model.HistoryContribution, error) {
@@ -182,8 +336,29 @@ func (r *HistoryRepository) Review(ctx context.Context, id, reviewerID uint64, a
 				}
 				entryID = &entry.ID
 			} else {
+				// Defend the domain boundary again at publication time.  The
+				// service validates it when a draft is created, but the target
+				// entry can only safely be trusted while this transaction holds
+				// the relevant rows.
+				var latestVersion model.HistoryEntryVersion
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("entry_id = ?", *entryID).Order("version_number DESC").First(&latestVersion).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return common.ErrPermissionDenied
+					}
+					return err
+				}
+				if latestVersion.ContributionID == nil || item.DataDomainID == nil {
+					return common.ErrPermissionDenied
+				}
+				var latestContribution model.HistoryContribution
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", *latestVersion.ContributionID).First(&latestContribution).Error; err != nil {
+					return err
+				}
+				if latestContribution.DataDomainID == nil || *latestContribution.DataDomainID != *item.DataDomainID {
+					return common.ErrPermissionDenied
+				}
 				var entry model.HistoryEntry
-				if err := tx.Where(entries.ID.Eq(*entryID)).First(&entry).Error; err != nil {
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(entries.ID.Eq(*entryID)).First(&entry).Error; err != nil {
 					return err
 				}
 				entry.Title, entry.Summary, entry.Content = item.Title, item.ChangeNote, item.Content

@@ -34,7 +34,11 @@ func (s *HistoryService) ListEntries(ctx context.Context, keyword string) ([]dto
 	}
 	result := make([]dto.HistoryEntryItem, 0, len(entries))
 	for _, entry := range entries {
-		result = append(result, historyEntryItem(entry))
+		sourceNote, err := s.repository.LatestSourceNote(ctx, entry.ID)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, historyEntryItem(entry, sourceNote))
 	}
 	return result, nil
 }
@@ -44,22 +48,72 @@ func (s *HistoryService) GetEntry(ctx context.Context, id uint64) (*dto.HistoryE
 	if err != nil {
 		return nil, err
 	}
-	result := historyEntryItem(entry)
+	sourceNote, err := s.repository.LatestSourceNote(ctx, entry.ID)
+	if err != nil {
+		return nil, err
+	}
+	result := historyEntryItem(entry, sourceNote)
+	return &result, nil
+}
+
+func (s *HistoryService) UpdateEntry(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryEntryUpdateRequest) (*dto.HistoryEntryItem, error) {
+	if !access.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	}
+	if !access.IsSuperAdmin() {
+		domainID, err := s.repository.EntryDataDomainID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if domainID == nil || !access.CanAccessDomain(*domainID) {
+			return nil, common.ErrPermissionDenied
+		}
+	}
+	entry, err := s.repository.UpdatePublished(ctx, id, access.UserID, req)
+	if err != nil {
+		return nil, err
+	}
+	result := historyEntryItem(entry, strings.TrimSpace(req.SourceNote))
 	return &result, nil
 }
 
 func (s *HistoryService) CreateDraft(ctx context.Context, access common.AccessContext, req dto.HistoryContributionRequest) (*dto.HistoryContributionItem, error) {
-	if access.Role != common.RoleAlumni || access.AlumniID == nil {
+	if !access.IsAdministrator() && (access.Role != common.RoleAlumni || access.AlumniID == nil) {
 		return nil, common.ErrPermissionDenied
 	}
-	domainID, err := s.repository.AlumniDomainID(ctx, *access.AlumniID)
-	if err != nil {
-		return nil, err
+	var (
+		domainID       uint64
+		authorAlumniID uint64
+	)
+	if access.Role == common.RoleAlumni {
+		var err error
+		domainID, err = s.repository.AlumniDomainID(ctx, *access.AlumniID)
+		if err != nil {
+			return nil, err
+		}
+		authorAlumniID = *access.AlumniID
+	} else {
+		if req.DataDomainID == nil || !access.CanAccessDomain(*req.DataDomainID) {
+			return nil, common.ErrPermissionDenied
+		}
+		domainID = *req.DataDomainID
+	}
+	// A contribution that changes an existing entry must stay in that entry's
+	// established domain.  The entry itself has no domain column, so its domain
+	// is derived from the contribution that produced its latest version.
+	if req.EntryID != nil {
+		entryDomainID, err := s.repository.EntryDataDomainID(ctx, *req.EntryID)
+		if err != nil {
+			return nil, err
+		}
+		if entryDomainID == nil || *entryDomainID != domainID {
+			return nil, common.ErrPermissionDenied
+		}
 	}
 	item, err := s.repository.CreateContribution(ctx, &model.HistoryContribution{
 		EntryID: req.EntryID, Title: strings.TrimSpace(req.Title), SectionName: strings.TrimSpace(req.SectionName),
 		Content: strings.TrimSpace(req.Content), SourceNote: strings.TrimSpace(req.SourceNote), ChangeNote: strings.TrimSpace(req.ChangeNote),
-		Status: repository.HistoryContributionDraft, DataDomainID: &domainID, AuthorUserID: access.UserID, AuthorAlumniID: *access.AlumniID,
+		Status: repository.HistoryContributionDraft, DataDomainID: &domainID, AuthorUserID: access.UserID, AuthorAlumniID: authorAlumniID,
 	})
 	if err != nil {
 		return nil, err
@@ -68,11 +122,69 @@ func (s *HistoryService) CreateDraft(ctx context.Context, access common.AccessCo
 	return &result, nil
 }
 
-func (s *HistoryService) Submit(ctx context.Context, access common.AccessContext, id uint64) (*dto.HistoryContributionItem, error) {
-	if access.Role != common.RoleAlumni {
+func (s *HistoryService) GetContribution(ctx context.Context, access common.AccessContext, id uint64) (*dto.HistoryContributionItem, error) {
+	item, err := s.repository.GetContribution(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canManageOwnContribution(access, item) {
 		return nil, common.ErrPermissionDenied
 	}
-	item, err := s.repository.Submit(ctx, id, access.UserID)
+	result := historyContributionItem(item)
+	return &result, nil
+}
+
+func (s *HistoryService) UpdateContribution(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryContributionRequest) (*dto.HistoryContributionItem, error) {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+		return nil, common.ErrPermissionDenied
+	}
+	item, err := s.repository.GetContribution(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canManageOwnContribution(access, item) {
+		return nil, common.ErrPermissionDenied
+	}
+	if !isEditableContributionStatus(item.Status) {
+		return nil, common.ErrInvalidHistoryState
+	}
+	item, err = s.repository.UpdateContribution(ctx, id, access.UserID, req)
+	if err != nil {
+		return nil, err
+	}
+	result := historyContributionItem(item)
+	return &result, nil
+}
+
+func (s *HistoryService) DeleteDraft(ctx context.Context, access common.AccessContext, id uint64) error {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+		return common.ErrPermissionDenied
+	}
+	item, err := s.repository.GetContribution(ctx, id)
+	if err != nil {
+		return err
+	}
+	if !canManageOwnContribution(access, item) {
+		return common.ErrPermissionDenied
+	}
+	if item.Status != repository.HistoryContributionDraft {
+		return common.ErrInvalidHistoryState
+	}
+	return s.repository.DeleteDraft(ctx, id, access.UserID)
+}
+
+func (s *HistoryService) Submit(ctx context.Context, access common.AccessContext, id uint64) (*dto.HistoryContributionItem, error) {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+		return nil, common.ErrPermissionDenied
+	}
+	item, err := s.repository.GetContribution(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if !canManageOwnContribution(access, item) {
+		return nil, common.ErrPermissionDenied
+	}
+	item, err = s.repository.Submit(ctx, id, access.UserID)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +193,7 @@ func (s *HistoryService) Submit(ctx context.Context, access common.AccessContext
 }
 
 func (s *HistoryService) ListMine(ctx context.Context, access common.AccessContext) ([]dto.HistoryContributionItem, error) {
-	if access.Role != common.RoleAlumni {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	items, err := s.repository.ListMine(ctx, access.UserID)
@@ -111,14 +223,15 @@ func (s *HistoryService) ListPending(ctx context.Context, access common.AccessCo
 }
 
 func (s *HistoryService) ListAttachments(ctx context.Context, access common.AccessContext, contributionID uint64) ([]dto.HistoryAttachmentItem, error) {
-	if !access.IsAdministrator() {
-		return nil, common.ErrPermissionDenied
-	}
 	item, err := s.repository.GetContribution(ctx, contributionID)
 	if err != nil {
 		return nil, err
 	}
-	if item.DataDomainID == nil {
+	if item.AuthorUserID == access.UserID && (access.Role == common.RoleAlumni || access.IsAdministrator()) {
+		// Authors may inspect the metadata of their own attachments before review.
+	} else if !access.IsAdministrator() {
+		return nil, common.ErrPermissionDenied
+	} else if item.DataDomainID == nil {
 		if !access.IsSuperAdmin() {
 			return nil, common.ErrPermissionDenied
 		}
@@ -163,7 +276,7 @@ func (s *HistoryService) Review(ctx context.Context, access common.AccessContext
 }
 
 func (s *HistoryService) RequestAttachmentUpload(ctx context.Context, access common.AccessContext, contributionID uint64, req dto.HistoryAttachmentUploadRequest) (*dto.HistoryAttachmentUploadResult, error) {
-	if access.Role != common.RoleAlumni {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	if s.storage == nil {
@@ -173,10 +286,10 @@ func (s *HistoryService) RequestAttachmentUpload(ctx context.Context, access com
 	if err != nil {
 		return nil, err
 	}
-	if contribution.AuthorUserID != access.UserID {
+	if !canManageOwnContribution(access, contribution) {
 		return nil, common.ErrPermissionDenied
 	}
-	if contribution.Status != repository.HistoryContributionDraft && contribution.Status != repository.HistoryContributionReturned {
+	if !isEditableContributionStatus(contribution.Status) {
 		return nil, common.ErrInvalidHistoryState
 	}
 	if !allowedHistoryMime(req.MimeType) || strings.TrimSpace(req.OriginalName) == "" {
@@ -205,17 +318,17 @@ func (s *HistoryService) RequestAttachmentUpload(ctx context.Context, access com
 }
 
 func (s *HistoryService) ConfirmAttachmentUpload(ctx context.Context, access common.AccessContext, contributionID, attachmentID uint64) error {
-	if access.Role != common.RoleAlumni {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
 		return common.ErrPermissionDenied
 	}
 	attachment, contribution, err := s.attachmentForContribution(ctx, contributionID, attachmentID)
 	if err != nil {
 		return err
 	}
-	if contribution.AuthorUserID != access.UserID {
+	if !canManageOwnContribution(access, contribution) {
 		return common.ErrPermissionDenied
 	}
-	if contribution.Status != repository.HistoryContributionDraft && contribution.Status != repository.HistoryContributionReturned {
+	if !isEditableContributionStatus(contribution.Status) {
 		return common.ErrInvalidHistoryState
 	}
 	if s.storage == nil {
@@ -283,8 +396,40 @@ func allowedHistoryMime(mimeType string) bool {
 	}
 }
 
-func historyEntryItem(entry *model.HistoryEntry) dto.HistoryEntryItem {
-	return dto.HistoryEntryItem{ID: entry.ID, Title: entry.Title, Summary: entry.Summary, Content: entry.Content, CurrentVersion: uint(entry.CurrentVersion), UpdatedAt: entry.UpdatedAt}
+func isEditableContributionStatus(status string) bool {
+	return status == repository.HistoryContributionDraft ||
+		status == repository.HistoryContributionPending ||
+		status == repository.HistoryContributionReturned
+}
+
+func canManageOwnContribution(access common.AccessContext, contribution *model.HistoryContribution) bool {
+	if contribution == nil || contribution.AuthorUserID != access.UserID {
+		return false
+	}
+	if access.Role == common.RoleAlumni {
+		return true
+	}
+	return access.IsAdministrator() && contribution.DataDomainID != nil && access.CanAccessDomain(*contribution.DataDomainID)
+}
+
+func canViewContribution(access common.AccessContext, contribution *model.HistoryContribution) bool {
+	if contribution == nil {
+		return false
+	}
+	if access.Role == common.RoleAlumni && contribution.AuthorUserID == access.UserID {
+		return true
+	}
+	if !access.IsAdministrator() {
+		return false
+	}
+	if contribution.DataDomainID == nil {
+		return access.IsSuperAdmin()
+	}
+	return access.CanAccessDomain(*contribution.DataDomainID)
+}
+
+func historyEntryItem(entry *model.HistoryEntry, sourceNote string) dto.HistoryEntryItem {
+	return dto.HistoryEntryItem{ID: entry.ID, Title: entry.Title, Summary: entry.Summary, Content: entry.Content, SourceNote: sourceNote, CurrentVersion: uint(entry.CurrentVersion), UpdatedAt: entry.UpdatedAt}
 }
 
 func historyContributionItem(item *model.HistoryContribution) dto.HistoryContributionItem {

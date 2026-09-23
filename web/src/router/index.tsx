@@ -14,6 +14,7 @@ import { AdminUsersPage } from '../pages/admin/AdminUsersPage';
 import { AuditHistoryPage } from '../pages/admin/AuditHistoryPage';
 import { PublicHomePage } from '../pages/common/PublicHomePage';
 import { HistoryWikiPage } from '../pages/history/HistoryWikiPage';
+import { HistoryEditorPage } from '../pages/history/HistoryEditorPage';
 import { HistoryReviewPage } from '../pages/admin/HistoryReviewPage';
 
 export const router = createBrowserRouter([
@@ -34,6 +35,10 @@ export const router = createBrowserRouter([
           {
             path: '/history',
             element: <HistoryWikiPage />,
+          },
+          {
+            path: '/history/editor',
+            element: <HistoryEditorPage />,
           },
           {
             element: <RequireAuth exactRole="alumni" />,

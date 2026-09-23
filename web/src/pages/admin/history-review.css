@@ -1,0 +1,14 @@
+.history-review__action-column {
+  vertical-align: middle !important;
+}
+.history-review__review-button {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding-block: 0;
+  line-height: 22px;
+}
+.history-review__review-button .anticon {
+  display: inline-flex;
+  align-items: center;
+}

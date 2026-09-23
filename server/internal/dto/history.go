@@ -11,17 +11,26 @@ type HistoryEntryItem struct {
 	Title          string    `json:"title"`
 	Summary        string    `json:"summary"`
 	Content        string    `json:"content"`
+	SourceNote     string    `json:"source_note"`
 	CurrentVersion uint      `json:"current_version"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
+type HistoryEntryUpdateRequest struct {
+	Title      string `json:"title" binding:"required,max=200"`
+	Content    string `json:"content" binding:"required,max=20000"`
+	SourceNote string `json:"source_note" binding:"required,max=5000"`
+	ChangeNote string `json:"change_note" binding:"max=1000"`
+}
+
 type HistoryContributionRequest struct {
-	EntryID     *uint64 `json:"entry_id"`
-	Title       string  `json:"title" binding:"required,max=200"`
-	SectionName string  `json:"section_name" binding:"max=100"`
-	Content     string  `json:"content" binding:"required,max=20000"`
-	SourceNote  string  `json:"source_note" binding:"required,max=5000"`
-	ChangeNote  string  `json:"change_note" binding:"max=1000"`
+	EntryID      *uint64 `json:"entry_id"`
+	DataDomainID *uint64 `json:"data_domain_id"`
+	Title        string  `json:"title" binding:"required,max=200"`
+	SectionName  string  `json:"section_name" binding:"max=100"`
+	Content      string  `json:"content" binding:"required,max=20000"`
+	SourceNote   string  `json:"source_note" binding:"required,max=5000"`
+	ChangeNote   string  `json:"change_note" binding:"max=1000"`
 }
 
 type HistoryReviewRequest struct {
