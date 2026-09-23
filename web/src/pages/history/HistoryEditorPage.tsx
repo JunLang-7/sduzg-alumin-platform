@@ -205,7 +205,7 @@ export function HistoryEditorPage() {
                 {isAdmin && (
                   <Form.Item name="data_domain_id" label="所属数据域" rules={[{ required: true }]}>
                     <Select
-                      placeholder="请选择词条所属数据域"
+                      placeholder="请选择投稿所属数据域"
                       options={(user?.domains ?? []).map((domain) => ({
                         label: domain.name,
                         value: domain.id,

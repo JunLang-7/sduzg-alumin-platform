@@ -94,6 +94,7 @@ export function HistoryWikiPage() {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
+  const isAlumni = user?.role === 'alumni';
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [mine, setMine] = useState<HistoryContribution[]>([]);
   const [active, setActive] = useState<HistoryEntry | null>(null);
@@ -114,7 +115,7 @@ export function HistoryWikiPage() {
     try {
       const [items, contributions] = await Promise.all([
         historyApi.listEntries(search.trim() || undefined),
-        user?.role === 'alumni' || isAdmin ? historyApi.listMine() : Promise.resolve([]),
+        isAlumni || isAdmin ? historyApi.listMine() : Promise.resolve([]),
       ]);
       setEntries(items);
       setMine(
@@ -169,7 +170,7 @@ export function HistoryWikiPage() {
     setSelectedAttachments([]);
     setAttachmentsLoading(true);
     try {
-      setSelectedAttachments(await historyApi.listReviewAttachments(contribution.id));
+      setSelectedAttachments(await historyApi.listContributionAttachments(contribution.id));
     } catch (error) {
       message.error(error instanceof Error ? error.message : '附件加载失败');
     } finally {
@@ -231,7 +232,7 @@ export function HistoryWikiPage() {
             }}
           />
           <Button onClick={search}>搜索</Button>
-          {(user?.role === 'alumni' || isAdmin) && (
+          {(isAlumni || isAdmin) && (
             <Button type="primary" icon={<EditOutlined />} onClick={() => openEditor('create')}>
               新建词条
             </Button>
@@ -297,7 +298,7 @@ export function HistoryWikiPage() {
               <small>正文暂无章节标题</small>
             )}
           </aside>
-          {(user?.role === 'alumni' || isAdmin) && (
+          {(isAlumni || isAdmin) && (
             <aside className="history-page__mine">
               <strong>我的投稿</strong>
               <List

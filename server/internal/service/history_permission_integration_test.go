@@ -197,8 +197,9 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || len(mine) != 4 {
 			t.Errorf("alumni mine count = %d, err %v; want 4 own contributions", len(mine), err)
 		}
-		if _, err := svc.ListMine(ctx, mpaAdmin); !errors.Is(err, common.ErrPermissionDenied) {
-			t.Errorf("admin ListMine error = %v, want permission denied", err)
+		adminMine, err := svc.ListMine(ctx, mpaAdmin)
+		if err != nil || len(adminMine) != 0 {
+			t.Errorf("admin mine = %+v, err %v; want no other users' contributions", adminMine, err)
 		}
 		updatedPending, err := svc.UpdateContribution(ctx, alumni, mpaContribution.ID, dto.HistoryContributionRequest{
 			Title: mpaContribution.Title, Content: "审核中的投稿已修改", SourceNote: "更新后的测试来源", ChangeNote: "补充说明",
@@ -225,8 +226,9 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if _, err := svc.ListAttachments(ctx, mpaAdmin, undergraduateContribution.ID); !errors.Is(err, common.ErrPermissionDenied) {
 			t.Errorf("out-of-domain attachments error = %v, want permission denied", err)
 		}
-		if _, err := svc.ListAttachments(ctx, alumni, mpaContribution.ID); !errors.Is(err, common.ErrPermissionDenied) {
-			t.Errorf("alumni attachments error = %v, want permission denied", err)
+		alumniAttachments, err := svc.ListAttachments(ctx, alumni, mpaContribution.ID)
+		if err != nil || len(alumniAttachments) != 1 || alumniAttachments[0].OriginalName != "review.pdf" {
+			t.Errorf("author attachments = %+v, err %v", alumniAttachments, err)
 		}
 		if _, err := svc.AttachmentDownloadURL(ctx, otherAlumni, mpaContribution.ID, pendingAttachment.ID); !errors.Is(err, common.ErrPermissionDenied) {
 			t.Errorf("other alumni pending attachment = %v, want permission denied", err)

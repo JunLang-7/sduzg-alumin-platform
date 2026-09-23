@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 
 const password = 'Admin@123456';
 const attachmentContent = Buffer.from('%PDF-1.4\nE2E history attachment\n%%EOF\n');
@@ -11,9 +12,95 @@ async function login(page: Page, account: string) {
   await page.waitForURL((url) => url.pathname !== '/login');
 }
 
+async function removeAlumni(page: Page, name: string) {
+  await page.goto('/admin/alumni');
+  const keyword = page.getByPlaceholder('姓名、单位、导师');
+  await keyword.fill(name);
+  await page.getByRole('button', { name: '查询' }).click();
+  const row = page.getByRole('row').filter({ hasText: name });
+  if (!(await row.count())) return;
+  await row.getByRole('button', { name: '删除' }).click();
+  await page.getByRole('button', { name: /确认/ }).last().click();
+}
+
 test('未登录校友不能访问院史共编', async ({ page }) => {
   await page.goto('/history');
   await expect(page).toHaveURL(/\/login$/);
+});
+
+test('普通校友不能进入管理员功能', async ({ page }) => {
+  await login(page, '13800001111');
+  await page.goto('/admin/alumni');
+  await expect(page).toHaveURL(/\/403$/);
+});
+
+test('管理员可以创建、编辑并清理校友档案', async ({ page }) => {
+  const alumniName = `E2E校友${Date.now()}`;
+  await login(page, 'admin');
+  try {
+    await page.getByRole('button', { name: '新增校友' }).click();
+    const dialog = page.getByRole('dialog', { name: '新增校友' });
+    await dialog.getByTestId('alumni-name-input').fill(alumniName);
+    await dialog.getByTestId('alumni-grade-input').fill('2026级');
+    await dialog.getByRole('combobox').first().click();
+    await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
+    await dialog.getByRole('button', { name: /确认/ }).click();
+    const keyword = page.getByPlaceholder('姓名、单位、导师');
+    await keyword.fill(alumniName);
+    await page.getByRole('button', { name: '查询' }).click();
+    const row = page.getByRole('row').filter({ hasText: alumniName });
+    await expect(row).toBeVisible();
+    await row.getByRole('button', { name: '编辑' }).click();
+    const editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByTestId('alumni-grade-input').fill('2027级');
+    await editDialog.getByRole('button', { name: /确认/ }).click();
+    await page.reload();
+    await expect(page.getByRole('row').filter({ hasText: alumniName })).toContainText('2027级');
+  } finally {
+    await removeAlumni(page, alumniName).catch(() => undefined);
+  }
+});
+
+test('管理员可以上传、下载并删除校友附件', async ({ page }) => {
+  const alumniName = `E2E附件校友${Date.now()}`;
+  const attachmentName = 'e2e-alumni-attachment.pdf';
+  await login(page, 'admin');
+  try {
+    await page.getByRole('button', { name: '新增校友' }).click();
+    const dialog = page.getByRole('dialog', { name: '新增校友' });
+    await dialog.getByTestId('alumni-name-input').fill(alumniName);
+    await dialog.getByTestId('alumni-grade-input').fill('2026级');
+    await dialog.getByRole('combobox').first().click();
+    await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
+    await dialog.getByRole('button', { name: /确认/ }).click();
+    const keyword = page.getByPlaceholder('姓名、单位、导师');
+    await keyword.fill(alumniName);
+    await page.getByRole('button', { name: '查询' }).click();
+    await page
+      .getByRole('row')
+      .filter({ hasText: alumniName })
+      .getByRole('button', { name: '查看' })
+      .click();
+    await page
+      .getByTestId('alumni-file-upload-degree_archive')
+      .locator('input[type="file"]')
+      .setInputFiles({
+        name: attachmentName,
+        mimeType: 'application/pdf',
+        buffer: attachmentContent,
+      });
+    const fileRow = page.getByRole('listitem').filter({ hasText: attachmentName });
+    await expect(fileRow).toBeVisible();
+    const downloadPromise = page.waitForEvent('download');
+    await fileRow.getByRole('button', { name: '下载' }).click();
+    const download = await downloadPromise;
+    expect(await readFile((await download.path())!)).toEqual(attachmentContent);
+    await fileRow.getByRole('button', { name: '删除' }).click();
+    await page.getByRole('button', { name: /确认/ }).last().click();
+    await expect(page.getByText(attachmentName)).toHaveCount(0);
+  } finally {
+    await removeAlumni(page, alumniName).catch(() => undefined);
+  }
 });
 
 test('校友上传院史资料，管理员审核后可阅读正式词条', async ({ page }) => {

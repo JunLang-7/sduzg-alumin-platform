@@ -67,6 +67,12 @@ export const historyApi = {
       url: `/history/reviews/${id}/attachments`,
     });
   },
+  listContributionAttachments(id: number) {
+    return request<HistoryAttachment[]>({
+      method: 'GET',
+      url: `/history/contributions/${id}/attachments`,
+    });
+  },
   async previewAttachment(contributionID: number, attachmentID: number) {
     const result = await request<{ download_url: string }>({
       method: 'GET',

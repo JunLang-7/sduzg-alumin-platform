@@ -123,7 +123,7 @@ func (s *HistoryService) GetContribution(ctx context.Context, access common.Acce
 }
 
 func (s *HistoryService) UpdateContribution(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryContributionRequest) (*dto.HistoryContributionItem, error) {
-	if access.Role != common.RoleAlumni {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	item, err := s.repository.GetContribution(ctx, id)
@@ -181,7 +181,7 @@ func (s *HistoryService) Submit(ctx context.Context, access common.AccessContext
 }
 
 func (s *HistoryService) ListMine(ctx context.Context, access common.AccessContext) ([]dto.HistoryContributionItem, error) {
-	if access.Role != common.RoleAlumni {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
 		return nil, common.ErrPermissionDenied
 	}
 	items, err := s.repository.ListMine(ctx, access.UserID)
@@ -215,10 +215,11 @@ func (s *HistoryService) ListAttachments(ctx context.Context, access common.Acce
 	if err != nil {
 		return nil, err
 	}
-	if !access.IsAdministrator() {
+	if access.Role == common.RoleAlumni && item.AuthorUserID == access.UserID {
+		// Authors may inspect the metadata of their own attachments before review.
+	} else if !access.IsAdministrator() {
 		return nil, common.ErrPermissionDenied
-	}
-	if item.DataDomainID == nil {
+	} else if item.DataDomainID == nil {
 		if !access.IsSuperAdmin() {
 			return nil, common.ErrPermissionDenied
 		}

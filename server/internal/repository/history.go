@@ -171,29 +171,37 @@ func (r *HistoryRepository) UpdateContribution(ctx context.Context, id, userID u
 	}
 	var result *model.HistoryContribution
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		contributions := query.Use(tx).HistoryContribution
-		item, err := contributions.WithContext(ctx).Where(
-			contributions.ID.Eq(id),
-			contributions.AuthorUserID.Eq(userID),
-			contributions.Status.In(HistoryContributionDraft, HistoryContributionPending, HistoryContributionReturned),
-		).First()
+		var item model.HistoryContribution
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(
+			"id = ? AND author_user_id = ? AND status IN ?", id, userID,
+			[]string{HistoryContributionDraft, HistoryContributionPending, HistoryContributionReturned},
+		).First(&item).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return common.ErrInvalidHistoryState
 		}
 		if err != nil {
 			return err
 		}
-		item.Title = strings.TrimSpace(req.Title)
-		if sectionName := strings.TrimSpace(req.SectionName); sectionName != "" {
-			item.SectionName = sectionName
+		updates := map[string]any{
+			"title":       strings.TrimSpace(req.Title),
+			"content":     strings.TrimSpace(req.Content),
+			"source_note": strings.TrimSpace(req.SourceNote),
+			"change_note": strings.TrimSpace(req.ChangeNote),
 		}
-		item.Content = strings.TrimSpace(req.Content)
-		item.SourceNote = strings.TrimSpace(req.SourceNote)
-		item.ChangeNote = strings.TrimSpace(req.ChangeNote)
-		if err := contributions.WithContext(ctx).Where(contributions.ID.Eq(item.ID)).Save(item); err != nil {
+		if sectionName := strings.TrimSpace(req.SectionName); sectionName != "" {
+			updates["section_name"] = sectionName
+		}
+		if err := tx.Model(&model.HistoryContribution{}).Where("id = ?", item.ID).Updates(updates).Error; err != nil {
 			return err
 		}
-		result = item
+		item.Title = updates["title"].(string)
+		item.Content = updates["content"].(string)
+		item.SourceNote = updates["source_note"].(string)
+		item.ChangeNote = updates["change_note"].(string)
+		if sectionName, ok := updates["section_name"].(string); ok {
+			item.SectionName = sectionName
+		}
+		result = &item
 		return nil
 	})
 	if err != nil {
