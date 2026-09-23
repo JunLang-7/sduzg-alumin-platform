@@ -215,7 +215,7 @@ func (s *HistoryService) ListAttachments(ctx context.Context, access common.Acce
 	if err != nil {
 		return nil, err
 	}
-	if access.Role == common.RoleAlumni && item.AuthorUserID == access.UserID {
+	if item.AuthorUserID == access.UserID && (access.Role == common.RoleAlumni || access.IsAdministrator()) {
 		// Authors may inspect the metadata of their own attachments before review.
 	} else if !access.IsAdministrator() {
 		return nil, common.ErrPermissionDenied
