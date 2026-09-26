@@ -119,6 +119,7 @@ jobs:
           E2E_SKIP_BROWSER_INSTALL: "true"
           E2E_COMPOSE_PROJECT: sdu-alumni-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           MINIO_IMAGE: sourcemation/minio:RELEASE.2025-10-15T17-29-55Z-20260905
+          MINIO_HEALTHCHECK: bash -c 'echo > /dev/tcp/127.0.0.1/9000'
         run: npm run test:e2e
       - name: Upload E2E diagnostics
         if: failure()
@@ -165,7 +166,7 @@ jobs:
         ports:
           - 9000:9000
         options: >-
-          --health-cmd "curl --fail --silent http://127.0.0.1:9000/minio/health/live"
+          --health-cmd "bash -c 'echo > /dev/tcp/127.0.0.1/9000'"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12

@@ -157,7 +157,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "${MINIO_HEALTHCHECK:-mc ready local}"]
       interval: 10s
       timeout: 5s
       retries: 10
