@@ -118,6 +118,7 @@ jobs:
         env:
           E2E_SKIP_BROWSER_INSTALL: "true"
           E2E_COMPOSE_PROJECT: sdu-alumni-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          MINIO_IMAGE: sourcemation/minio:RELEASE.2025-10-15T17-29-55Z-20260905
         run: npm run test:e2e
       - name: Upload E2E diagnostics
         if: failure()
@@ -156,7 +157,7 @@ jobs:
           --health-timeout 5s
           --health-retries 12
       minio:
-        image: quay.io/minio/minio:latest
+        image: sourcemation/minio:RELEASE.2025-10-15T17-29-55Z-20260905
         command: server /data
         env:
           MINIO_ROOT_USER: minioadmin
