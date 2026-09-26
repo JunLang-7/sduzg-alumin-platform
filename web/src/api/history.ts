@@ -73,6 +73,23 @@ export const historyApi = {
       url: `/history/contributions/${id}/attachments`,
     });
   },
+  deleteAttachment(contributionID: number, attachmentID: number) {
+    return request<{ deleted: boolean }>({
+      method: 'DELETE',
+      url: `/history/contributions/${contributionID}/attachments/${attachmentID}`,
+    });
+  },
+  updateAttachment(
+    contributionID: number,
+    attachmentID: number,
+    payload: UploadHistoryAttachmentPayload,
+  ) {
+    return request<{ updated: boolean }>({
+      method: 'PUT',
+      url: `/history/contributions/${contributionID}/attachments/${attachmentID}`,
+      data: payload,
+    });
+  },
   async previewAttachment(contributionID: number, attachmentID: number) {
     const result = await request<{ download_url: string }>({
       method: 'GET',
