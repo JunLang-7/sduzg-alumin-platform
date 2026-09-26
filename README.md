@@ -18,7 +18,7 @@
 | --- | --- |
 | 后端 | Go 1.26、Gin、GORM、GORM Gen、Viper、zap |
 | 数据库/缓存 | MySQL 8.0、Redis |
-| 文件存储 | MinIO |
+| 文件存储 | Silo（MinIO 兼容） |
 | 前端 | React 18、Vite、TypeScript、Ant Design、axios、Zustand、ECharts |
 | 本地编排 | Docker Compose |
 
@@ -39,7 +39,7 @@
 │   ├── src/router/        路由与权限守卫
 │   ├── src/store/         Zustand 状态
 │   └── src/types/         业务类型
-├── docker-compose.yml     本地 MySQL、Redis、MinIO、API、Web 编排
+├── docker-compose.yml     本地 MySQL、Redis、Silo、API、Web 编排
 └── Makefile               数据库模型生成等辅助命令
 ```
 
@@ -74,6 +74,19 @@ role: super_admin
 ```
 
 生产环境必须修改默认密码、数据库密码、MinIO 密码和 JWT Secret。
+
+### MinIO 镜像失效后的恢复
+
+官方社区版 MinIO 镜像无法再从 `quay.io/minio/minio` 拉取。本项目的 `minio` 服务改用固定版本的 [Silo](https://silo.pgsty.com/compatibility/migration/) 镜像；服务名、`MINIO_*` 环境变量、端口和 `minio_data` 数据卷保持不变。首次切换已有数据卷前，先备份该卷并记录当前镜像版本，然后执行：
+
+```bash
+docker compose pull minio
+docker compose up -d minio
+docker compose ps minio
+curl --fail http://127.0.0.1:9000/minio/health/ready
+```
+
+确认 Console 能看到原有存储桶，并验证一次文件上传和下载。不要使用 `docker compose down -v`，它会删除数据卷。若需要暂时运行本机已缓存的旧镜像，可在本地 `.env` 中将 `MINIO_IMAGE` 设为已缓存的镜像名；这一方式无法解决新机器或 CI 的拉取问题。生产环境切换前，应按 [Silo 迁移说明](https://silo.pgsty.com/compatibility/migration/)测试备份和回滚。
 
 ### 后端本地启动
 
