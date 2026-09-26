@@ -455,3 +455,64 @@ func (r *HistoryRepository) ConfirmAttachment(ctx context.Context, id, fileSize 
 	qs := query.Use(r.db).HistoryAttachment
 	return r.db.WithContext(ctx).Model(&model.HistoryAttachment{}).Where(qs.ID.Eq(id)).Update("file_size", fileSize).Error
 }
+
+// DeleteAttachment checks the author and editable state while holding the
+// contribution row lock, so approval cannot race with attachment removal.
+func (r *HistoryRepository) DeleteAttachment(ctx context.Context, contributionID, attachmentID, userID uint64) error {
+	if r == nil || r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var contribution model.HistoryContribution
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND author_user_id = ?", contributionID, userID).First(&contribution).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrPermissionDenied
+			}
+			return err
+		}
+		if contribution.Status != HistoryContributionDraft && contribution.Status != HistoryContributionPending && contribution.Status != HistoryContributionReturned {
+			return common.ErrInvalidHistoryState
+		}
+		result := tx.Where("id = ? AND contribution_id = ?", attachmentID, contributionID).Delete(&model.HistoryAttachment{})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return common.ErrHistoryAttachmentNotFound
+		}
+		return nil
+	})
+}
+
+func (r *HistoryRepository) UpdateAttachment(ctx context.Context, contributionID, attachmentID, userID uint64, req dto.HistoryAttachmentUpdateRequest) error {
+	if r == nil || r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var contribution model.HistoryContribution
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND author_user_id = ?", contributionID, userID).First(&contribution).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrPermissionDenied
+			}
+			return err
+		}
+		if contribution.Status != HistoryContributionDraft && contribution.Status != HistoryContributionPending && contribution.Status != HistoryContributionReturned {
+			return common.ErrInvalidHistoryState
+		}
+		var attachment model.HistoryAttachment
+		if err := tx.Where("id = ? AND contribution_id = ?", attachmentID, contributionID).First(&attachment).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrHistoryAttachmentNotFound
+			}
+			return err
+		}
+		result := tx.Model(&model.HistoryAttachment{}).Where("id = ? AND contribution_id = ?", attachmentID, contributionID).Updates(map[string]any{
+			"description": strings.TrimSpace(req.Description), "source_note": strings.TrimSpace(req.SourceNote),
+			"rights_note": strings.TrimSpace(req.RightsNote), "consent_confirmed": req.ConsentConfirmed,
+		})
+		if result.Error != nil {
+			return result.Error
+		}
+		return nil
+	})
+}

@@ -108,6 +108,11 @@
   display: grid;
   gap: 18px;
   align-self: start;
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .history-page__toc,
 .history-page__mine {
@@ -115,10 +120,6 @@
   border-radius: 8px;
   padding: 16px;
   background: #fffdfa;
-}
-.history-page__toc {
-  position: sticky;
-  top: 24px;
 }
 .history-page__toc > strong {
   display: block;
@@ -239,6 +240,33 @@
 .history-page__contribution-section-title {
   margin: 20px 0 12px;
 }
+.history-page__contribution-details {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #f0ecea;
+  border-radius: 8px;
+}
+.history-page__contribution-row {
+  display: grid;
+  grid-template-columns: 140px minmax(0, 1fr);
+}
+.history-page__contribution-row + .history-page__contribution-row {
+  border-top: 1px solid #f0ecea;
+}
+.history-page__contribution-row dt,
+.history-page__contribution-row dd {
+  margin: 0;
+  padding: 12px 16px;
+}
+.history-page__contribution-row dt {
+  border-right: 1px solid #f0ecea;
+  background: #fafafa;
+  color: #595959;
+}
+.history-page__contribution-row dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .history-page__contribution-actions {
   display: flex;
   gap: 8px;
@@ -247,7 +275,7 @@
 }
 .history-page__contribution-preview {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   min-width: 0;
 }
@@ -255,8 +283,11 @@
   overflow: hidden;
   flex: 1;
   min-width: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .history-page__contribution-preview .ant-btn-link {
   flex: none;
@@ -265,10 +296,15 @@
 .history-page__contribution-content {
   margin: 0;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   color: #312623;
   font-family: STSong, serif;
   font-size: 16px;
   line-height: 2;
+}
+.history-page__content-detail-modal .ant-modal-body {
+  max-height: min(70vh, 720px);
+  overflow-y: auto;
 }
 .history-page__preview-image {
   display: block;
@@ -345,9 +381,9 @@
   }
   .history-page__right-rail {
     grid-template-columns: 1fr;
-  }
-  .history-page__toc {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
   .history-page__mobile-directory-trigger {
     display: inline-flex;
@@ -362,5 +398,17 @@
   .history-page__mobile-directory-root .ant-drawer-content {
     overflow: hidden;
     border-radius: 8px;
+  }
+}
+@media (max-width: 600px) {
+  .history-page__contribution-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+  .history-page__contribution-row dt,
+  .history-page__contribution-row dd {
+    padding: 10px;
+  }
+  .history-page__contribution-preview {
+    gap: 4px;
   }
 }

@@ -230,6 +230,33 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || len(alumniAttachments) != 1 || alumniAttachments[0].OriginalName != "review.pdf" {
 			t.Errorf("author attachments = %+v, err %v", alumniAttachments, err)
 		}
+		replaceable := &model.HistoryAttachment{ContributionID: mpaContribution.ID, ObjectKey: tag + "/replace.pdf", OriginalName: "replace.pdf", MimeType: "application/pdf", Description: "可替换附件", SourceNote: "测试来源", RightsNote: "测试授权", ConsentConfirmed: true, Status: "pending"}
+		if err := tx.Create(replaceable).Error; err != nil {
+			return err
+		}
+		attachmentUpdate := dto.HistoryAttachmentUpdateRequest{Description: "更新后的说明", SourceNote: "更新后的来源", RightsNote: "已取得授权", ConsentConfirmed: true}
+		if err := svc.UpdateAttachment(ctx, otherAlumni, mpaContribution.ID, replaceable.ID, attachmentUpdate); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("other alumnus update attachment error = %v, want permission denied", err)
+		}
+		if err := svc.UpdateAttachment(ctx, alumni, mpaContribution.ID, replaceable.ID, attachmentUpdate); err != nil {
+			t.Errorf("author update attachment error = %v", err)
+		}
+		if err := svc.UpdateAttachment(ctx, alumni, mpaContribution.ID, replaceable.ID, attachmentUpdate); err != nil {
+			t.Errorf("repeat attachment update error = %v", err)
+		}
+		updatedAttachment, err := repository.NewHistoryRepository(tx).GetAttachment(ctx, replaceable.ID)
+		if err != nil || updatedAttachment.Description != attachmentUpdate.Description {
+			t.Errorf("updated attachment = %+v, err %v", updatedAttachment, err)
+		}
+		if err := svc.DeleteAttachment(ctx, otherAlumni, mpaContribution.ID, replaceable.ID); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("other alumnus delete attachment error = %v, want permission denied", err)
+		}
+		if err := svc.DeleteAttachment(ctx, alumni, mpaContribution.ID, replaceable.ID); err != nil {
+			t.Errorf("author delete attachment error = %v", err)
+		}
+		if _, err := repository.NewHistoryRepository(tx).GetAttachment(ctx, replaceable.ID); !errors.Is(err, common.ErrHistoryAttachmentNotFound) {
+			t.Errorf("removed attachment lookup error = %v, want not found", err)
+		}
 		if _, err := svc.AttachmentDownloadURL(ctx, otherAlumni, mpaContribution.ID, pendingAttachment.ID); !errors.Is(err, common.ErrPermissionDenied) {
 			t.Errorf("other alumni pending attachment = %v, want permission denied", err)
 		}

@@ -12,3 +12,71 @@
   display: inline-flex;
   align-items: center;
 }
+.history-review__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.history-review__article {
+  max-width: 960px;
+  min-width: 0;
+  margin: 0 auto;
+  padding: 32px 40px;
+  background: #fffdfa;
+  overflow-wrap: anywhere;
+}
+.history-review__article h1 {
+  margin: 20px 0;
+  font-family: STSong, serif;
+  font-size: 36px;
+  font-weight: 500;
+}
+.history-review__summary,
+.history-review__meta {
+  color: #786c66;
+}
+.history-review__meta {
+  border-block: 1px solid #eadfd8;
+  padding: 12px 0;
+  font-size: 13px;
+}
+.history-review__article h2 {
+  margin: 36px 0 16px;
+  border-left: 4px solid #a1261e;
+  padding-left: 10px;
+  font-size: 20px;
+  font-weight: 500;
+}
+.history-review__body,
+.history-review__article .history-page__body {
+  white-space: pre-wrap;
+  font-family: STSong, serif;
+  font-size: 17px;
+  line-height: 2;
+}
+.history-review__article .history-page__body p {
+  margin: 0 0 16px;
+}
+.history-review__article .history-page__body h3,
+.history-review__article .history-page__body h4 {
+  margin: 24px 0 12px;
+  font-family: inherit;
+  font-size: 18px;
+}
+.history-review__article .ant-list-item-meta-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .history-review__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .history-review__article {
+    padding: 20px;
+  }
+}

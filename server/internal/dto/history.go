@@ -47,6 +47,13 @@ type HistoryAttachmentUploadRequest struct {
 	ConsentConfirmed bool   `json:"consent_confirmed"`
 }
 
+type HistoryAttachmentUpdateRequest struct {
+	Description      string `json:"description" binding:"required,max=1000"`
+	SourceNote       string `json:"source_note" binding:"required,max=5000"`
+	RightsNote       string `json:"rights_note" binding:"required,max=5000"`
+	ConsentConfirmed bool   `json:"consent_confirmed"`
+}
+
 type HistoryAttachmentUploadResult struct {
 	ID        uint64 `json:"id"`
 	UploadURL string `json:"upload_url"`

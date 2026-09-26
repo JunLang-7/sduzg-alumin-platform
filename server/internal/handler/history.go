@@ -277,6 +277,53 @@ func (h *HistoryHandler) ConfirmAttachmentUpload(c *gin.Context) {
 	response.Success(c, gin.H{"confirmed": true})
 }
 
+func (h *HistoryHandler) DeleteAttachment(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	contributionID, ok := historyID(c, "id")
+	if !ok {
+		return
+	}
+	attachmentID, ok := historyID(c, "attachmentId")
+	if !ok {
+		return
+	}
+	if err := h.history.DeleteAttachment(c.Request.Context(), *access, contributionID, attachmentID); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
+}
+
+func (h *HistoryHandler) UpdateAttachment(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	contributionID, ok := historyID(c, "id")
+	if !ok {
+		return
+	}
+	attachmentID, ok := historyID(c, "attachmentId")
+	if !ok {
+		return
+	}
+	var req dto.HistoryAttachmentUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+		return
+	}
+	if err := h.history.UpdateAttachment(c.Request.Context(), *access, contributionID, attachmentID, req); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"updated": true})
+}
+
 func (h *HistoryHandler) AttachmentDownloadURL(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
