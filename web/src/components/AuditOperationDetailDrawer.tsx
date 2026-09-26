@@ -97,6 +97,7 @@ export function AuditOperationDetailDrawer({
       open={open}
       loading={loading}
       onClose={onClose}
+      rootClassName="audit-page"
       width={record?.target_type === 'alumni_batch' ? 'min(1180px, 92vw)' : 540}
       title="操作详情"
       destroyOnClose
