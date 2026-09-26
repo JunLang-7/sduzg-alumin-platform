@@ -65,7 +65,7 @@
   font-family: inherit;
   font-size: 18px;
 }
-.history-review__article .ant-list-item-meta-title h3 {
+.history-review__article .ant-list-item-meta-title {
   margin: 0;
   font-size: 14px;
   font-weight: 600;

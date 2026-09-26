@@ -195,7 +195,7 @@ export function HistoryReviewPage() {
               >
                 <List.Item.Meta
                   avatar={<FileTextOutlined />}
-                  title={<h3>{file.original_name}</h3>}
+                  title={file.original_name}
                   description={`${file.description}；来源：${file.source_note}；授权：${file.rights_note}；${file.consent_confirmed ? '已确认授权' : '未确认授权'}`}
                 />
               </List.Item>
