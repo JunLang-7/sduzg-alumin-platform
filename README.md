@@ -18,7 +18,7 @@
 | --- | --- |
 | 后端 | Go 1.26、Gin、GORM、GORM Gen、Viper、zap |
 | 数据库/缓存 | MySQL 8.0、Redis |
-| 文件存储 | MinIO |
+| 文件存储 | Silo（MinIO 兼容） |
 | 前端 | React 18、Vite、TypeScript、Ant Design、axios、Zustand、ECharts |
 | 本地编排 | Docker Compose |
 
@@ -39,7 +39,7 @@
 │   ├── src/router/        路由与权限守卫
 │   ├── src/store/         Zustand 状态
 │   └── src/types/         业务类型
-├── docker-compose.yml     本地 MySQL、Redis、MinIO、API、Web 编排
+├── docker-compose.yml     本地 MySQL、Redis、Silo、API、Web 编排
 └── Makefile               数据库模型生成等辅助命令
 ```
 
