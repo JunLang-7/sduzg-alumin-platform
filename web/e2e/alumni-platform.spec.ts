@@ -116,7 +116,7 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.goto('/history');
   await expect(page.getByRole('heading', { name: '院史共编' })).toBeVisible();
   await page.getByRole('button', { name: '新建词条' }).click();
-  await expect(page).toHaveURL(/\/history\/editor\?mode=create$/);
+  await expect(page).toHaveURL(/\/history\/editor\?mode=create(?:&entryId=\d+)?$/);
 
   const editor = page.locator('.history-editor');
   await editor.getByLabel('词条标题').fill(title);
@@ -138,6 +138,8 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   const row = page.getByRole('row').filter({ hasText: title });
   await expect(row).toBeVisible();
   await row.getByRole('button', { name: '审核' }).click();
+  await expect(page).toHaveURL(/\/admin\/history\/reviews\/\d+$/);
+  await expect(page.getByRole('heading', { name: '词条正文' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'history-e2e.pdf' })).toBeVisible();
   await page.getByRole('button', { name: '通过' }).click();
   await page.locator('.ant-modal-confirm-btns .ant-btn-primary').click();
@@ -146,7 +148,7 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.evaluate(() => window.localStorage.clear());
   await login(page, '13800001111');
   await page.goto('/history');
-  const search = page.getByPlaceholder('搜索词条标题或正文');
+  const search = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
   await search.fill(title);
   await search.press('Enter');
   await expect(page.getByText(title).first()).toBeVisible();
