@@ -80,6 +80,10 @@ export const router = createBrowserRouter([
             element: <HistoryReviewPage />,
           },
           {
+            path: '/admin/history/reviews/:id',
+            element: <HistoryReviewPage />,
+          },
+          {
             path: '/alumni',
             element: <AlumniListPage />,
           },

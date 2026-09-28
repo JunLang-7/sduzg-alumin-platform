@@ -347,6 +347,40 @@ func (s *HistoryService) ConfirmAttachmentUpload(ctx context.Context, access com
 	return s.repository.ConfirmAttachment(ctx, attachmentID, uint64(info.Size))
 }
 
+func (s *HistoryService) DeleteAttachment(ctx context.Context, access common.AccessContext, contributionID, attachmentID uint64) error {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+		return common.ErrPermissionDenied
+	}
+	contribution, err := s.repository.GetContribution(ctx, contributionID)
+	if err != nil {
+		return err
+	}
+	if !canManageOwnContribution(access, contribution) {
+		return common.ErrPermissionDenied
+	}
+	return s.repository.DeleteAttachment(ctx, contributionID, attachmentID, access.UserID)
+}
+
+func (s *HistoryService) UpdateAttachment(ctx context.Context, access common.AccessContext, contributionID, attachmentID uint64, req dto.HistoryAttachmentUpdateRequest) error {
+	if !access.IsAdministrator() && access.Role != common.RoleAlumni {
+		return common.ErrPermissionDenied
+	}
+	attachment, contribution, err := s.attachmentForContribution(ctx, contributionID, attachmentID)
+	if err != nil {
+		return err
+	}
+	if !canManageOwnContribution(access, contribution) {
+		return common.ErrPermissionDenied
+	}
+	if strings.TrimSpace(req.Description) == "" || strings.TrimSpace(req.SourceNote) == "" || strings.TrimSpace(req.RightsNote) == "" {
+		return common.ErrInvalidRequest
+	}
+	if strings.HasPrefix(attachment.MimeType, "image/") && !req.ConsentConfirmed {
+		return common.ErrInvalidRequest
+	}
+	return s.repository.UpdateAttachment(ctx, contributionID, attachmentID, access.UserID, req)
+}
+
 func (s *HistoryService) AttachmentDownloadURL(ctx context.Context, access common.AccessContext, contributionID, attachmentID uint64) (*dto.HistoryAttachmentDownloadResult, error) {
 	attachment, contribution, err := s.attachmentForContribution(ctx, contributionID, attachmentID)
 	if err != nil {

@@ -1,23 +1,12 @@
 import { EditOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
-import {
-  App,
-  Button,
-  Descriptions,
-  Drawer,
-  Empty,
-  Input,
-  List,
-  Modal,
-  Popconfirm,
-  Space,
-  Tag,
-} from 'antd';
+import { App, Button, Drawer, Empty, Input, List, Modal, Popconfirm, Space, Tag } from 'antd';
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
 import type { HistoryAttachment, HistoryContribution, HistoryEntry } from '../../types/history';
 import { historyContributionStatusColor, historyContributionStatusText } from './historyState';
+import { HistoryContent } from './HistoryContent';
 import { extractToc, type TocItem } from './toc';
 import './history-wiki.css';
 
@@ -66,26 +55,6 @@ function HistoryDirectory({
         )}
       />
     </>
-  );
-}
-
-function HistoryContent({ content, toc }: { content: string; toc: TocItem[] }) {
-  const headings = new Map(toc.map((item) => [item.line, item]));
-  return (
-    <div className="history-page__body">
-      {content.split(/\r?\n/).map((line, index) => {
-        const heading = headings.get(index);
-        if (heading) {
-          const Heading = heading.level === 2 ? 'h3' : 'h4';
-          return (
-            <Heading id={heading.id} key={heading.id}>
-              {heading.title}
-            </Heading>
-          );
-        }
-        return line ? <p key={`${index}-${line}`}>{line}</p> : <br key={index} />;
-      })}
-    </div>
   );
 }
 
@@ -166,6 +135,7 @@ export function HistoryWikiPage() {
     void load();
   };
   const openContribution = async (contribution: HistoryContribution) => {
+    setContentDetailOpen(false);
     setSelectedContribution(contribution);
     setSelectedAttachments([]);
     setAttachmentsLoading(true);
@@ -224,7 +194,7 @@ export function HistoryWikiPage() {
             value={keyword}
             onChange={(event) => setKeyword(event.target.value)}
             onPressEnter={search}
-            placeholder="搜索词条标题或正文"
+            placeholder="搜索正式词条的标题、简介或正文"
             allowClear
             onClear={() => {
               setSearched(false);
@@ -350,6 +320,7 @@ export function HistoryWikiPage() {
       </Drawer>
       <Modal
         open={Boolean(selectedContribution)}
+        className="history-page__contribution-modal"
         title={<span className="history-page__contribution-title">投稿详情</span>}
         footer={null}
         onCancel={() => {
@@ -360,28 +331,39 @@ export function HistoryWikiPage() {
       >
         {selectedContribution && (
           <>
-            <Descriptions column={1} bordered size="small">
-              <Descriptions.Item label="标题">{selectedContribution.title}</Descriptions.Item>
-              <Descriptions.Item label="状态">
-                <Tag color={historyContributionStatusColor[selectedContribution.status]}>
-                  {historyContributionStatusText[selectedContribution.status]}
-                </Tag>
-              </Descriptions.Item>
-              <Descriptions.Item label="正文">
-                <div className="history-page__contribution-preview">
-                  <span title={selectedContribution.content}>{selectedContribution.content}</span>
-                  <Button type="link" onClick={() => setContentDetailOpen(true)}>
-                    查看详情
-                  </Button>
-                </div>
-              </Descriptions.Item>
-              <Descriptions.Item label="资料来源">
-                {selectedContribution.source_note || '—'}
-              </Descriptions.Item>
-              <Descriptions.Item label="审核意见">
-                {selectedContribution.review_comment || '—'}
-              </Descriptions.Item>
-            </Descriptions>
+            <dl className="history-page__contribution-details">
+              <div className="history-page__contribution-row">
+                <dt>标题</dt>
+                <dd>{selectedContribution.title}</dd>
+              </div>
+              <div className="history-page__contribution-row">
+                <dt>状态</dt>
+                <dd>
+                  <Tag color={historyContributionStatusColor[selectedContribution.status]}>
+                    {historyContributionStatusText[selectedContribution.status]}
+                  </Tag>
+                </dd>
+              </div>
+              <div className="history-page__contribution-row">
+                <dt>正文</dt>
+                <dd>
+                  <div className="history-page__contribution-preview">
+                    <span>{selectedContribution.content}</span>
+                    <Button type="link" onClick={() => setContentDetailOpen(true)}>
+                      查看详情
+                    </Button>
+                  </div>
+                </dd>
+              </div>
+              <div className="history-page__contribution-row">
+                <dt>资料来源</dt>
+                <dd>{selectedContribution.source_note || '—'}</dd>
+              </div>
+              <div className="history-page__contribution-row">
+                <dt>审核意见</dt>
+                <dd>{selectedContribution.review_comment || '—'}</dd>
+              </div>
+            </dl>
             <div className="history-page__contribution-actions">
               {selectedContribution.status === 'draft' && (
                 <Popconfirm
@@ -439,6 +421,7 @@ export function HistoryWikiPage() {
       </Modal>
       <Modal
         open={contentDetailOpen && Boolean(selectedContribution)}
+        className="history-page__content-detail-modal"
         title="正文详情"
         footer={null}
         onCancel={() => setContentDetailOpen(false)}

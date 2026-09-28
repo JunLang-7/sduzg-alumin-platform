@@ -1,10 +1,10 @@
 import { ArrowLeftOutlined, PaperClipOutlined } from '@ant-design/icons';
-import { App, Button, Checkbox, Empty, Form, Input, Select, Space } from 'antd';
+import { App, Button, Checkbox, Empty, Form, Input, Modal, Popconfirm, Select, Space } from 'antd';
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
-import type { HistoryContribution, HistoryEntry } from '../../types/history';
+import type { HistoryAttachment, HistoryContribution, HistoryEntry } from '../../types/history';
 import './history-editor.css';
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -52,8 +52,11 @@ export function HistoryEditorPage() {
   const [contribution, setContribution] = useState<HistoryContribution | null>(null);
   const [loading, setLoading] = useState(mode !== 'create');
   const [files, setFiles] = useState<File[]>([]);
+  const [existingFiles, setExistingFiles] = useState<HistoryAttachment[]>([]);
+  const [editingFile, setEditingFile] = useState<HistoryAttachment | null>(null);
   const [consent, setConsent] = useState(false);
   const [form] = Form.useForm();
+  const [attachmentForm] = Form.useForm();
 
   useEffect(() => {
     if (!canEdit) return;
@@ -62,10 +65,13 @@ export function HistoryEditorPage() {
       return;
     }
     if (mode === 'contribution-edit') {
-      void historyApi
-        .getContribution(contributionID)
-        .then((current) => {
+      void Promise.all([
+        historyApi.getContribution(contributionID),
+        historyApi.listContributionAttachments(contributionID),
+      ])
+        .then(([current, attachments]) => {
           setContribution(current);
+          setExistingFiles(attachments);
           form.setFieldsValue({
             title: current.title,
             content: current.content,
@@ -104,8 +110,34 @@ export function HistoryEditorPage() {
       return void message.error('仅支持 JPG、PNG、WebP、PDF 文件');
     if (selected.some((file) => file.size > 10 * 1024 * 1024))
       return void message.error('单个附件不能超过 10 MB');
-    if (files.length + selected.length > 6) return void message.error('每次投稿最多上传 6 个附件');
+    if (existingFiles.length + files.length + selected.length > 6)
+      return void message.error('每次投稿最多上传 6 个附件');
     setFiles((current) => [...current, ...selected]);
+  };
+  const removeExistingFile = async (file: HistoryAttachment) => {
+    if (!contribution) return;
+    try {
+      await historyApi.deleteAttachment(contribution.id, file.id);
+      setExistingFiles((current) => current.filter((item) => item.id !== file.id));
+      message.success('附件已移除，可选择新文件替换');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '附件移除失败');
+    }
+  };
+  const saveAttachmentDetails = async () => {
+    if (!contribution || !editingFile) return;
+    try {
+      const values = await attachmentForm.validateFields();
+      await historyApi.updateAttachment(contribution.id, editingFile.id, values);
+      setExistingFiles((current) =>
+        current.map((item) => (item.id === editingFile.id ? { ...item, ...values } : item)),
+      );
+      setEditingFile(null);
+      message.success('附件资料已更新');
+    } catch (error) {
+      if (typeof error === 'object' && error !== null && 'errorFields' in error) return;
+      message.error(error instanceof Error ? error.message : '附件资料修改失败');
+    }
   };
   const saveContribution = async (action: SubmissionAction) => {
     try {
@@ -222,6 +254,52 @@ export function HistoryEditorPage() {
                   <div>
                     <div className="history-editor__upload-title">图片和扫描件</div>
                     <p>支持 JPG、PNG、WebP、PDF；单个不超过 10 MB；每次最多 6 个</p>
+                    {existingFiles.map((file) => (
+                      <div className="history-editor__file" key={file.id}>
+                        <span>{file.original_name}</span>
+                        <Button
+                          type="link"
+                          onClick={async () => {
+                            try {
+                              const url = await historyApi.previewAttachment(
+                                contribution!.id,
+                                file.id,
+                              );
+                              window.open(url, '_blank', 'noopener,noreferrer');
+                            } catch (error) {
+                              message.error(
+                                error instanceof Error ? error.message : '附件预览失败',
+                              );
+                            }
+                          }}
+                        >
+                          预览
+                        </Button>
+                        <Button
+                          type="link"
+                          onClick={() => {
+                            setEditingFile(file);
+                            attachmentForm.setFieldsValue({
+                              description: file.description,
+                              source_note: file.source_note,
+                              rights_note: file.rights_note,
+                              consent_confirmed: file.consent_confirmed,
+                            });
+                          }}
+                        >
+                          编辑资料
+                        </Button>
+                        <Popconfirm
+                          title="移除这个附件？"
+                          description="移除后可在下方选择新文件替换"
+                          onConfirm={() => void removeExistingFile(file)}
+                        >
+                          <Button type="link" danger>
+                            移除
+                          </Button>
+                        </Popconfirm>
+                      </div>
+                    ))}
                     <input
                       type="file"
                       multiple
@@ -271,6 +349,28 @@ export function HistoryEditorPage() {
               </Button>
             </Space>
           </footer>
+          <Modal
+            open={Boolean(editingFile)}
+            title="修改附件资料"
+            onCancel={() => setEditingFile(null)}
+            onOk={() => void saveAttachmentDetails()}
+            okText="保存"
+          >
+            <Form form={attachmentForm} layout="vertical">
+              <Form.Item name="description" label="附件说明" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="source_note" label="资料来源" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="rights_note" label="授权说明" rules={[{ required: true }]}>
+                <Input />
+              </Form.Item>
+              <Form.Item name="consent_confirmed" valuePropName="checked">
+                <Checkbox>我确认附件来源真实且有权提交</Checkbox>
+              </Form.Item>
+            </Form>
+          </Modal>
         </div>
       )}
     </section>
