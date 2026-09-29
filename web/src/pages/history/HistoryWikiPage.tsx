@@ -1,12 +1,13 @@
 import { EditOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
-import { App, Button, Drawer, Empty, Input, List, Modal, Popconfirm, Space, Tag } from 'antd';
-import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { App, Button, Drawer, Empty, Input, List, Modal, Popconfirm, Space, Spin, Tag } from 'antd';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
 import type { HistoryAttachment, HistoryContribution, HistoryEntry } from '../../types/history';
 import { historyContributionStatusColor, historyContributionStatusText } from './historyState';
 import { HistoryContent } from './HistoryContent';
+import { loadContributionPreview, type ContributionPreview } from './contributionPreview';
 import { extractToc, type TocItem } from './toc';
 import './history-wiki.css';
 
@@ -71,9 +72,10 @@ export function HistoryWikiPage() {
   const [searched, setSearched] = useState(false);
   const [mobileDirectoryOpen, setMobileDirectoryOpen] = useState(() => window.innerWidth <= 1180);
   const [activeTocID, setActiveTocID] = useState('');
-  const [selectedContribution, setSelectedContribution] = useState<HistoryContribution | null>(
-    null,
-  );
+  const [contributionPreview, setContributionPreview] = useState<ContributionPreview | null>(null);
+  const selectedContribution = contributionPreview?.contribution ?? null;
+  const [contributionLoading, setContributionLoading] = useState(false);
+  const contributionRequest = useRef(0);
   const [selectedAttachments, setSelectedAttachments] = useState<HistoryAttachment[]>([]);
   const [attachmentsLoading, setAttachmentsLoading] = useState(false);
   const [preview, setPreview] = useState<{ url: string; name: string; image: boolean } | null>(
@@ -135,30 +137,48 @@ export function HistoryWikiPage() {
     void load();
   };
   const openContribution = async (contribution: HistoryContribution) => {
+    const request = ++contributionRequest.current;
     setContentDetailOpen(false);
-    setSelectedContribution(contribution);
+    setContributionPreview(null);
+    setContributionLoading(true);
     setSelectedAttachments([]);
+    try {
+      const current = await loadContributionPreview(contribution.id);
+      if (request !== contributionRequest.current) return;
+      setContributionPreview(current);
+      setMine((items) =>
+        items.map((item) => (item.id === current.contribution.id ? current.contribution : item)),
+      );
+    } catch (error) {
+      if (request === contributionRequest.current)
+        message.error(error instanceof Error ? error.message : '正文加载失败');
+      return;
+    } finally {
+      if (request === contributionRequest.current) setContributionLoading(false);
+    }
     setAttachmentsLoading(true);
     try {
-      setSelectedAttachments(await historyApi.listContributionAttachments(contribution.id));
+      const attachments = await historyApi.listContributionAttachments(contribution.id);
+      if (request === contributionRequest.current) setSelectedAttachments(attachments);
     } catch (error) {
+      if (request !== contributionRequest.current) return;
       message.error(error instanceof Error ? error.message : '附件加载失败');
     } finally {
-      setAttachmentsLoading(false);
+      if (request === contributionRequest.current) setAttachmentsLoading(false);
     }
   };
   const deleteDraft = async (contribution: HistoryContribution) => {
     try {
       await historyApi.deleteDraft(contribution.id);
       setMine((current) => current.filter((item) => item.id !== contribution.id));
-      if (selectedContribution?.id === contribution.id) setSelectedContribution(null);
+      if (selectedContribution?.id === contribution.id) setContributionPreview(null);
       message.success('草稿已删除');
     } catch (error) {
       message.error(error instanceof Error ? error.message : '草稿删除失败');
     }
   };
   const openContributionEditor = (contribution: HistoryContribution) => {
-    setSelectedContribution(null);
+    setContributionPreview(null);
     navigate(`/history/editor?mode=contribution-edit&contributionId=${contribution.id}`);
   };
   const canEditContribution = (contribution: HistoryContribution) =>
@@ -319,16 +339,19 @@ export function HistoryWikiPage() {
         />
       </Drawer>
       <Modal
-        open={Boolean(selectedContribution)}
+        open={contributionLoading || Boolean(selectedContribution)}
         className="history-page__contribution-modal"
         title={<span className="history-page__contribution-title">投稿详情</span>}
         footer={null}
         onCancel={() => {
-          setSelectedContribution(null);
+          ++contributionRequest.current;
+          setContributionLoading(false);
+          setContributionPreview(null);
           setContentDetailOpen(false);
         }}
         width={720}
       >
+        {contributionLoading && <Spin />}
         {selectedContribution && (
           <>
             <dl className="history-page__contribution-details">
@@ -347,8 +370,11 @@ export function HistoryWikiPage() {
               <div className="history-page__contribution-row">
                 <dt>正文</dt>
                 <dd>
+                  {contributionPreview?.publishedVersion != null && (
+                    <Tag>当前正式版本 v{contributionPreview.publishedVersion}</Tag>
+                  )}
                   <div className="history-page__contribution-preview">
-                    <span>{selectedContribution.content}</span>
+                    <span>{contributionPreview?.content}</span>
                     <Button type="link" onClick={() => setContentDetailOpen(true)}>
                       查看详情
                     </Button>
@@ -422,12 +448,14 @@ export function HistoryWikiPage() {
       <Modal
         open={contentDetailOpen && Boolean(selectedContribution)}
         className="history-page__content-detail-modal"
-        title="正文详情"
+        title={
+          contributionPreview?.publishedVersion != null ? '正文详情（当前正式版本）' : '正文详情'
+        }
         footer={null}
         onCancel={() => setContentDetailOpen(false)}
         width={760}
       >
-        <p className="history-page__contribution-content">{selectedContribution?.content}</p>
+        <p className="history-page__contribution-content">{contributionPreview?.content}</p>
       </Modal>
       <Modal
         open={Boolean(preview)}
