@@ -145,6 +145,17 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.locator('.ant-modal-confirm-btns .ant-btn-primary').click();
   await expect(page.getByText('处理成功')).toBeVisible();
 
+  const revisedBody = '管理员修改后应在投稿预览中同步显示的新正文';
+  await page.goto('/history');
+  const adminSearch = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
+  await adminSearch.fill(title);
+  await adminSearch.press('Enter');
+  await expect(page.locator('.history-page__content h2')).toHaveText(title);
+  await page.getByRole('button', { name: '编辑词条' }).click();
+  await page.locator('.history-editor').getByLabel('正文').fill(revisedBody);
+  await page.getByRole('button', { name: '保存更改' }).click();
+  await expect(page).toHaveURL(/\/history$/);
+
   await page.evaluate(() => window.localStorage.clear());
   await login(page, '13800001111');
   await page.goto('/history');
@@ -152,4 +163,14 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await search.fill(title);
   await search.press('Enter');
   await expect(page.getByText(title).first()).toBeVisible();
+  await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
+  const details = page.getByRole('dialog', { name: '投稿详情' });
+  await expect(details.getByText('当前正式版本 v2')).toBeVisible();
+  await expect(details.locator('.history-page__contribution-preview > span')).toHaveText(
+    revisedBody,
+  );
+  await details.getByRole('button', { name: '查看详情' }).click();
+  await expect(
+    page.getByRole('dialog', { name: '正文详情（当前正式版本）' }).getByText(revisedBody),
+  ).toBeVisible();
 });

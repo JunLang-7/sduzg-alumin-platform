@@ -16,6 +16,9 @@ const storageURL = (url: string) => {
 };
 
 export const historyApi = {
+  getEntry(id: number) {
+    return request<HistoryEntry>({ method: 'GET', url: `/history/entries/${id}` });
+  },
   listEntries(keyword?: string) {
     return request<HistoryEntry[]>({
       method: 'GET',
