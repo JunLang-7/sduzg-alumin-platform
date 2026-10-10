@@ -47,14 +47,15 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - name: Test Issue reference policy
+        run: bash .github/scripts/check-linked-issue.test.sh
       - name: Require an auto-closing Issue reference
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: |
-          if ! printf '%s' "$PR_BODY" | grep -Eiq '(close[sd]?|fix(e[sd])?|resolve[sd]?)[[:space:]]+#[0-9]+'; then
-            echo 'PR 描述必须使用 Closes #编号、Fixes #编号 或 Resolves #编号关联 Issue。' >&2
-            exit 1
-          fi
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
+        run: bash .github/scripts/check-linked-issue.sh
 
   backend:
     name: Backend quality
