@@ -15,7 +15,6 @@ const displayTitle = (title: string) => title.replace(/\s*v\d+$/i, '');
 const formatHistoryDate = (value: string) => new Date(value).toLocaleDateString('zh-CN');
 const contributionNote = (item: HistoryContribution) =>
   item.review_comment || item.change_note || (item.status === 'pending' ? '等待审核' : '');
-const titleVersion = (title: string) => title.match(/\s+(v\d+)$/i)?.[1];
 
 function HistoryDirectory({
   activeID,
@@ -51,7 +50,6 @@ function HistoryDirectory({
             onClick={() => onSelect(entry)}
           >
             <span>{displayTitle(entry.title)}</span>
-            {titleVersion(entry.title) && <em>{titleVersion(entry.title)}</em>}
           </List.Item>
         )}
       />
@@ -370,9 +368,7 @@ export function HistoryWikiPage() {
               <div className="history-page__contribution-row">
                 <dt>正文</dt>
                 <dd>
-                  {contributionPreview?.publishedVersion != null && (
-                    <Tag>当前正式版本 v{contributionPreview.publishedVersion}</Tag>
-                  )}
+                  {contributionPreview?.publishedVersion != null && <Tag>当前正式正文</Tag>}
                   <div className="history-page__contribution-preview">
                     <span>{contributionPreview?.content}</span>
                     <Button type="link" onClick={() => setContentDetailOpen(true)}>
@@ -449,7 +445,7 @@ export function HistoryWikiPage() {
         open={contentDetailOpen && Boolean(selectedContribution)}
         className="history-page__content-detail-modal"
         title={
-          contributionPreview?.publishedVersion != null ? '正文详情（当前正式版本）' : '正文详情'
+          contributionPreview?.publishedVersion != null ? '正文详情（当前正式正文）' : '正文详情'
         }
         footer={null}
         onCancel={() => setContentDetailOpen(false)}
