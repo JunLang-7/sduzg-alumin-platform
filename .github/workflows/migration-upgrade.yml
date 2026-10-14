@@ -1,0 +1,43 @@
+name: Migration upgrade path
+
+# 由 Nightly 与 Release 通过 workflow_call 复用；不进 PR 门禁。
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    name: Migration upgrade path
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test-password
+          MYSQL_DATABASE: sdu_alumni_db
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ptest-password
+          --silent"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: test-password
+      MYSQL_DATABASE: sdu_alumni_db
+      # service 提供的数据库可丢弃，允许脚本重建以保持重跑确定。
+      RESET_DATABASE: "1"
+    steps:
+      # v5.1.0
+      # 需要完整历史与标签，才能取到上一个发布标签的迁移集。
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+      - name: Verify the old-volume upgrade path
+        run: bash .github/scripts/check-migration-upgrade.sh

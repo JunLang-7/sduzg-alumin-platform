@@ -21,12 +21,20 @@ jobs:
     with:
       run_e2e: true
 
+  migration-upgrade:
+    name: Migration upgrade path
+    uses: ./.github/workflows/migration-upgrade.yml
+
   artifacts:
     name: Nightly artifacts
-    needs: quality
+    needs: [quality, migration-upgrade]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      # v5.1.0
+      # 不上传凭据到构建产物。
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: server/go.mod

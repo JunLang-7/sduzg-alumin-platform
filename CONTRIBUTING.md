@@ -57,15 +57,28 @@
 ### Nightly
 
 - 触发：每天 02:00（北京时间）自动执行；也可在 Actions 页面手动 `Run workflow`。
-- 内容：在 `dev` 上运行完整质量门禁（含浏览器 E2E），再构建 `sdu-alumni-api-linux-amd64` 与 `sdu-alumni-web-dist.tar.gz`。
+- 内容：在仓库默认分支上运行完整质量门禁（含浏览器 E2E），再构建 `sdu-alumni-api-linux-amd64` 与 `sdu-alumni-web-dist.tar.gz`。
 - 产物：`nightly-<run_id>` 包含两个构建产物、`BUILD_INFO.txt` 与 `SHA256SUMS`，保留 14 天；API 二进制会先通过 `.github/scripts/check-api-binary.sh` 的存活与就绪检查。
+- 升级路径：同时运行 `.github/workflows/migration-upgrade.yml`，验证旧库升级（见下）。
 - Nightly 不创建标签，也不创建 Release。
+
+### 升级路径门禁（Nightly 与 Release）
+
+生产环境的数据卷不会重建，只会由 `migrate` 服务执行 `server/scripts/migrate.sh` 把旧库升级到当前迁移集。`.github/scripts/check-migration-upgrade.sh` 在 CI 中复现这条路径：
+
+1. 用**上一个发布标签**的迁移集初始化数据库（默认取 `git describe --tags --abbrev=0 HEAD^`，可用 `BASE_TAG` 覆盖），模拟仍在旧版本的线上库；若基线不包含更旧的迁移集，退化为“除最后一个迁移外”的基线。
+2. 在旧 schema 下写入样例校友与账号数据。
+3. 执行生产同款 `migrate.sh`（挂载到 `/migrations`）。
+4. 断言：迁移记录齐全、每个迁移 `proves` 元数据声明的表存在、既有数据未丢失、数据域回填无空值与孤儿行、中文名称无乱码，并重复执行一次验证幂等。
+
+该门禁目前只在 Nightly 与 Release 运行，不进 PR；需要在 PR 上提前拦住迁移问题时，在 `.github/workflows/ci.yml` 里复用 `.github/scripts/check-migration-upgrade.sh` 即可。
 
 ### Release
 
 1. 先由 `dev` 向 `main` 发起发布 PR，合并后在 `main` 上打标签：`git tag vX.Y.Z && git push origin vX.Y.Z`。
 2. 标签格式为 `vX.Y.Z`（正式版）或 `vX.Y.Z-<预发布标识>`（预发布）。正式版标签必须指向 `main` 上的提交，预发布标签可打在 `dev` 上。
-3. 工作流先运行与 CI 相同的完整质量门禁（含浏览器 E2E），再构建产物、校验二进制健康检查，最后用 `gh release create` 创建 GitHub Release 并附上产物与校验和。
-4. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
+3. 工作流先运行与 CI 相同的完整质量门禁（含浏览器 E2E）与升级路径门禁，再构建产物、校验二进制健康检查与前端静态包可服务（含 `SHA256SUMS` 一致性），最后用 `gh release create` 创建 GitHub Release 并附上产物与校验和。
+4. `publish` 使用 `release` environment。首次发布前请在仓库 Settings → Environments 为 `release` 配置 required reviewers，这样推送标签不会直接对外发布，需要人工放行；如需限制标签创建权限，再配合 tag protection rules。
+5. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
 
 发布失败时可在 Actions 中重跑同一个 run；`gh release create` 不会覆盖已存在的 Release，需要先删除旧 Release 与标签再重新推送。
