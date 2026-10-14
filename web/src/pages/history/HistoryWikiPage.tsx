@@ -368,7 +368,6 @@ export function HistoryWikiPage() {
               <div className="history-page__contribution-row">
                 <dt>正文</dt>
                 <dd>
-                  {contributionPreview?.publishedVersion != null && <Tag>当前正式正文</Tag>}
                   <div className="history-page__contribution-preview">
                     <span>{contributionPreview?.content}</span>
                     <Button type="link" onClick={() => setContentDetailOpen(true)}>
@@ -444,9 +443,7 @@ export function HistoryWikiPage() {
       <Modal
         open={contentDetailOpen && Boolean(selectedContribution)}
         className="history-page__content-detail-modal"
-        title={
-          contributionPreview?.publishedVersion != null ? '正文详情（当前正式正文）' : '正文详情'
-        }
+        title="正文详情"
         footer={null}
         onCancel={() => setContentDetailOpen(false)}
         width={760}

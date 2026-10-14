@@ -165,13 +165,13 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await expect(page.getByText(title).first()).toBeVisible();
   await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
   const details = page.getByRole('dialog', { name: '投稿详情' });
-  await expect(details.getByText('当前正式正文', { exact: true })).toBeVisible();
+  await expect(details.getByText('当前正式正文', { exact: true })).toHaveCount(0);
   await expect(details.getByText(/当前正式版本\s*v\d+/)).toHaveCount(0);
   await expect(details.locator('.history-page__contribution-preview > span')).toHaveText(
     revisedBody,
   );
   await details.getByRole('button', { name: '查看详情' }).click();
   await expect(
-    page.getByRole('dialog', { name: '正文详情（当前正式正文）' }).getByText(revisedBody),
+    page.getByRole('dialog', { name: '正文详情', exact: true }).getByText(revisedBody),
   ).toBeVisible();
 });
