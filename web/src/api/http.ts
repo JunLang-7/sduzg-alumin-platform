@@ -19,19 +19,14 @@ const client = axios.create({
   withCredentials: true,
 });
 
-const accessTokenKey = 'sdu_alumni_access_token';
+let accessToken: string | null = null;
 
 export function readAccessToken() {
-  return window.localStorage.getItem(accessTokenKey);
+  return accessToken;
 }
 
 export function cacheAccessToken(token: string | null) {
-  if (token) {
-    window.localStorage.setItem(accessTokenKey, token);
-    return;
-  }
-
-  window.localStorage.removeItem(accessTokenKey);
+  accessToken = token;
 }
 
 function isEnvelope<T>(value: unknown): value is ApiEnvelope<T> {
