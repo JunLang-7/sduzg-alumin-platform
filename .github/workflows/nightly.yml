@@ -1,0 +1,78 @@
+name: Nightly
+
+on:
+  # 每天 02:00（北京时间，UTC+8）在仓库默认分支上执行一次。
+  schedule:
+    - cron: "0 18 * * *"
+  # 手动触发时使用所选分支。
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Full quality gate
+    uses: ./.github/workflows/ci.yml
+    with:
+      run_e2e: true
+
+  artifacts:
+    name: Nightly artifacts
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Build API binary
+        working-directory: server
+        run: |
+          mkdir -p ../nightly-artifacts
+          out=../nightly-artifacts/sdu-alumni-api-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -o "$out" ./cmd/api
+      - name: Smoke test the nightly binary
+        run: |
+          bash .github/scripts/check-api-binary.sh \
+            nightly-artifacts/sdu-alumni-api-linux-amd64
+      # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web assets
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Package artifacts
+        run: |
+          tar -czf nightly-artifacts/sdu-alumni-web-dist.tar.gz -C web/dist .
+          base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          {
+            echo "channel=nightly"
+            echo "commit=${GITHUB_SHA}"
+            echo "ref=${GITHUB_REF}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run=${base}/actions/runs/${GITHUB_RUN_ID}"
+          } > nightly-artifacts/BUILD_INFO.txt
+          cd nightly-artifacts
+          sha256sum sdu-alumni-api-linux-amd64 \
+            sdu-alumni-web-dist.tar.gz > SHA256SUMS
+      - name: Upload nightly artifacts
+        # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nightly-${{ github.run_id }}
+          path: nightly-artifacts
+          if-no-files-found: error
+          retention-days: 14

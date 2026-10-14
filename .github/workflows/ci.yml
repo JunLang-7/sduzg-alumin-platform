@@ -5,6 +5,14 @@ on:
     branches: [main, dev]
   push:
     branches: [main, dev]
+  # Nightly 与 Release 工作流复用它作为统一质量门禁。
+  workflow_call:
+    inputs:
+      run_e2e:
+        description: 非 PR 场景（Nightly、Release）下是否运行浏览器端到端测试
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -98,7 +106,7 @@ jobs:
 
   e2e:
     name: E2E
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.run_e2e
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:

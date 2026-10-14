@@ -1,0 +1,159 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      # v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          fetch-depth: 0
+      - id: tag
+        name: Check tag format and release branch
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pattern='^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'
+          if ! [[ "$TAG" =~ $pattern ]]; then
+            echo "::error::标签必须为 vX.Y.Z 或 vX.Y.Z-预发布标识：$TAG"
+            exit 1
+          fi
+          if [[ "$TAG" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            # 正式版本只允许打在 main 上的提交。
+            git fetch --no-tags origin main:refs/remotes/origin/main
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "::error::正式版本标签必须指向 main 上的提交"
+              echo "::error::请先由 dev 向 main 发起发布 PR，再在 main 上打标签"
+              exit 1
+            fi
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  quality:
+    name: Full quality gate
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+    with:
+      run_e2e: true
+
+  build:
+    name: Build release artifacts
+    needs: [validate, quality]
+    runs-on: ubuntu-latest
+    steps:
+      # v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      # v5.6.0
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: Build API binary
+        working-directory: server
+        run: |
+          mkdir -p ../release-artifacts
+          out=../release-artifacts/sdu-alumni-api-linux-amd64
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+            go build -trimpath -ldflags "-s -w" -o "$out" ./cmd/api
+      - name: Smoke test the released binary
+        run: |
+          bash .github/scripts/check-api-binary.sh \
+            release-artifacts/sdu-alumni-api-linux-amd64
+      # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Build web assets
+        working-directory: web
+        run: |
+          npm ci
+          npm run build
+      - name: Package artifacts
+        env:
+          TAG: ${{ needs.validate.outputs.tag }}
+        run: |
+          set -euo pipefail
+          tar -czf release-artifacts/sdu-alumni-web-dist.tar.gz -C web/dist .
+          base="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+          {
+            echo "version=${TAG}"
+            echo "channel=${TAG#v}"
+            echo "commit=${GITHUB_SHA}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "run=${base}/actions/runs/${GITHUB_RUN_ID}"
+          } > release-artifacts/BUILD_INFO.txt
+          cd release-artifacts
+          sha256sum sdu-alumni-api-linux-amd64 \
+            sdu-alumni-web-dist.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+      - name: Upload release artifacts
+        # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-${{ needs.validate.outputs.tag }}
+          path: release-artifacts
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub Release
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      # v4.3.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: release-${{ needs.validate.outputs.tag }}
+          path: release-artifacts
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate.outputs.tag }}
+          PRERELEASE: ${{ needs.validate.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          notes_file="docs/release-notes/$TAG.md"
+          title="$TAG"
+          args=()
+          if [ -f "$notes_file" ]; then
+            first_line="$(head -n 1 "$notes_file")"
+            case "$first_line" in
+              "# "*) title="${first_line#\# }" ;;
+            esac
+            args+=(--notes-file "$notes_file")
+          else
+            args+=(--generate-notes)
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" "${args[@]}" --title "$title" \
+            --verify-tag release-artifacts/*
+          echo "已创建 Release：$TAG"

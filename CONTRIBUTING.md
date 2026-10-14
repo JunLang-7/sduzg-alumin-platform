@@ -49,3 +49,23 @@
 - CI 必须通过。合并前保持分支可安全 Squash；不要合并红色或被跳过的关键检查。
 - 指向 `dev` 或 `main` 的 PR 会独立运行 `E2E` 浏览器冒烟检查；失败时下载 CI 的 `e2e-diagnostics-*` 产物排查。
 - 只有 `dev` 可进入日常功能，`main` 只接受已经在 `dev` 验证的发布 PR。
+
+## 构建产物与发布
+
+`ci.yml` 是唯一的质量门禁定义，Nightly 和 Release 通过 `workflow_call` 复用它，所以不要在两个发布工作流里重复编写检查步骤。
+
+### Nightly
+
+- 触发：每天 02:00（北京时间）自动执行；也可在 Actions 页面手动 `Run workflow`。
+- 内容：在 `dev` 上运行完整质量门禁（含浏览器 E2E），再构建 `sdu-alumni-api-linux-amd64` 与 `sdu-alumni-web-dist.tar.gz`。
+- 产物：`nightly-<run_id>` 包含两个构建产物、`BUILD_INFO.txt` 与 `SHA256SUMS`，保留 14 天；API 二进制会先通过 `.github/scripts/check-api-binary.sh` 的存活与就绪检查。
+- Nightly 不创建标签，也不创建 Release。
+
+### Release
+
+1. 先由 `dev` 向 `main` 发起发布 PR，合并后在 `main` 上打标签：`git tag vX.Y.Z && git push origin vX.Y.Z`。
+2. 标签格式为 `vX.Y.Z`（正式版）或 `vX.Y.Z-<预发布标识>`（预发布）。正式版标签必须指向 `main` 上的提交，预发布标签可打在 `dev` 上。
+3. 工作流先运行与 CI 相同的完整质量门禁（含浏览器 E2E），再构建产物、校验二进制健康检查，最后用 `gh release create` 创建 GitHub Release 并附上产物与校验和。
+4. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
+
+发布失败时可在 Actions 中重跑同一个 run；`gh release create` 不会覆盖已存在的 Release，需要先删除旧 Release 与标签再重新推送。
