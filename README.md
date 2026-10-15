@@ -75,6 +75,25 @@ role: super_admin
 
 生产环境必须修改默认密码、数据库密码、MinIO 密码和 JWT Secret。
 
+#### 国内服务器构建
+
+镜像构建需要访问 Alpine apk、Go module 代理和 npm registry。国内服务器可在 `.env` 中改用镜像站（CI 不读取 `.env`，仍使用 Dockerfile 里的官方默认值）：
+
+```env
+GOPROXY=https://goproxy.cn,direct
+NPM_REGISTRY=https://registry.npmmirror.com
+APK_MIRROR=mirrors.aliyun.com
+```
+
+`APK_MIRROR` 留空表示使用 Alpine 官方源；非空时会把 `dl-cdn.alpinelinux.org` 换成该主机名。
+
+若 Docker Hub 不可直连，需要为 Docker 守护进程配置 registry mirror；某个镜像在镜像站返回 502 时，可换备用镜像站拉取后打回原 tag：
+
+```bash
+docker pull docker.1ms.run/library/nginx:1.27-alpine
+docker tag docker.1ms.run/library/nginx:1.27-alpine nginx:1.27-alpine
+```
+
 ### 后端本地启动
 
 ```bash

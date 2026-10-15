@@ -79,6 +79,10 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
+      # 依赖源；国内服务器可在 .env 里改为镜像站（见 .env.example）。
+      args:
+        GOPROXY: ${GOPROXY:-https://proxy.golang.org,direct}
+        APK_MIRROR: ${APK_MIRROR:-}
     restart: unless-stopped
     environment:
       APP_ENV: production
@@ -136,6 +140,9 @@ services:
     build:
       context: ./web
       dockerfile: Dockerfile
+      # 依赖源；国内服务器可在 .env 里改为镜像站（见 .env.example）。
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
     restart: unless-stopped
     depends_on:
       - api
