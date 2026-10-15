@@ -281,6 +281,8 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
+	case errors.Is(err, common.ErrImportRowLimit):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "单次最多导入 5000 条数据，请拆分文件后重试")
 	default:
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}

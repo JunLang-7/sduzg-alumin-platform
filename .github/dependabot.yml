@@ -1,10 +1,9 @@
-# GitHub reads this configuration from main.
-# Keep the main and dev copies identical.
+# GitHub reads this configuration from the default branch (main).
+# Omit target-branch so version and security updates use the default branch.
 version: 2
 updates:
   - package-ecosystem: gomod
     directory: /server
-    target-branch: dev
     schedule:
       interval: weekly
     commit-message:
@@ -18,7 +17,6 @@ updates:
         update-types: ["minor", "patch"]
   - package-ecosystem: npm
     directory: /web
-    target-branch: dev
     schedule:
       interval: weekly
     commit-message:
@@ -32,7 +30,6 @@ updates:
         update-types: ["minor", "patch"]
   - package-ecosystem: github-actions
     directory: /
-    target-branch: dev
     schedule:
       interval: weekly
     commit-message:
@@ -42,7 +39,6 @@ updates:
         update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /server
-    target-branch: dev
     schedule:
       interval: weekly
     commit-message:
@@ -53,7 +49,6 @@ updates:
           ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: docker
     directory: /web
-    target-branch: dev
     schedule:
       interval: weekly
     commit-message:

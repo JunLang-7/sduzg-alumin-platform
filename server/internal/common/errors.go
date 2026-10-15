@@ -20,6 +20,7 @@ var (
 	ErrInvalidDataDomain     = errors.New("invalid data domain")
 	ErrPermissionDenied      = errors.New("permission denied")
 	ErrAlumniProfileUnbound  = errors.New("alumni profile unbound")
+	ErrImportRowLimit        = errors.New("import row limit exceeded")
 
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAccountDisabled    = errors.New("account disabled")

@@ -1,40 +1,41 @@
-# 山大政管学院校友平台前端
+# 前端开发
 
-一期前端采用 React + Vite + TypeScript，按技术方案预置路由、权限守卫、API 封装、状态管理、管理后台表格表单和数据大屏页面。
+前端采用 React、Vite、TypeScript、Ant Design 和 ECharts。使用 Node.js 22；完整环境见[部署说明](../docs/deployment.md)，质量检查和 PR 规则见[贡献指南](../CONTRIBUTING.md)。
 
 ## 本地启动
 
+从仓库根目录执行，首次安装依赖使用 `npm ci`：
+
 ```bash
-npm install
+cd web
+npm ci
 npm run dev
 ```
 
-默认开发服务地址：
+开发服务默认地址为 `http://127.0.0.1:5173`；Vite 将 `/api` 代理到 `http://127.0.0.1:8080`，需先启动 API。接口基础路径默认为 `/api/v1`，可用 [.env.example](.env.example) 中的 `VITE_API_BASE_URL` 配置。
 
-```text
-http://127.0.0.1:5173
-```
+## 检查与构建
 
-开发环境下 `/api` 会代理到 `http://127.0.0.1:8080`，接口基础路径为 `/api/v1`。
-
-## 构建
+以下命令在 `web/` 执行：
 
 ```bash
+npm run format:check
+npm run lint
+npm run test
 npm run build
 ```
 
-构建产物输出到 `dist/`，Dockerfile 会通过 Nginx 托管静态资源，并将 `/api/` 反向代理到 compose 中的 `api:8080`。
+构建产物输出到 `dist/`。Docker 镜像使用 Nginx 托管静态资源，将 `/api/` 反向代理到 Compose 中的 `api:8080`。浏览器 E2E 的隔离环境、运行命令和失败产物见[贡献指南](../CONTRIBUTING.md#本地检查)。
 
-## 目录
+## 目录与约定
 
-```text
-src/
-  api/          接口请求封装
-  components/   通用组件
-  layouts/      应用布局
-  pages/        登录、校友端、管理端、数据大屏、个人资料页面
-  router/       路由和权限守卫
-  store/        Zustand 状态
-  types/        业务类型
-  utils/        权限和字典工具
-```
+| 目录                            | 职责                                             |
+| ------------------------------- | ------------------------------------------------ |
+| `src/api`                       | 通过 `http.ts` 的 `request<T>` 统一发起 API 请求 |
+| `src/components`、`src/layouts` | 通用组件与应用布局                               |
+| `src/pages`                     | 校友端、管理端、院史共编、数据大屏等页面         |
+| `src/router`、`src/store`       | 路由权限守卫与 Zustand 登录态                    |
+| `src/types`、`src/utils`        | 业务类型、权限与字典工具                         |
+| `src/styles`                    | 全局视觉变量与样式                               |
+
+权限由 `RequireAuth` 和角色层级控制，登录态通过 `authStore` 管理；修改个人信息展示、导出或搜索时，核对角色、数据域和敏感字段边界。完整开发约定见 [AGENTS.md](../AGENTS.md)。

@@ -1,107 +1,78 @@
-# 山大政管学院校友平台后端
+# 后端开发
 
-一期后端采用 Go + Gin + GORM + MySQL，按 `handler -> service -> repository -> model -> database` 分层组织。
+后端采用 Go、Gin、GORM、MySQL 和 Redis。完整环境的端口、Compose 配置和迁移方式见[部署说明](../docs/deployment.md)，提交检查与发布流程见[贡献指南](../CONTRIBUTING.md)。
 
 ## 本地启动
 
-配置由 Viper 加载，默认读取当前目录或 `./server` 下的 `.env`，环境变量会覆盖 `.env` 文件。
+使用 [go.mod](go.mod) 指定的 Go 工具链，从仓库根目录执行：
 
 ```bash
 cd server
 cp .env.example .env
-go mod tidy
+go mod download
 go run ./cmd/api
 ```
 
-默认不强制连接数据库，便于先验证服务骨架。需要连接 MySQL 时设置：
+已有 `server/.env` 时保留原配置。Viper 读取当前目录或 `./server` 下的 `.env`，同名环境变量优先于文件。
 
-```bash
+默认 `DB_ENABLED=false`、`REDIS_ENABLED=false`，可先运行服务骨架；这不提供依赖数据库的完整业务功能。连接 Compose 中的服务时，在 `server/.env` 启用并配置：
+
+```env
 DB_ENABLED=true
 DB_HOST=127.0.0.1
 DB_PORT=3307
 DB_USER=sdu_alumni
-DB_PASSWORD=sdu_alumni_password
 DB_NAME=sdu_alumni_db
-```
 
-需要启用 Redis 时设置：
-
-```bash
 REDIS_ENABLED=true
 REDIS_ADDR=127.0.0.1:6379
-REDIS_DB=0
 ```
 
-如果 API 部署在 Nginx、Cloudflare 或其他反向代理之后，需要配置可信代理，否则限流中间件获取到的客户端 IP 可能是代理服务器地址：
+另外将 `DB_PASSWORD` 设置为根 `.env` 的 `MYSQL_PASSWORD`，`REDIS_PASSWORD` 与 Compose 使用的值一致；已调整宿主机端口时同步修改连接地址。需要文件服务时再启用 `STORAGE_ENABLED` 并配置对象存储连接，`STORAGE_ACCESS_KEY`／`STORAGE_SECRET_KEY` 分别与根 `.env` 的 `MINIO_ROOT_USER`／`MINIO_ROOT_PASSWORD` 保持一致。完整字段见 [.env.example](.env.example)。
+
+需要数据库和 Redis 时，可先在仓库根目录执行 `docker compose up -d mysql redis`，等待服务就绪后执行 `docker compose run --rm migrate`。本地 API 与 Compose API 默认都使用 8080，开发时只运行其中一个。
+
+健康检查：
 
 ```bash
-SERVER_TRUSTED_PROXIES=10.0.0.0/8,192.168.0.1
+curl --fail http://127.0.0.1:8080/api/v1/health/live
+curl --fail http://127.0.0.1:8080/api/v1/health/ready
 ```
 
-认证默认使用 HS256 JWT。生产环境必须覆盖：
+## 代码结构与约定
+
+业务调用遵循 `handler → service → repository → model/database`：
+
+| 目录                                      | 职责                                          |
+| ----------------------------------------- | --------------------------------------------- |
+| `cmd/api`                                 | 入口、依赖初始化与服务生命周期                |
+| `internal/router`、`internal/handler`     | `/api/v1` 路由、请求绑定与 HTTP 响应          |
+| `internal/service`、`internal/repository` | 业务逻辑与数据访问                            |
+| `internal/model`、`internal/query`        | GORM Gen 生成模型与查询代码                   |
+| `internal/config`、`internal/response`    | 配置加载、统一 `{ code, message, data }` 响应 |
+| `migrations`、`scripts`                   | 有序 SQL 迁移与运维验证脚本                   |
+
+具体权限、错误处理与生成代码要求见 [AGENTS.md](../AGENTS.md)。
+
+## 测试与工具
+
+后端测试在 `server/` 执行：
 
 ```bash
-AUTH_JWT_SECRET=change-me-to-a-long-random-secret
-AUTH_ACCESS_TOKEN_TTL=24h
+go test -race -count=1 ./...
 ```
 
-初始化 SQL 会创建默认超级管理员账号：
+MySQL、Redis 和对象存储集成测试需要隔离服务及对应 `TEST_*` 配置，说明见[贡献指南的本地检查](../CONTRIBUTING.md#本地检查)。
 
-```text
-account: admin
-password: Admin@123456
-role: super_admin
-```
-
-## Docker Compose
-
-If you want the API container to pick up local secrets and database settings, create `server/.env` first:
+模型生成与限流验证在仓库根目录执行：
 
 ```bash
-cd server
-cp .env.example .env
-```
+# 表结构变化后，先核对 server/gen.yml 的 DSN 和表清单。
+go install gorm.io/gen/tools/gentool@latest
+make gendb
 
-```bash
-docker compose up --build
-```
-
-Compose 会将 MySQL 容器的 `3306` 端口映射到本机 `3307`。MySQL 在首次创建数据卷时执行 `server/migrations` 下的 SQL 初始化脚本；随后 `migrate` 服务会在 API 启动前应用尚未记录的增量迁移，因此保留的数据卷也能获得新表和新字段。
-
-启动后可检查：
-
-```bash
-curl http://127.0.0.1:8080/api/v1/health/live
-curl http://127.0.0.1:8080/api/v1/health/ready
-```
-
-## 限流边界压测
-
-在 Docker MySQL 和 Redis 已启动后，可以运行限流边界测试脚本。脚本会临时启动一个本地 API 进程，使用 Redis 分布式限流，并通过 Vegeta 验证健康检查跳过限流、登录 burst、账号隔离、验证码 target 隔离和全局接口限流。
-
-```bash
+# 需已启动 MySQL、Redis，并按脚本要求配置后端环境。
 ./server/scripts/rate_limit_boundary_test.sh
 ```
 
-## GORM 代码生成
-
-后续数据表变更后，可以使用 GORM gentool 从当前数据库生成模型代码。
-
-```bash
-go install gorm.io/gen/tools/gentool@latest
-make gendb
-```
-
-生成配置在 `server/gen.yml`，默认生成 `users`、`alumni_profiles`、`operation_logs` 的 GORM 模型到 `server/internal/model`。如果新增表或数据库连接变化，直接改 `gen.yml` 后重新执行 `make gendb`。
-
-## 当前初始化范围
-
-- Gin API 服务入口
-- 环境变量配置
-- zap 结构化日志
-- 统一 JSON 响应
-- 请求 ID、访问日志、panic recovery 中间件
-- MySQL/GORM 连接辅助
-- Redis 连接辅助，供登录态、鉴权缓存和限流扩展使用
-- 健康检查接口
-- MySQL 8.0 初始化脚本
+[gen.yml](gen.yml) 管理数据库连接和生成范围，生成结果位于 `internal/model` 和 `internal/query`，不要手工修改生成文件。工具链升级时同步核对 Dockerfile、CI 与开发环境。

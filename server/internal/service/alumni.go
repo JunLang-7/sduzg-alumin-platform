@@ -788,11 +788,6 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, err
 	}
 
-	const maxRows = 5001 // 表头 + 最多 5000 行数据
-	if len(rows) > maxRows {
-		return nil, fmt.Errorf("单次最多导入 5000 条数据，当前文件 %d 行", len(rows)-1)
-	}
-
 	if len(rows) < 2 {
 		return nil, common.ErrInvalidRequest
 	}
@@ -938,6 +933,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 // readImportWorkbookRows isolates spreadsheet parsing from the request path.
 // A malformed workbook must be rejected instead of allowing a parser panic to
 // terminate the API process.
+// maxImportDataRows 是单次导入允许的数据行上限，不含表头。
+const maxImportDataRows = 5000
+
+// readImportWorkbookRows 读取工作簿，并在累计行数超过上限时立即停止。
+//
+// 不能先读完再判断行数：畸形工作簿可以把有效数据放在末尾行号（Excel 最大
+// 1048576 行），一个几百字节的文件就会让读取端物化上百万空行；提前止损把内存
+// 占用与文件声明的行号解耦。上游 excelize 相关公告（无界行号/无界列）的另一半
+// 由 go.mod 固定的安全版本负责。
 func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -968,6 +972,10 @@ func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
 			return nil, common.ErrInvalidRequest
 		}
 		rows = append(rows, row)
+		// 累计超过「表头 + 上限」立即停止，不再读取后面的空行。
+		if len(rows) > maxImportDataRows+1 {
+			return nil, common.ErrImportRowLimit
+		}
 	}
 	if err := iterator.Error(); err != nil {
 		return nil, common.ErrInvalidRequest
