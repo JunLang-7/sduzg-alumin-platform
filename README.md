@@ -43,6 +43,10 @@
 └── Makefile               数据库模型生成等辅助命令
 ```
 
+## 开发与发布
+
+`main` 是唯一长期分支：从 `main` 创建短期功能分支，通过 PR、CI 和评审后合并回 `main`。Dependabot 升级也提交到 `main`；需要发版时，从 `main` 上的已验收提交打版本标签，生产环境部署对应版本的发布产物。完整流程见 [贡献指南](CONTRIBUTING.md)。
+
 ## 快速启动
 
 ### Docker Compose

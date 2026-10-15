@@ -39,13 +39,13 @@ jobs:
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
-            # 正式版本只允许打在 main 上的提交。
-            git fetch --no-tags origin main:refs/remotes/origin/main
-            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-              echo "::error::正式版本标签必须指向 main 上的提交"
-              echo "::error::请先由 dev 向 main 发起发布 PR，再在 main 上打标签"
-              exit 1
-            fi
+          fi
+          # 正式版与预发布均从 main 上的提交打标签。
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::版本标签必须指向 main 上的提交"
+            echo "::error::请先通过 PR 将改动合并到 main，再在 main 上打标签"
+            exit 1
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 

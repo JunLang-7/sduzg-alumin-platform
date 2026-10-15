@@ -5,11 +5,11 @@
 ## 开发流程
 
 1. 使用功能、缺陷或技术任务模板创建 Issue，写清背景、范围和可验证的验收条件。
-2. 验收条件清楚后，从 `dev` 创建分支：`feat/<issue号>-<简短描述>`、`fix/<issue号>-<简短描述>` 或 `chore/<issue号>-<简短描述>`。
+2. 验收条件清楚后，从最新的 `main` 创建短期分支：`feat/<issue号>-<简短描述>`、`fix/<issue号>-<简短描述>` 或 `chore/<issue号>-<简短描述>`。
 3. 每条提交使用 `type(scope): 描述` 格式，例如 `feat(alumni): 新增校友导出` 或 `ci(github): 增加提交消息校验`。`type` 只能是 `feat`、`fix`、`docs`、`style`、`refactor`、`perf`、`test`、`build`、`ci`、`chore`；`scope` 使用小写模块名，如 `auth`、`alumni`、`dashboard`、`web`、`server`、`db`、`github`。
 4. 依照验收条件实现并补充测试。修复缺陷必须有能覆盖旧问题的回归测试；权限、个人信息和数据域改动必须覆盖未登录、越权或跨域访问等边界。
-5. 提交 PR 到 `dev`，用 `Closes #编号` 关联 Issue，并逐项填写验收证据。
-6. CI 全部通过、至少一位评审者批准且讨论已解决后，使用 Squash merge 合并。需要发布时，再由 `dev` 向 `main` 发 PR。
+5. 提交 PR 到 `main`，用 `Closes #编号` 关联 Issue，并逐项填写验收证据。
+6. CI 全部通过、至少一位评审者批准且讨论已解决后，使用 Squash merge 合并到 `main`，完成后删除短期分支。合并不等于发版；需要发布时，在 `main` 上的已验收提交打版本标签。
 
 实现中若目标或范围变化，先更新 Issue 的范围和验收条件，再更新 PR；不要把未讨论的新范围混入已有 PR。
 
@@ -47,10 +47,10 @@
 - 禁止在 PR、Issue、日志和截图中提交真实个人信息、密码、Token 或生产配置。
 - 数据库变更必须新增有序迁移，并验证空库初始化和升级顺序；不得手改 GORM 生成文件。
 - CI 必须通过。合并前保持分支可安全 Squash；不要合并红色或被跳过的关键检查。
-- 指向 `dev` 或 `main` 的 PR 会独立运行 `E2E` 浏览器冒烟检查；失败时下载 CI 的 `e2e-diagnostics-*` 产物排查。
-- 只有 `dev` 可进入日常功能，`main` 只接受已经在 `dev` 验证的发布 PR。
-- `main` 只接受从 `dev` 发起的发布 PR。不要创建直接指向 `main` 的分支或向 `main` 直接提交：那会让 `dev` 与 `main` 的历史持续分叉，每次发布都要额外同步。
-- 发布 PR（`dev` → `main`）会跳过 `Commit messages` 校验：其提交在合并进 `dev` 时已逐条校验，且校验范围含提交规范落地前的旧标题，无法在不重写 `dev` 历史的情况下修正；`dev` 的普通 PR 仍然逐条校验。
+- `main` 是唯一长期分支，接收功能、修复、文档和依赖升级 PR。不要直接推送到 `main`。
+- 指向 `main` 的所有 PR 都会校验提交标题并独立运行 `E2E` 浏览器冒烟检查；失败时下载 CI 的 `e2e-diagnostics-*` 产物排查。
+- Dependabot 版本升级 PR 同样提交到 `main`，沿用质量与评审门禁；机器人作者的关联 Issue 豁免见[依赖升级维护说明](docs/依赖升级维护说明.md)。
+- 生产环境使用指定版本标签对应的发布产物，不随 `main` 的每次合并自动升级。
 
 ## 构建产物与发布
 
@@ -59,7 +59,7 @@
 ### Nightly
 
 - 触发：每天 02:00（北京时间）自动执行；也可在 Actions 页面手动 `Run workflow`。
-- 内容：在仓库默认分支上运行完整质量门禁（含浏览器 E2E），再构建 `sdu-alumni-api-linux-amd64` 与 `sdu-alumni-web-dist.tar.gz`。
+- 内容：在仓库默认分支 `main` 上运行完整质量门禁（含浏览器 E2E），再构建 `sdu-alumni-api-linux-amd64` 与 `sdu-alumni-web-dist.tar.gz`。
 - 产物：`nightly-<run_id>` 包含两个构建产物、`BUILD_INFO.txt` 与 `SHA256SUMS`，保留 14 天；API 二进制会先通过 `.github/scripts/check-api-binary.sh` 的存活与就绪检查。
 - 升级路径：同时运行 `.github/workflows/migration-upgrade.yml`，验证旧库升级（见下）。
 - Nightly 不创建标签，也不创建 Release。
@@ -77,8 +77,8 @@
 
 ### Release
 
-1. 先由 `dev` 向 `main` 发起发布 PR，合并后在 `main` 上打标签：`git tag vX.Y.Z && git push origin vX.Y.Z`。
-2. 标签格式为 `vX.Y.Z`（正式版）或 `vX.Y.Z-<预发布标识>`（预发布）。正式版标签必须指向 `main` 上的提交，预发布标签可打在 `dev` 上。
+1. 确认改动已通过 PR 合并到 `main` 并完成验收，然后基于最新远端提交打标签：`git fetch origin main && git tag vX.Y.Z origin/main && git push origin vX.Y.Z`。无需单独的分支合并发布 PR。
+2. 标签格式为 `vX.Y.Z`（正式版）或 `vX.Y.Z-<预发布标识>`（预发布）。正式版与预发布标签都必须指向 `main` 上的提交；是否发布为预发布版本由标签格式决定。
 3. 工作流先运行与 CI 相同的完整质量门禁（含浏览器 E2E）与升级路径门禁，再构建产物、校验二进制健康检查与前端静态包可服务（含 `SHA256SUMS` 一致性），最后用 `gh release create` 创建 GitHub Release 并附上产物与校验和。
 4. `publish` 使用 `release` environment。首次发布前请在仓库 Settings → Environments 为 `release` 配置 required reviewers，这样推送标签不会直接对外发布，需要人工放行；如需限制标签创建权限，再配合 tag protection rules。
 5. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
