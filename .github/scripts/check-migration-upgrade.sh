@@ -47,7 +47,7 @@ query() {
 assert_eq() {
   local actual="$1" expected="$2" what="$3"
   if [ "$actual" != "$expected" ]; then
-    fail "$what：期望 [$expected]，实际 [$actual]"
+    fail "${what}：期望 [$expected]，实际 [$actual]"
   fi
   echo "  ✓ $what = $expected"
 }
@@ -99,7 +99,7 @@ existing_tables="$(mysql_admin --batch --skip-column-names -e "
   fail "无法检查目标数据库状态"
 if [ "$existing_tables" != "0" ]; then
   if [ "${RESET_DATABASE:-0}" = "1" ]; then
-    echo "重建数据库 $MYSQL_DATABASE（RESET_DATABASE=1）"
+    echo "重建数据库 ${MYSQL_DATABASE}（RESET_DATABASE=1）"
     mysql_admin -e "DROP DATABASE IF EXISTS \`$MYSQL_DATABASE\`;" ||
       fail "无法重建数据库 $MYSQL_DATABASE"
   else

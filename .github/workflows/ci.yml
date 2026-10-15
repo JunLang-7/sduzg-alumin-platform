@@ -234,6 +234,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - name: Test the release artifact check
+        run: bash .github/scripts/check-release-artifacts.test.sh
       - name: Validate Compose configuration
         run: docker compose config -q
       - name: Build images
