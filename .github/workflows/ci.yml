@@ -24,7 +24,12 @@ concurrency:
 jobs:
   commit-message:
     name: Commit messages
-    if: github.event_name == 'pull_request'
+    # 发布 PR（dev → main）跳过：其提交在合并进 dev 时已逐条校验，
+    # 且校验范围含提交规范落地前的旧标题，无法在不重写 dev 历史的情况下修正。
+    if: >-
+      github.event_name == 'pull_request' &&
+      !(github.event.pull_request.base.ref == 'main' &&
+      github.event.pull_request.head.ref == 'dev')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
