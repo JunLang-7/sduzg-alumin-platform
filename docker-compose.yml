@@ -70,7 +70,9 @@ services:
     entrypoint:
       - /bin/sh
       - -c
-      - sed 's/\r$//' /migrate.sh > /tmp/migrate.sh && exec /bin/sh /tmp/migrate.sh
+      - >-
+        sed 's/\r$//' /migrate.sh > /tmp/migrate.sh
+        && exec /bin/sh /tmp/migrate.sh
     depends_on:
       mysql:
         condition: service_healthy

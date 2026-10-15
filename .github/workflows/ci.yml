@@ -41,7 +41,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore)\([a-z0-9][a-z0-9._/-]*\)!?: .+$'
+          types='feat|fix|docs|style|refactor|perf|test|build|ci|chore'
+          pattern="^(${types})\([a-z0-9][a-z0-9._/-]*\)!?: .+$"
           invalid=0
           while IFS= read -r subject; do
             if ! [[ "$subject" =~ $pattern ]]; then
@@ -51,7 +52,9 @@ jobs:
           done < <(git log --format=%s "$BASE_SHA..$HEAD_SHA")
           if [ "$invalid" -ne 0 ]; then
             echo '提交标题必须为 type(scope): 描述，例如 feat(alumni): 新增校友导出。' >&2
-            echo '允许的 type：feat、fix、docs、style、refactor、perf、test、build、ci、chore；scope 使用小写模块名。' >&2
+            types_msg='允许的 type：feat、fix、docs、style、refactor、perf、'
+            types_msg="${types_msg}test、build、ci、chore；scope 使用小写模块名。"
+            echo "$types_msg" >&2
             exit 1
           fi
 
@@ -97,7 +100,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -119,7 +123,8 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -131,11 +136,13 @@ jobs:
       - name: Run browser smoke tests in an isolated Compose environment
         env:
           E2E_SKIP_BROWSER_INSTALL: "true"
-          E2E_COMPOSE_PROJECT: sdu-alumni-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          E2E_COMPOSE_PROJECT: >-
+            sdu-alumni-e2e-${{ github.run_id }}-${{ github.run_attempt }}
         run: npm run test:e2e
       - name: Upload E2E diagnostics
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        # v4.6.2
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: e2e-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -156,7 +163,8 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ptest-password --silent"
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ptest-password
+          --silent"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
@@ -171,6 +179,8 @@ jobs:
           --health-retries 12
       minio:
         image: docker.io/pgsty/silo:RELEASE.2026-09-16T00-00-00Z
+        # 实测：不写 command 时 silo 镜像只打印版本号就退出，健康检查无法通过。
+        # actionlint 的 services schema 未收录该键，但 GitHub 会使用它。
         command: server /data
         env:
           MINIO_ROOT_USER: minioadmin
@@ -178,7 +188,8 @@ jobs:
         ports:
           - 9000:9000
         options: >-
-          --health-cmd "curl --fail --silent http://127.0.0.1:9000/minio/health/live"
+          --health-cmd "curl --fail --silent
+          http://127.0.0.1:9000/minio/health/live"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 12
@@ -186,7 +197,8 @@ jobs:
       run:
         working-directory: server
     env:
-      TEST_MYSQL_DSN: root:test-password@tcp(127.0.0.1:3306)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=Local
+      TEST_MYSQL_DSN: "root:test-password@tcp(127.0.0.1:3306)/sdu_alumni_db\
+        ?charset=utf8mb4&parseTime=true&loc=Local"
       TEST_REDIS_ADDR: 127.0.0.1:6379
       TEST_MINIO_ENDPOINT: 127.0.0.1:9000
       TEST_MINIO_ACCESS_KEY: minioadmin
@@ -201,10 +213,15 @@ jobs:
       - name: Apply every migration to a clean database
         run: |
           for migration in migrations/*.sql; do
-            mysql -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db < "$migration"
+            mysql -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db \
+              < "$migration"
           done
-          test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'users'")" = "users"
-          test "$(mysql -N -h 127.0.0.1 -uroot -ptest-password sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")" = "alumni_profiles"
+          users_table="$(mysql -N -h 127.0.0.1 -uroot -ptest-password \
+            sdu_alumni_db -e "SHOW TABLES LIKE 'users'")"
+          test "$users_table" = "users"
+          profiles_table="$(mysql -N -h 127.0.0.1 -uroot -ptest-password \
+            sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")"
+          test "$profiles_table" = "alumni_profiles"
       - run: go test -race -count=1 ./...
 
   security:
@@ -219,7 +236,8 @@ jobs:
       - name: Scan Go dependencies reachable by this project
         working-directory: server
         run: bash "$GITHUB_WORKSPACE/.github/scripts/govulncheck.sh"
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+      # v5.0.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
@@ -244,17 +262,33 @@ jobs:
           docker build --tag sdu-alumni-web-ci ./web
       - name: Verify API liveness and readiness without optional services
         run: |
-          docker run --detach --name sdu-alumni-api-ci --publish 18080:8080 --env DB_ENABLED=false --env REDIS_ENABLED=false --env STORAGE_ENABLED=false sdu-alumni-api-ci
-          trap 'docker logs sdu-alumni-api-ci; docker rm -f sdu-alumni-api-ci' EXIT
+          docker run --detach --name sdu-alumni-api-ci \
+            --publish 18080:8080 \
+            --env DB_ENABLED=false \
+            --env REDIS_ENABLED=false \
+            --env STORAGE_ENABLED=false \
+            sdu-alumni-api-ci
+          trap 'docker logs sdu-alumni-api-ci; docker rm -f sdu-alumni-api-ci' \
+            EXIT
+          live=http://127.0.0.1:18080/api/v1/health/live
+          ready=http://127.0.0.1:18080/api/v1/health/ready
           for attempt in $(seq 1 20); do
-            curl --fail --silent http://127.0.0.1:18080/api/v1/health/live && curl --fail --silent http://127.0.0.1:18080/api/v1/health/ready && exit 0
+            if curl --fail --silent "$live" \
+              && curl --fail --silent "$ready"; then
+              exit 0
+            fi
             sleep 2
           done
           exit 1
       - name: Verify web container serves the built application
         run: |
-          docker run --detach --name sdu-alumni-web-ci --publish 18081:80 --add-host api:127.0.0.1 --add-host minio:127.0.0.1 sdu-alumni-web-ci
-          trap 'docker logs sdu-alumni-web-ci; docker rm -f sdu-alumni-web-ci' EXIT
+          docker run --detach --name sdu-alumni-web-ci \
+            --publish 18081:80 \
+            --add-host api:127.0.0.1 \
+            --add-host minio:127.0.0.1 \
+            sdu-alumni-web-ci
+          trap 'docker logs sdu-alumni-web-ci; docker rm -f sdu-alumni-web-ci' \
+            EXIT
           for attempt in $(seq 1 10); do
             curl --fail --silent http://127.0.0.1:18081/ > /dev/null && exit 0
             sleep 2

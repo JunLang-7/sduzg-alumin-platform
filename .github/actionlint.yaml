@@ -1,0 +1,10 @@
+# actionlint 配置（仓库 CI 目前不运行 actionlint，此文件供本地与编辑器使用）。
+config-version: 1
+
+paths:
+  .github/workflows/ci.yml:
+    ignore:
+      # GitHub 会使用 services 的 command：实测 silo 镜像不带 command 时只打印版本号
+      # 就退出，而集成测试 TestAlumniFileUploadDownloadDeleteE2E 需要真实的上传/下载/
+      # 删除，它一直通过说明服务确实在跑。actionlint 的 schema 尚未收录该键，属误报。
+      - 'unexpected key "command" for "services" section'

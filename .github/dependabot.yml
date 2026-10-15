@@ -1,4 +1,5 @@
-# GitHub reads this configuration from main. Keep the main and dev copies identical.
+# GitHub reads this configuration from main.
+# Keep the main and dev copies identical.
 version: 2
 updates:
   - package-ecosystem: gomod
