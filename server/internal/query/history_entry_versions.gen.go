@@ -43,7 +43,7 @@ func newHistoryEntryVersion(db *gorm.DB, opts ...gen.DOOption) historyEntryVersi
 	return _historyEntryVersion
 }
 
-// historyEntryVersion ????????????
+// historyEntryVersion 院史词条正式版本
 type historyEntryVersion struct {
 	historyEntryVersionDo historyEntryVersionDo
 

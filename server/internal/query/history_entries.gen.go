@@ -44,7 +44,7 @@ func newHistoryEntry(db *gorm.DB, opts ...gen.DOOption) historyEntry {
 	return _historyEntry
 }
 
-// historyEntry ?????????
+// historyEntry 院史正式词条
 type historyEntry struct {
 	historyEntryDo historyEntryDo
 

@@ -10,10 +10,10 @@ import (
 
 const TableNameAdminPermission = "admin_permissions"
 
-// AdminPermission administrator permission codes
+// AdminPermission 管理员权限编码
 type AdminPermission struct {
-	UserID         uint64    `gorm:"column:user_id;type:bigint unsigned;primaryKey;comment:administrator user id" json:"user_id"`        // administrator user id
-	PermissionCode string    `gorm:"column:permission_code;type:varchar(100);primaryKey;comment:permission code" json:"permission_code"` // permission code
+	UserID         uint64    `gorm:"column:user_id;type:bigint unsigned;primaryKey;comment:管理员用户 ID" json:"user_id"`          // 管理员用户 ID
+	PermissionCode string    `gorm:"column:permission_code;type:varchar(100);primaryKey;comment:权限编码" json:"permission_code"` // 权限编码
 	CreatedAt      time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 

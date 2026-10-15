@@ -12,7 +12,7 @@ import (
 
 const TableNameHistoryEntry = "history_entries"
 
-// HistoryEntry ?????????
+// HistoryEntry 院史正式词条
 type HistoryEntry struct {
 	ID             uint64         `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true" json:"id"`
 	Title          string         `gorm:"column:title;type:varchar(200);not null;uniqueIndex:uk_history_entries_title,priority:1" json:"title"`

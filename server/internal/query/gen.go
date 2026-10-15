@@ -17,110 +17,114 @@ import (
 
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
-		db:                  db,
-		AdminDataScope:      newAdminDataScope(db, opts...),
-		AdminPermission:     newAdminPermission(db, opts...),
-		AlumniFile:          newAlumniFile(db, opts...),
-		AlumniProfile:       newAlumniProfile(db, opts...),
-		DataDomain:          newDataDomain(db, opts...),
-		HistoryAttachment:   newHistoryAttachment(db, opts...),
-		HistoryContribution: newHistoryContribution(db, opts...),
-		HistoryEntry:        newHistoryEntry(db, opts...),
-		HistoryEntryVersion: newHistoryEntryVersion(db, opts...),
-		OperationLog:        newOperationLog(db, opts...),
-		User:                newUser(db, opts...),
+		db:                          db,
+		AdminDataScope:              newAdminDataScope(db, opts...),
+		AdminPermission:             newAdminPermission(db, opts...),
+		AlumniFile:                  newAlumniFile(db, opts...),
+		AlumniProfile:               newAlumniProfile(db, opts...),
+		DataDomain:                  newDataDomain(db, opts...),
+		HistoryAttachment:           newHistoryAttachment(db, opts...),
+		HistoryContribution:         newHistoryContribution(db, opts...),
+		HistoryEntry:                newHistoryEntry(db, opts...),
+		HistoryEntryDeletionRequest: newHistoryEntryDeletionRequest(db, opts...),
+		HistoryEntryVersion:         newHistoryEntryVersion(db, opts...),
+		OperationLog:                newOperationLog(db, opts...),
+		User:                        newUser(db, opts...),
 	}
 }
 
 type Query struct {
 	db *gorm.DB
 
-	AdminDataScope      adminDataScope
-	AdminPermission     adminPermission
-	AlumniFile          alumniFile
-	AlumniProfile       alumniProfile
-	DataDomain          dataDomain
-	HistoryAttachment   historyAttachment
-	HistoryContribution historyContribution
-	HistoryEntry        historyEntry
-	HistoryEntryVersion historyEntryVersion
-	OperationLog        operationLog
-	User                user
+	AdminDataScope              adminDataScope
+	AdminPermission             adminPermission
+	AlumniFile                  alumniFile
+	AlumniProfile               alumniProfile
+	DataDomain                  dataDomain
+	HistoryAttachment           historyAttachment
+	HistoryContribution         historyContribution
+	HistoryEntry                historyEntry
+	HistoryEntryDeletionRequest historyEntryDeletionRequest
+	HistoryEntryVersion         historyEntryVersion
+	OperationLog                operationLog
+	User                        user
 }
 
 func (q *Query) Available() bool { return q.db != nil }
 
-func (q *Query) UnderlyingDB() *gorm.DB { return q.db }
-
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		AdminDataScope:      q.AdminDataScope.clone(db),
-		AdminPermission:     q.AdminPermission.clone(db),
-		AlumniFile:          q.AlumniFile.clone(db),
-		AlumniProfile:       q.AlumniProfile.clone(db),
-		DataDomain:          q.DataDomain.clone(db),
-		HistoryAttachment:   q.HistoryAttachment.clone(db),
-		HistoryContribution: q.HistoryContribution.clone(db),
-		HistoryEntry:        q.HistoryEntry.clone(db),
-		HistoryEntryVersion: q.HistoryEntryVersion.clone(db),
-		OperationLog:        q.OperationLog.clone(db),
-		User:                q.User.clone(db),
+		db:                          db,
+		AdminDataScope:              q.AdminDataScope.clone(db),
+		AdminPermission:             q.AdminPermission.clone(db),
+		AlumniFile:                  q.AlumniFile.clone(db),
+		AlumniProfile:               q.AlumniProfile.clone(db),
+		DataDomain:                  q.DataDomain.clone(db),
+		HistoryAttachment:           q.HistoryAttachment.clone(db),
+		HistoryContribution:         q.HistoryContribution.clone(db),
+		HistoryEntry:                q.HistoryEntry.clone(db),
+		HistoryEntryDeletionRequest: q.HistoryEntryDeletionRequest.clone(db),
+		HistoryEntryVersion:         q.HistoryEntryVersion.clone(db),
+		OperationLog:                q.OperationLog.clone(db),
+		User:                        q.User.clone(db),
 	}
 }
 
 func (q *Query) ReadDB() *Query {
-	return q.clone(q.db.Clauses(dbresolver.Read))
+	return q.ReplaceDB(q.db.Clauses(dbresolver.Read))
 }
 
 func (q *Query) WriteDB() *Query {
-	return q.clone(q.db.Clauses(dbresolver.Write))
+	return q.ReplaceDB(q.db.Clauses(dbresolver.Write))
 }
 
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
-		db:                  db,
-		AdminDataScope:      q.AdminDataScope.replaceDB(db),
-		AdminPermission:     q.AdminPermission.replaceDB(db),
-		AlumniFile:          q.AlumniFile.replaceDB(db),
-		AlumniProfile:       q.AlumniProfile.replaceDB(db),
-		DataDomain:          q.DataDomain.replaceDB(db),
-		HistoryAttachment:   q.HistoryAttachment.replaceDB(db),
-		HistoryContribution: q.HistoryContribution.replaceDB(db),
-		HistoryEntry:        q.HistoryEntry.replaceDB(db),
-		HistoryEntryVersion: q.HistoryEntryVersion.replaceDB(db),
-		OperationLog:        q.OperationLog.replaceDB(db),
-		User:                q.User.replaceDB(db),
+		db:                          db,
+		AdminDataScope:              q.AdminDataScope.replaceDB(db),
+		AdminPermission:             q.AdminPermission.replaceDB(db),
+		AlumniFile:                  q.AlumniFile.replaceDB(db),
+		AlumniProfile:               q.AlumniProfile.replaceDB(db),
+		DataDomain:                  q.DataDomain.replaceDB(db),
+		HistoryAttachment:           q.HistoryAttachment.replaceDB(db),
+		HistoryContribution:         q.HistoryContribution.replaceDB(db),
+		HistoryEntry:                q.HistoryEntry.replaceDB(db),
+		HistoryEntryDeletionRequest: q.HistoryEntryDeletionRequest.replaceDB(db),
+		HistoryEntryVersion:         q.HistoryEntryVersion.replaceDB(db),
+		OperationLog:                q.OperationLog.replaceDB(db),
+		User:                        q.User.replaceDB(db),
 	}
 }
 
 type queryCtx struct {
-	AdminDataScope      *adminDataScopeDo
-	AdminPermission     *adminPermissionDo
-	AlumniFile          *alumniFileDo
-	AlumniProfile       *alumniProfileDo
-	DataDomain          *dataDomainDo
-	HistoryAttachment   *historyAttachmentDo
-	HistoryContribution *historyContributionDo
-	HistoryEntry        *historyEntryDo
-	HistoryEntryVersion *historyEntryVersionDo
-	OperationLog        *operationLogDo
-	User                *userDo
+	AdminDataScope              *adminDataScopeDo
+	AdminPermission             *adminPermissionDo
+	AlumniFile                  *alumniFileDo
+	AlumniProfile               *alumniProfileDo
+	DataDomain                  *dataDomainDo
+	HistoryAttachment           *historyAttachmentDo
+	HistoryContribution         *historyContributionDo
+	HistoryEntry                *historyEntryDo
+	HistoryEntryDeletionRequest *historyEntryDeletionRequestDo
+	HistoryEntryVersion         *historyEntryVersionDo
+	OperationLog                *operationLogDo
+	User                        *userDo
 }
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
-		AdminDataScope:      q.AdminDataScope.WithContext(ctx),
-		AdminPermission:     q.AdminPermission.WithContext(ctx),
-		AlumniFile:          q.AlumniFile.WithContext(ctx),
-		AlumniProfile:       q.AlumniProfile.WithContext(ctx),
-		DataDomain:          q.DataDomain.WithContext(ctx),
-		HistoryAttachment:   q.HistoryAttachment.WithContext(ctx),
-		HistoryContribution: q.HistoryContribution.WithContext(ctx),
-		HistoryEntry:        q.HistoryEntry.WithContext(ctx),
-		HistoryEntryVersion: q.HistoryEntryVersion.WithContext(ctx),
-		OperationLog:        q.OperationLog.WithContext(ctx),
-		User:                q.User.WithContext(ctx),
+		AdminDataScope:              q.AdminDataScope.WithContext(ctx),
+		AdminPermission:             q.AdminPermission.WithContext(ctx),
+		AlumniFile:                  q.AlumniFile.WithContext(ctx),
+		AlumniProfile:               q.AlumniProfile.WithContext(ctx),
+		DataDomain:                  q.DataDomain.WithContext(ctx),
+		HistoryAttachment:           q.HistoryAttachment.WithContext(ctx),
+		HistoryContribution:         q.HistoryContribution.WithContext(ctx),
+		HistoryEntry:                q.HistoryEntry.WithContext(ctx),
+		HistoryEntryDeletionRequest: q.HistoryEntryDeletionRequest.WithContext(ctx),
+		HistoryEntryVersion:         q.HistoryEntryVersion.WithContext(ctx),
+		OperationLog:                q.OperationLog.WithContext(ctx),
+		User:                        q.User.WithContext(ctx),
 	}
 }
 

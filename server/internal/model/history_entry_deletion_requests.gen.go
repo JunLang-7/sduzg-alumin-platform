@@ -14,7 +14,7 @@ const TableNameHistoryEntryDeletionRequest = "history_entry_deletion_requests"
 type HistoryEntryDeletionRequest struct {
 	ID             uint64     `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true" json:"id"`
 	EntryID        uint64     `gorm:"column:entry_id;type:bigint unsigned;not null;index:fk_history_deletion_entry,priority:1" json:"entry_id"`
-	PendingEntryID *uint64    `gorm:"column:pending_entry_id;type:bigint unsigned;uniqueIndex:uk_history_deletion_pending_entry,priority:1" json:"-"`
+	PendingEntryID *uint64    `gorm:"column:pending_entry_id;type:bigint unsigned;uniqueIndex:uk_history_deletion_pending_entry,priority:1" json:"pending_entry_id"`
 	Title          string     `gorm:"column:title;type:varchar(200);not null" json:"title"`
 	RequestedBy    uint64     `gorm:"column:requested_by;type:bigint unsigned;not null;index:idx_history_deletion_author,priority:1" json:"requested_by"`
 	DataDomainID   *uint64    `gorm:"column:data_domain_id;type:bigint unsigned;index:idx_history_deletion_domain_status,priority:1" json:"data_domain_id"`
