@@ -86,3 +86,11 @@
 5. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
 
 发布失败时可在 Actions 中重跑同一个 run；`gh release create` 不会覆盖已存在的 Release，需要先删除旧 Release 与标签再重新推送。
+
+### 文档 Wiki
+
+- **仓库是唯一源**：Wiki 是下游副本。`main` 上 `docs/平台使用说明.md`、`docs/deployment.md`、`docs/release-notes/README.md` 变化时，`.github/workflows/wiki.yml` 会用 `.github/scripts/sync-wiki.sh` 覆盖同名页面。
+- **同步页面**：`平台使用说明`、`部署说明`、`版本发布记录`，另生成 `Home` 入口索引与 `_Sidebar` 导航。不要直接在 Wiki 上编辑，否则下一次同步会覆盖。
+- **首次初始化**：GitHub 只有在网页端保存过至少一页之后才创建 `<repo>.wiki.git`。请先在仓库 Wiki 页面手工创建任意一页，再在 Actions 页手动运行一次 `Wiki` 工作流；未初始化时工作流只发出警告，不会把 `main` 染红。
+- **推送凭据**：优先使用 `WIKI_TOKEN` secret，回退到内置 `GITHUB_TOKEN`。内置令牌对 `.wiki.git` 的推送在部分账号或组织策略下会被拒（403），此时请创建对 Contents 有读写权限的 PAT 并保存为仓库 secret `WIKI_TOKEN`。
+- **本地手动同步**：`WIKI_REMOTE_URL='https://x-access-token:<token>@github.com/<owner>/<repo>.wiki.git' bash .github/scripts/sync-wiki.sh`；先加 `--dry-run` 可查看将要写入的页面。

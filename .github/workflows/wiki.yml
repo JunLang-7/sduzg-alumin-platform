@@ -1,0 +1,76 @@
+name: Wiki
+
+# 把 docs/ 中指定的文档同步到 GitHub Wiki。Wiki 是下游副本，内容以仓库为准。
+# 首次使用需要先在仓库 Wiki 页面手工保存任意一页：GitHub 只有在那之后才会
+# 创建 <repo>.wiki.git，否则同步会以退出码 3 提示尚未初始化。
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/平台使用说明.md
+      - docs/deployment.md
+      - docs/release-notes/README.md
+      - .github/scripts/sync-wiki.sh
+      - .github/workflows/wiki.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wiki-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish wiki pages
+    runs-on: ubuntu-latest
+    # 回退到内置 GITHUB_TOKEN 推送 .wiki.git 时需要 contents: write。
+    permissions:
+      contents: write
+    steps:
+      # v5.1.0
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Sync docs to the wiki
+        env:
+          # 优先使用 PAT：内置 GITHUB_TOKEN 对 .wiki.git 的推送在部分账号或组织策略下
+          # 会被拒（403），且任何 permissions 声明都无法突破该限制。
+          WIKI_TOKEN: ${{ secrets.WIKI_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${WIKI_TOKEN:-}" ]]; then
+            token="$WIKI_TOKEN"
+            token_source='WIKI_TOKEN'
+          else
+            token="$GITHUB_TOKEN"
+            token_source='GITHUB_TOKEN'
+          fi
+          echo "::add-mask::$token"
+          echo "使用 $token_source 推送 Wiki。"
+
+          if [[ "$token" == ghp_* || "$token" == github_pat_* ]]; then
+            # 经典和细粒度 PAT 用 token 本身作为用户名。
+            url="https://${token}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          else
+            # Actions 令牌使用 x-access-token 用户名。
+            url="https://x-access-token:${token}@github.com/${GITHUB_REPOSITORY}.wiki.git"
+          fi
+
+          set +e
+          WIKI_REMOTE_URL="$url" \
+            bash .github/scripts/sync-wiki.sh --skip-missing
+          status=$?
+          set -e
+
+          case "$status" in
+            0) ;;
+            3)
+              echo "::warning::Wiki 尚未初始化，请先在仓库 Wiki 页面手工创建任意一页，然后重新运行本工作流。"
+              ;;
+            *)
+              exit "$status"
+              ;;
+          esac
