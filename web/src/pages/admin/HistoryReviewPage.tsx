@@ -165,7 +165,7 @@ export function HistoryReviewPage() {
                 width: 800,
                 content: (
                   <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
-                    <HistoryContent content={entry.content} />
+                    <HistoryContent content={entry.content} toc={extractToc(entry.content)} />
                   </div>
                 ),
               });
