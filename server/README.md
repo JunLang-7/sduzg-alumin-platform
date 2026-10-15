@@ -76,3 +76,5 @@ make gendb
 ```
 
 [gen.yml](gen.yml) 管理数据库连接和生成范围，生成结果位于 `internal/model` 和 `internal/query`，不要手工修改生成文件。工具链升级时同步核对 Dockerfile、CI 与开发环境。
+
+`history_entry_deletion_requests` 的模型由 [cmd/history-modelgen](cmd/history-modelgen/main.go) 生成：先应用 `migrations/010_add_history_deletion_requests.sql`，再在 `server/` 目录设置 `HISTORY_MODELGEN_DSN`（指向已应用该迁移的数据库）后执行 `go run ./cmd/history-modelgen`。
