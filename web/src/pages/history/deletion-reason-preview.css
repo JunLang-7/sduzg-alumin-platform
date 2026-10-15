@@ -1,0 +1,23 @@
+.deletion-reason-preview {
+  min-width: 0;
+}
+.deletion-reason-preview__summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  margin: 4px 0;
+}
+.deletion-reason-preview > .ant-btn {
+  height: auto;
+  padding: 0;
+}
+.deletion-reason-preview__full {
+  max-height: 60vh;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}

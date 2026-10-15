@@ -351,6 +351,28 @@
   color: #7f736d;
   font-size: 13px;
 }
+.history-page__deletion-reason {
+  margin-top: 16px;
+  margin-bottom: 20px;
+}
+.history-page__deletion-reason textarea.ant-input {
+  display: block;
+  resize: vertical;
+}
+.history-page__deletion-count {
+  display: block;
+  margin-top: 6px;
+  padding-inline: 2px;
+  text-align: right;
+  color: #8c8c8c;
+  font-size: 12px;
+  line-height: 18px;
+  pointer-events: none;
+}
+.history-page__meta-actions {
+  margin-inline-start: auto;
+  justify-content: flex-end;
+}
 .history-page__search-result {
   margin-top: 14px;
   color: #8b501d;

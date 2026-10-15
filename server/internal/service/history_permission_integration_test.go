@@ -358,6 +358,167 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if _, err := svc.AttachmentDownloadURL(ctx, otherAlumni, mpaContribution.ID, pendingAttachment.ID); !errors.Is(err, common.ErrStorageUnavailable) {
 			t.Errorf("other alumni approved attachment = %v, want storage unavailable after public authorization", err)
 		}
+		entryID := *approved.EntryID
+		for _, actor := range []common.AccessContext{{}, alumni, otherAlumni, unassignedAdmin, {UserID: 9000, Role: common.RoleAdmin, DomainIDs: []uint64{undergraduateID}}} {
+			if err := svc.DeleteEntry(ctx, actor, entryID); !errors.Is(err, common.ErrPermissionDenied) {
+				t.Errorf("unauthorized delete %+v: %v", actor, err)
+			}
+		}
+		ownEntry, err := svc.GetEntry(ctx, alumni, entryID)
+		if err != nil || ownEntry.CanRequestDeletion || ownEntry.CanDelete {
+			t.Fatalf("author entry capabilities: %+v, %v", ownEntry, err)
+		}
+		if _, err := svc.RequestEntryDeletion(ctx, otherAlumni, entryID, dto.HistoryDeletionRequest{Reason: "not mine"}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("another author's deletion request: %v", err)
+		}
+		if _, err := svc.RequestEntryDeletion(ctx, alumni, entryID, dto.HistoryDeletionRequest{Reason: "author"}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("author must not request deletion: %v", err)
+		}
+		if err := svc.DeleteEntry(ctx, mpaAdmin, entryID); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("ordinary administrator bypassed approval: %v", err)
+		}
+		request, err := svc.RequestEntryDeletion(ctx, multiDomainAdmin, entryID, dto.HistoryDeletionRequest{Reason: "管理员申请撤下"})
+		if err != nil {
+			return err
+		}
+		if _, err := svc.RequestEntryDeletion(ctx, multiDomainAdmin, entryID, dto.HistoryDeletionRequest{Reason: "重复"}); !errors.Is(err, common.ErrInvalidHistoryState) {
+			t.Errorf("duplicate pending request: %v", err)
+		}
+		if _, err := svc.GetEntry(ctx, alumni, entryID); err != nil {
+			t.Errorf("request deleted entry before approval: %v", err)
+		}
+		for _, actor := range []common.AccessContext{alumni, unassignedAdmin, multiDomainAdmin, {UserID: 9000, Role: common.RoleAdmin, DomainIDs: []uint64{undergraduateID}}} {
+			if _, err := svc.ReviewEntryDeletion(ctx, actor, request.ID, dto.HistoryDeletionReviewRequest{Action: "approve"}); !errors.Is(err, common.ErrPermissionDenied) {
+				t.Errorf("unauthorized request review: %v", err)
+			}
+		}
+		if _, err := svc.ReviewEntryDeletion(ctx, multiDomainAdmin, request.ID, dto.HistoryDeletionReviewRequest{Action: "reject", ReviewComment: "self"}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("ordinary administrator rejected own request: %v", err)
+		}
+		queue, err := svc.ListDeletionRequests(ctx, multiDomainAdmin, false)
+		if err != nil {
+			return err
+		}
+		for _, item := range queue {
+			if item.ID == request.ID {
+				t.Error("own request visible in ordinary admin review queue")
+			}
+		}
+		mineRequests, err := svc.ListDeletionRequests(ctx, multiDomainAdmin, true)
+		if err != nil {
+			return err
+		}
+		foundMine := false
+		for _, item := range mineRequests {
+			if item.ID == request.ID {
+				foundMine = true
+			}
+		}
+		if !foundMine {
+			t.Error("administrator cannot track own request")
+		}
+		if _, err := svc.ReviewEntryDeletion(ctx, mpaAdmin, request.ID, dto.HistoryDeletionReviewRequest{Action: "reject"}); !errors.Is(err, common.ErrInvalidRequest) {
+			t.Errorf("reject without reason: %v", err)
+		}
+		if _, err := svc.ReviewEntryDeletion(ctx, mpaAdmin, request.ID, dto.HistoryDeletionReviewRequest{Action: "reject", ReviewComment: "需要保留"}); err != nil {
+			return err
+		}
+		if _, err := svc.GetEntry(ctx, alumni, entryID); err != nil {
+			t.Errorf("rejection removed entry: %v", err)
+		}
+		request, err = svc.RequestEntryDeletion(ctx, multiDomainAdmin, entryID, dto.HistoryDeletionRequest{Reason: "补充理由重新申请"})
+		if err != nil {
+			return err
+		}
+		foreignRequests, err := svc.ListDeletionRequests(ctx, common.AccessContext{UserID: 9000, Role: common.RoleAdmin, DomainIDs: []uint64{undergraduateID}}, false)
+		if err != nil {
+			return err
+		}
+		for _, item := range foreignRequests {
+			if item.ID == request.ID {
+				t.Error("cross-domain admin can see deletion request")
+			}
+		}
+		if _, err := svc.ListDeletionRequests(ctx, alumni, false); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("alumni sees review queue: %v", err)
+		}
+		late := &model.HistoryContribution{EntryID: &entryID, Title: tag + "-late", Content: "late", SourceNote: "test", Status: repository.HistoryContributionPending, AuthorUserID: 1102, AuthorAlumniID: 2102, DataDomainID: &mpaID}
+		if err := tx.Create(late).Error; err != nil {
+			return err
+		}
+		if _, err := svc.ReviewEntryDeletion(ctx, mpaAdmin, request.ID, dto.HistoryDeletionReviewRequest{Action: "approve"}); err != nil {
+			return err
+		}
+		if _, err := svc.GetEntry(ctx, alumni, entryID); !errors.Is(err, common.ErrHistoryEntryNotFound) {
+			t.Errorf("read deleted entry: %v", err)
+		}
+		if err := svc.DeleteEntry(ctx, superAdmin, entryID); !errors.Is(err, common.ErrHistoryEntryNotFound) {
+			t.Errorf("delete already deleted entry: %v", err)
+		}
+		if _, err := svc.UpdateEntry(ctx, superAdmin, entryID, dto.HistoryEntryUpdateRequest{Title: "revive", Content: "revive", SourceNote: "test"}); !errors.Is(err, common.ErrHistoryEntryNotFound) {
+			t.Errorf("edit deleted entry: %v", err)
+		}
+		if _, err := svc.Review(ctx, mpaAdmin, late.ID, dto.HistoryReviewRequest{Action: "approve"}); !errors.Is(err, common.ErrHistoryEntryNotFound) {
+			t.Errorf("late approval revived deleted entry: %v", err)
+		}
+		var raw model.HistoryEntry
+		if err := tx.Unscoped().First(&raw, entryID).Error; err != nil {
+			return err
+		}
+		if !raw.DeletedAt.Valid || raw.UpdatedBy == nil || *raw.UpdatedBy != mpaAdmin.UserID {
+			t.Error("deletion did not preserve soft-deleted entry and actor")
+		}
+		if _, err := svc.GetContribution(ctx, alumni, mpaContribution.ID); err != nil {
+			t.Errorf("author cannot read original contribution: %v", err)
+		}
+		if files, err := svc.ListAttachments(ctx, alumni, mpaContribution.ID); err != nil || len(files) != 1 {
+			t.Errorf("author attachments after deletion: %d, %v", len(files), err)
+		}
+		if err := tx.Model(&model.HistoryEntryVersion{}).Where("entry_id = ?", entryID).Count(&versions).Error; err != nil {
+			return err
+		}
+		if versions != 3 {
+			t.Errorf("deleted entry lost versions: %d", versions)
+		}
+		listed, err := svc.ListEntries(ctx, alumni, tag)
+		if err != nil {
+			return err
+		}
+		for _, item := range listed {
+			if item.ID == entryID {
+				t.Error("deleted entry remains in list/search")
+			}
+		}
+		undergradEntry, err := repository.NewHistoryRepository(tx).GetContribution(ctx, undergraduateContribution.ID)
+		if err != nil {
+			return err
+		}
+		if err := svc.DeleteEntry(ctx, mpaAdmin, *undergradEntry.EntryID); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("cross-domain direct delete: %v", err)
+		}
+		if _, err := svc.RequestEntryDeletion(ctx, mpaAdmin, *undergradEntry.EntryID, dto.HistoryDeletionRequest{Reason: "cross domain"}); !errors.Is(err, common.ErrPermissionDenied) {
+			t.Errorf("cross-domain deletion request: %v", err)
+		}
+		directRequest, err := svc.RequestEntryDeletion(ctx, superAdmin, *undergradEntry.EntryID, dto.HistoryDeletionRequest{Reason: "超级管理员自审"})
+		if err != nil {
+			return err
+		}
+		if _, err := svc.ReviewEntryDeletion(ctx, superAdmin, directRequest.ID, dto.HistoryDeletionReviewRequest{Action: "approve"}); err != nil {
+			return err
+		}
+		if err := tx.First(directRequest, directRequest.ID).Error; err != nil {
+			return err
+		}
+		if directRequest.Status != "approved" || directRequest.PendingEntryID != nil || directRequest.ReviewedBy == nil || *directRequest.ReviewedBy != superAdmin.UserID {
+			t.Error("direct deletion left an unfinished request")
+		}
+		orphan := &model.HistoryEntry{Title: tag + "-orphan", Content: "legacy", Status: "published"}
+		if err := tx.Create(orphan).Error; err != nil {
+			return err
+		}
+		if err := svc.DeleteEntry(ctx, superAdmin, orphan.ID); err != nil {
+			return err
+		}
 		return rollback
 	})
 	if !errors.Is(err, rollback) {

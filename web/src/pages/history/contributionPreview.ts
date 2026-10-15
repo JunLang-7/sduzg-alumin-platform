@@ -1,4 +1,5 @@
 import { historyApi } from '../../api/history';
+import { ApiError } from '../../api/http';
 import type { HistoryContribution } from '../../types/history';
 
 export interface ContributionPreview {
@@ -14,8 +15,13 @@ export async function loadContributionPreview(
 ): Promise<ContributionPreview> {
   const contribution = await api.getContribution(id);
   if (contribution.status === 'approved' && contribution.entry_id != null) {
-    const entry = await api.getEntry(contribution.entry_id);
-    return { contribution, content: entry.content, publishedVersion: entry.current_version };
+    try {
+      const entry = await api.getEntry(contribution.entry_id);
+      return { contribution, content: entry.content, publishedVersion: entry.current_version };
+    } catch (error) {
+      // A deleted entry must not hide its author's original contribution.
+      if (!(error instanceof ApiError) || error.status !== 404) throw error;
+    }
   }
   return { contribution, content: contribution.content };
 }

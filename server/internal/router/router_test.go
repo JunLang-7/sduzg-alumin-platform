@@ -231,16 +231,19 @@ func TestHistoryEntryRouteRequiresAuth(t *testing.T) {
 		Logger: zap.NewNop(),
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/history/entries", nil)
-	rec := httptest.NewRecorder()
-
-	engine.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("expected status %d, got %d", http.StatusUnauthorized, rec.Code)
-	}
-	if !strings.Contains(rec.Body.String(), `"code":40100`) {
-		t.Fatalf("expected unauthorized response, got %s", rec.Body.String())
+	for _, route := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/history/entries"},
+		{http.MethodDelete, "/api/v1/history/entries/1"},
+		{http.MethodPost, "/api/v1/history/entries/1/deletion-requests"},
+		{http.MethodGet, "/api/v1/history/deletion-requests/me"},
+		{http.MethodGet, "/api/v1/history/deletion-requests"},
+		{http.MethodPost, "/api/v1/history/deletion-requests/1/review"},
+	} {
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, httptest.NewRequest(route.method, route.path, nil))
+		if rec.Code != http.StatusUnauthorized || !strings.Contains(rec.Body.String(), `"code":40100`) {
+			t.Errorf("%s %s: expected unauthorized, got %d %s", route.method, route.path, rec.Code, rec.Body.String())
+		}
 	}
 }
 

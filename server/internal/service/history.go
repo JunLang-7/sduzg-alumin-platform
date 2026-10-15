@@ -27,7 +27,7 @@ func NewHistoryService(repository *repository.HistoryRepository, storageClient *
 
 // ListEntries returns only published entries. Route authentication is enforced
 // globally; this method deliberately never exposes a draft or pending entry.
-func (s *HistoryService) ListEntries(ctx context.Context, keyword string) ([]dto.HistoryEntryItem, error) {
+func (s *HistoryService) ListEntries(ctx context.Context, access common.AccessContext, keyword string) ([]dto.HistoryEntryItem, error) {
 	entries, err := s.repository.ListPublished(ctx, keyword)
 	if err != nil {
 		return nil, err
@@ -38,12 +38,18 @@ func (s *HistoryService) ListEntries(ctx context.Context, keyword string) ([]dto
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, historyEntryItem(entry, sourceNote))
+		item := historyEntryItem(entry, sourceNote)
+		item.CanRequestDeletion, err = s.canRequestEntryDeletion(ctx, access, entry.ID)
+		item.CanDelete = access.UserID != 0 && access.IsSuperAdmin()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, item)
 	}
 	return result, nil
 }
 
-func (s *HistoryService) GetEntry(ctx context.Context, id uint64) (*dto.HistoryEntryItem, error) {
+func (s *HistoryService) GetEntry(ctx context.Context, access common.AccessContext, id uint64) (*dto.HistoryEntryItem, error) {
 	entry, err := s.repository.GetPublished(ctx, id)
 	if err != nil {
 		return nil, err
@@ -53,7 +59,33 @@ func (s *HistoryService) GetEntry(ctx context.Context, id uint64) (*dto.HistoryE
 		return nil, err
 	}
 	result := historyEntryItem(entry, sourceNote)
+	result.CanRequestDeletion, err = s.canRequestEntryDeletion(ctx, access, id)
+	result.CanDelete = access.UserID != 0 && access.IsSuperAdmin()
+	if err != nil {
+		return nil, err
+	}
 	return &result, nil
+}
+
+func (s *HistoryService) canRequestEntryDeletion(ctx context.Context, access common.AccessContext, id uint64) (bool, error) {
+	if access.UserID == 0 {
+		return false, nil
+	}
+	if access.IsSuperAdmin() {
+		return true, nil
+	}
+	if !access.IsAdministrator() {
+		return false, nil
+	}
+	domainID, err := s.repository.EntryDataDomainID(ctx, id)
+	return err == nil && domainID != nil && access.CanAccessDomain(*domainID), err
+}
+
+func (s *HistoryService) DeleteEntry(ctx context.Context, access common.AccessContext, id uint64) error {
+	if access.UserID == 0 || !access.IsSuperAdmin() {
+		return common.ErrPermissionDenied
+	}
+	return s.repository.DeletePublished(ctx, id, access)
 }
 
 func (s *HistoryService) UpdateEntry(ctx context.Context, access common.AccessContext, id uint64, req dto.HistoryEntryUpdateRequest) (*dto.HistoryEntryItem, error) {
@@ -74,6 +106,8 @@ func (s *HistoryService) UpdateEntry(ctx context.Context, access common.AccessCo
 		return nil, err
 	}
 	result := historyEntryItem(entry, strings.TrimSpace(req.SourceNote))
+	result.CanRequestDeletion = true
+	result.CanDelete = access.IsSuperAdmin()
 	return &result, nil
 }
 
@@ -102,6 +136,9 @@ func (s *HistoryService) CreateDraft(ctx context.Context, access common.AccessCo
 	// established domain.  The entry itself has no domain column, so its domain
 	// is derived from the contribution that produced its latest version.
 	if req.EntryID != nil {
+		if _, err := s.repository.GetPublished(ctx, *req.EntryID); err != nil {
+			return nil, err
+		}
 		entryDomainID, err := s.repository.EntryDataDomainID(ctx, *req.EntryID)
 		if err != nil {
 			return nil, err

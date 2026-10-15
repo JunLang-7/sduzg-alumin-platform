@@ -8,9 +8,11 @@ import type {
   HistoryAttachment,
   HistoryContribution,
   HistoryReviewAction,
+  HistoryDeletionRequest,
 } from '../../types/history';
 import { PageHeader } from '../../components/PageHeader';
 import { HistoryContent } from '../history/HistoryContent';
+import { DeletionReasonPreview } from '../history/DeletionReasonPreview';
 import { extractToc } from '../history/toc';
 import './history-review.css';
 
@@ -28,10 +30,11 @@ const formatDate = (value?: string) => {
 };
 
 export function HistoryReviewPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const { id } = useParams();
   const [items, setItems] = useState<HistoryContribution[]>([]);
+  const [deletions, setDeletions] = useState<HistoryDeletionRequest[]>([]);
   const [attachments, setAttachments] = useState<HistoryAttachment[]>([]);
   const [loading, setLoading] = useState(false);
   const active = id ? items.find((item) => item.id === Number(id)) : undefined;
@@ -40,7 +43,12 @@ export function HistoryReviewPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(await historyApi.listPending());
+      const [contributions, requests] = await Promise.all([
+        historyApi.listPending(),
+        historyApi.listPendingDeletions(),
+      ]);
+      setItems(contributions);
+      setDeletions(requests);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '待审资料加载失败');
     } finally {
@@ -96,6 +104,101 @@ export function HistoryReviewPage() {
     });
   };
 
+  const reviewDeletion = (item: HistoryDeletionRequest, action: 'approve' | 'reject') => {
+    let comment = '';
+    modal.confirm({
+      title: action === 'approve' ? '同意删除？' : '驳回申请',
+      icon: null,
+      width: 480,
+      className: 'history-review__deletion-dialog',
+      content: (
+        <div className="history-review__deletion-form">
+          <p className="history-review__deletion-entry">词条：{item.title}</p>
+          {action === 'approve' ? (
+            <p>删除后不再展示，历史投稿和附件保留。</p>
+          ) : (
+            <Input.TextArea
+              aria-label="驳回原因"
+              placeholder="请填写驳回原因"
+              maxLength={2000}
+              rows={3}
+              onChange={(event) => {
+                comment = event.target.value;
+              }}
+            />
+          )}
+        </div>
+      ),
+      okText: action === 'approve' ? '同意' : '驳回',
+      cancelText: '取消',
+      okButtonProps: { danger: action === 'approve' },
+      autoFocusButton: 'cancel',
+      onOk: async () => {
+        if (action === 'reject' && !comment.trim()) {
+          message.warning('请填写驳回原因');
+          throw new Error('请填写驳回原因');
+        }
+        try {
+          await historyApi.reviewEntryDeletion(item.id, action, comment.trim());
+          message.success('删除申请已处理');
+          await load();
+        } catch (error) {
+          message.error(error instanceof Error ? error.message : '删除申请处理失败');
+          throw error;
+        }
+      },
+    });
+  };
+  const deletionColumns: ColumnsType<HistoryDeletionRequest> = [
+    {
+      title: '词条',
+      dataIndex: 'title',
+      width: '24%',
+      render: (_, item) => (
+        <Button
+          type="link"
+          onClick={async () => {
+            try {
+              const entry = await historyApi.getEntry(item.entry_id);
+              modal.info({
+                title: entry.title,
+                width: 800,
+                content: (
+                  <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+                    <HistoryContent content={entry.content} />
+                  </div>
+                ),
+              });
+            } catch (error) {
+              message.error(error instanceof Error ? error.message : '词条加载失败');
+            }
+          }}
+        >
+          {item.title}
+        </Button>
+      ),
+    },
+    {
+      title: '删除原因',
+      render: (_, item) => <DeletionReasonPreview reason={item.reason} />,
+    },
+    { title: '申请时间', width: 120, render: (_, item) => formatDate(item.created_at) },
+    {
+      title: '操作',
+      width: 144,
+      render: (_, item) => (
+        <Space size={16}>
+          <Button danger type="link" onClick={() => reviewDeletion(item, 'approve')}>
+            同意
+          </Button>
+          <Button type="link" onClick={() => reviewDeletion(item, 'reject')}>
+            驳回
+          </Button>
+        </Space>
+      ),
+    },
+  ];
+
   const columns: ColumnsType<HistoryContribution> = [
     { title: '词条', dataIndex: 'title' },
     {
@@ -130,6 +233,17 @@ export function HistoryReviewPage() {
           columns={columns}
           dataSource={items}
           locale={{ emptyText: <Empty description="暂无待审投稿" /> }}
+        />
+        <PageHeader title="词条删除申请" />
+        <Table
+          rowKey="id"
+          loading={loading}
+          columns={deletionColumns}
+          className="history-review__deletion-table"
+          tableLayout="fixed"
+          dataSource={deletions}
+          locale={{ emptyText: <Empty description="暂无待审删除申请" /> }}
+          scroll={{ x: 680 }}
         />
       </section>
     );

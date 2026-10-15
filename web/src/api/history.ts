@@ -6,6 +6,7 @@ import type {
   HistoryAttachment,
   HistoryReviewAction,
   HistoryEntry,
+  HistoryDeletionRequest,
   UploadHistoryAttachmentPayload,
   UpdateHistoryEntryPayload,
 } from '../types/history';
@@ -54,6 +55,32 @@ export const historyApi = {
   },
   updateEntry(id: number, payload: UpdateHistoryEntryPayload) {
     return request<HistoryEntry>({ method: 'PUT', url: `/history/entries/${id}`, data: payload });
+  },
+  deleteEntry(id: number) {
+    return request<{ deleted: boolean }>({ method: 'DELETE', url: `/history/entries/${id}` });
+  },
+  requestEntryDeletion(id: number, reason: string) {
+    return request<HistoryDeletionRequest>({
+      method: 'POST',
+      url: `/history/entries/${id}/deletion-requests`,
+      data: { reason },
+    });
+  },
+  listMyDeletionRequests() {
+    return request<HistoryDeletionRequest[]>({
+      method: 'GET',
+      url: '/history/deletion-requests/me',
+    });
+  },
+  listPendingDeletions() {
+    return request<HistoryDeletionRequest[]>({ method: 'GET', url: '/history/deletion-requests' });
+  },
+  reviewEntryDeletion(id: number, action: 'approve' | 'reject', review_comment = '') {
+    return request<HistoryDeletionRequest>({
+      method: 'POST',
+      url: `/history/deletion-requests/${id}/review`,
+      data: { action, review_comment },
+    });
   },
   submit(id: number) {
     return request<HistoryContribution>({

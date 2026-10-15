@@ -20,12 +20,17 @@ func NewHistoryHandler(history *service.HistoryService) *HistoryHandler {
 }
 
 func (h *HistoryHandler) ListEntries(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	var req dto.HistoryEntryListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 		return
 	}
-	result, err := h.history.ListEntries(c.Request.Context(), req.Keyword)
+	result, err := h.history.ListEntries(c.Request.Context(), *access, req.Keyword)
 	if err != nil {
 		h.writeError(c, err)
 		return
@@ -34,11 +39,16 @@ func (h *HistoryHandler) ListEntries(c *gin.Context) {
 }
 
 func (h *HistoryHandler) GetEntry(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
 	id, ok := historyID(c, "id")
 	if !ok {
 		return
 	}
-	result, err := h.history.GetEntry(c.Request.Context(), id)
+	result, err := h.history.GetEntry(c.Request.Context(), *access, id)
 	if err != nil {
 		h.writeError(c, err)
 		return
@@ -67,6 +77,23 @@ func (h *HistoryHandler) UpdateEntry(c *gin.Context) {
 		return
 	}
 	response.Success(c, result)
+}
+
+func (h *HistoryHandler) DeleteEntry(c *gin.Context) {
+	access, ok := middleware.CurrentAccessContext(c)
+	if !ok {
+		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
+		return
+	}
+	id, ok := historyID(c, "id")
+	if !ok {
+		return
+	}
+	if err := h.history.DeleteEntry(c.Request.Context(), *access, id); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, gin.H{"deleted": true})
 }
 
 func (h *HistoryHandler) CreateDraft(c *gin.Context) {

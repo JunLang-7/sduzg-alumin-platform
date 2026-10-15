@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { HistoryContribution, HistoryEntry } from '../../types/history';
 import { loadContributionPreview } from './contributionPreview';
+import { ApiError } from '../../api/http';
 
 const contribution: HistoryContribution = {
   id: 7,
@@ -68,6 +69,25 @@ describe('contribution preview', () => {
       getEntry: vi.fn().mockRejectedValue(new Error('正文加载失败')),
     };
     await expect(loadContributionPreview(7, api)).rejects.toThrow('正文加载失败');
+  });
+
+  it('preserves access to the submitted body after the formal entry is deleted', async () => {
+    const api = {
+      getContribution: vi.fn().mockResolvedValue(contribution),
+      getEntry: vi.fn().mockRejectedValue(new ApiError('院史内容不存在', 40400, 404)),
+    };
+    expect(await loadContributionPreview(7, api)).toEqual({
+      contribution,
+      content: contribution.content,
+    });
+  });
+
+  it.each([403, 500])('does not mask a %s entry error as a deleted entry', async (status) => {
+    const api = {
+      getContribution: vi.fn().mockResolvedValue(contribution),
+      getEntry: vi.fn().mockRejectedValue(new ApiError('请求失败', status, status)),
+    };
+    await expect(loadContributionPreview(7, api)).rejects.toThrow('请求失败');
   });
 
   it('does not fetch a published entry when the private contribution request is denied', async () => {

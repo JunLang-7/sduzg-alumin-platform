@@ -1,6 +1,8 @@
 export type HistoryContributionStatus = 'draft' | 'pending' | 'returned' | 'approved' | 'rejected';
 
 export interface HistoryEntry {
+  can_delete?: boolean;
+  can_request_deletion?: boolean;
   id: number;
   title: string;
   summary: string;
@@ -37,6 +39,18 @@ export interface HistoryAttachment {
 }
 
 export type HistoryReviewAction = 'approve' | 'return' | 'reject';
+
+export interface HistoryDeletionRequest {
+  id: number;
+  entry_id: number;
+  title: string;
+  requested_by: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  review_comment: string;
+  reviewed_at?: string;
+  created_at: string;
+}
 
 export interface CreateHistoryContributionPayload {
   entry_id?: number;
