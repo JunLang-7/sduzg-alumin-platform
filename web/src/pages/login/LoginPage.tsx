@@ -5,16 +5,17 @@ import {
   MobileOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { Button, Form, Input, Modal, Space, Tabs, Typography, message } from 'antd';
+import { Button, Form, Input, Modal, Tabs, Typography, message } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { authApi } from '../../api/auth';
 import { cacheAccessToken } from '../../api/http';
+import logoUrl from '../../assets/pspa-logo.png';
 import { useAuthStore } from '../../store/authStore';
 import { getDefaultPath } from '../../utils/permissions';
 import type { CurrentUser, LoginRequest, SetupPasswordRequest } from '../../types/auth';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Paragraph } = Typography;
 
 interface LocationState {
   from?: {
@@ -301,23 +302,9 @@ export function LoginPage() {
   return (
     <main className="login-page">
       <section className="login-brand">
-        <span className="login-badge">MPA 试点</span>
-        <Title>山大政管学院校友平台</Title>
-        <Paragraph>面向 MPA 校友档案维护、校友查询与学院管理的数据工作台。</Paragraph>
-        <Space className="login-kpis" size={12} wrap>
-          <span>
-            <strong>统一入口</strong>
-            <Text>校友 / 管理员</Text>
-          </span>
-          <span>
-            <strong>资料维护</strong>
-            <Text>信息可追踪</Text>
-          </span>
-          <span>
-            <strong>权限分层</strong>
-            <Text>角色边界清晰</Text>
-          </span>
-        </Space>
+        <img className="login-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
+        <Title>政管全球校友数字化平台和院史在线平台</Title>
+        <Paragraph>面向政管全球校友的档案维护、校友查询、院史共编与学院管理数据工作台。</Paragraph>
       </section>
       <section className="login-panel" aria-label="登录表单">
         <div className="login-card">

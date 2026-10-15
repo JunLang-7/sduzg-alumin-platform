@@ -26,6 +26,10 @@ export function PublicHomePage() {
     navigate(user ? getDefaultPath(user.role) : '/');
   };
 
+  const openHistoryService = () => {
+    navigate(user ? '/history' : '/login');
+  };
+
   const openAlumniService = () => {
     if (hasRole(user, 'admin')) {
       navigate('/alumni');
@@ -43,7 +47,7 @@ export function PublicHomePage() {
             <img className="public-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
             <span className="public-brand-text" aria-hidden="true">
               <strong>山东大学</strong>
-              <span>MPA校友网</span>
+              <span>政管校友网</span>
             </span>
           </button>
           <div className="public-tools">
@@ -75,9 +79,6 @@ export function PublicHomePage() {
           <button type="button" onClick={openAlumniService}>
             校友服务
           </button>
-          <button type="button" onClick={openUserEntry}>
-            {user ? '进入平台' : '登录入口'}
-          </button>
         </nav>
       </header>
 
@@ -85,20 +86,13 @@ export function PublicHomePage() {
         <div className="hero-inner">
           <span className="hero-kicker">山东大学政治学与公共管理学院</span>
           <Title>培新助力 卓越发展</Title>
-          <Paragraph>MPA 校友数据管理与查询平台</Paragraph>
+          <Paragraph>政管全球校友数字化平台和院史在线平台</Paragraph>
           <Space size={12} className="hero-actions">
-            <Button type="primary" size="large" onClick={openUserEntry}>
-              {user ? '进入校友平台' : '校友登录'}
-            </Button>
             <Button size="large" onClick={openAlumniService}>
               校友服务
             </Button>
           </Space>
           <div className="hero-highlights">
-            <span>
-              <strong>一期试点</strong>
-              <em>MPA 校友</em>
-            </span>
             <span>
               <strong>档案维护</strong>
               <em>基础信息与履历</em>
@@ -107,9 +101,12 @@ export function PublicHomePage() {
               <strong>数据看板</strong>
               <em>规模与分布统计</em>
             </span>
+            <span>
+              <strong>院史共编</strong>
+              <em>学院历史共建</em>
+            </span>
           </div>
         </div>
-        <div className="hero-seal">MPA</div>
         <div className="hero-controls" aria-hidden="true">
           <span>◀</span>
           <span>▶</span>
@@ -127,8 +124,8 @@ export function PublicHomePage() {
               <div className="news-list">
                 <article>
                   <span>平台建设</span>
-                  <h3>MPA 校友平台一期试点启动</h3>
-                  <p>面向 MPA 校友提供资料维护、校友查询和管理端数据服务。</p>
+                  <h3>政管全球校友数字化平台和院史在线平台启动仪式</h3>
+                  <p>面向政管校友提供资料维护、校友查询、院史共编和管理端数据服务。</p>
                 </article>
                 <article>
                   <span>校友服务</span>
@@ -148,8 +145,8 @@ export function PublicHomePage() {
                 完善本人校友档案
                 <ArrowRightOutlined />
               </button>
-              <button type="button" className="notice-link" onClick={openAlumniService}>
-                查询 MPA 校友名录
+              <button type="button" className="notice-link" onClick={openHistoryService}>
+                参与院史共编
                 <ArrowRightOutlined />
               </button>
               {user && hasRole(user, 'admin') ? (

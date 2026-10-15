@@ -144,7 +144,7 @@ export function AppLayout() {
             <img className="site-logo" src={logoUrl} alt="山东大学政治学与公共管理学院" />
             <span className="site-title" aria-hidden="true">
               <strong>山东大学</strong>
-              <span>MPA校友网</span>
+              <span>政管校友网</span>
               <em>政管学院校友服务平台</em>
             </span>
           </button>

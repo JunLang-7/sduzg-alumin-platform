@@ -418,17 +418,6 @@ button {
   color: #fff !important;
 }
 
-.hero-seal {
-  position: absolute;
-  top: 44%;
-  left: 50%;
-  color: rgba(255, 217, 155, 0.08);
-  font-size: min(24vw, 300px);
-  font-weight: 900;
-  transform: translate(-50%, -50%);
-  user-select: none;
-}
-
 .hero-controls {
   position: absolute;
   right: 38px;
@@ -541,6 +530,7 @@ button {
 }
 
 .login-brand {
+  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -557,6 +547,13 @@ button {
     cover,
     100% auto;
   color: #fff;
+}
+
+.login-logo {
+  position: absolute;
+  top: 56px;
+  left: clamp(32px, 7vw, 88px);
+  width: min(430px, 52vw);
 }
 
 .login-brand .ant-typography {
@@ -579,40 +576,6 @@ button {
   color: rgba(255, 246, 226, 0.82);
   font-size: 18px;
   line-height: 1.8;
-}
-
-.login-badge {
-  width: max-content;
-  border: 1px solid rgba(255, 255, 255, 0.38);
-  border-radius: 8px;
-  padding: 7px 14px;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.login-kpis {
-  margin-top: 18px;
-}
-
-.login-kpis span {
-  display: grid;
-  min-width: 138px;
-  gap: 4px;
-  border: 1px solid rgba(255, 236, 201, 0.18);
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.login-kpis strong {
-  color: #fff7df;
-  font-size: 16px;
-}
-
-.login-kpis .ant-typography {
-  color: rgba(255, 248, 223, 0.72);
-  font-size: 13px;
 }
 
 .login-panel {
@@ -2892,6 +2855,12 @@ button {
   .login-brand {
     min-height: 260px;
     padding: 32px 24px;
+  }
+
+  .login-logo {
+    position: static;
+    align-self: flex-start;
+    width: min(260px, 68vw);
   }
 
   .login-panel {

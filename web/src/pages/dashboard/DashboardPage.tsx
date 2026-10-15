@@ -778,7 +778,7 @@ export function DashboardPage() {
         </div>
         <div className="dashboard-screen-title">
           <span>山东大学政治学与公共管理学院</span>
-          <h1>MPA 校友数据驾驶舱</h1>
+          <h1>全球校友数据驾驶舱</h1>
           <p>校友规模、行业去向、年级结构与资料完整性展示</p>
         </div>
         <div className="dashboard-screen-tools">
