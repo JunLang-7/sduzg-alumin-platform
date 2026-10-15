@@ -108,6 +108,7 @@ export function HistoryWikiPage() {
     return () => window.removeEventListener('resize', syncDirectoryDrawer);
   }, []);
   const toc = useMemo(() => extractToc(active?.content ?? ''), [active?.content]);
+  const tocBaseLevel = toc.length ? Math.min(...toc.map((item) => item.level)) : 1;
   useEffect(() => {
     setActiveTocID(toc[0]?.id ?? '');
     if (!toc.length) return;
@@ -273,7 +274,8 @@ export function HistoryWikiPage() {
               <nav aria-label="本页目录">
                 {toc.map((item) => (
                   <button
-                    className={`${item.level === 3 ? 'is-subsection' : ''} ${item.id === activeTocID ? 'active' : ''}`}
+                    className={`${item.level > tocBaseLevel ? 'is-subsection' : ''} ${item.id === activeTocID ? 'active' : ''}`}
+                    style={{ paddingLeft: 10 + (item.level - tocBaseLevel) * 10 }}
                     key={item.id}
                     onClick={() => scrollToSection(item)}
                     type="button"
@@ -448,7 +450,9 @@ export function HistoryWikiPage() {
         onCancel={() => setContentDetailOpen(false)}
         width={760}
       >
-        <p className="history-page__contribution-content">{contributionPreview?.content}</p>
+        <div className="history-page__contribution-content">
+          <HistoryContent content={contributionPreview?.content ?? ''} />
+        </div>
       </Modal>
       <Modal
         open={Boolean(preview)}

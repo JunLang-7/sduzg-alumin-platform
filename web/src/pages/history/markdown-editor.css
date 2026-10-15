@@ -1,0 +1,76 @@
+.markdown-editor {
+  min-width: 0;
+  border: 1px solid #d9d9d9;
+  border-radius: 7px;
+  background: #fff;
+  overflow: hidden;
+}
+.markdown-editor:focus-within {
+  border-color: var(--sdu-red);
+}
+.markdown-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  border-bottom: 1px solid #eadfd8;
+  padding: 4px 8px 0;
+  background: #faf8f6;
+}
+.markdown-editor__tabs {
+  display: flex;
+  gap: 4px;
+  align-self: stretch;
+}
+.markdown-editor__tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 14px;
+  background: transparent;
+  color: #786c66;
+  font: inherit;
+  cursor: pointer;
+}
+.markdown-editor__tabs button[aria-selected='true'] {
+  border-bottom-color: var(--sdu-red);
+  color: var(--sdu-red);
+  font-weight: 600;
+}
+.markdown-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding-bottom: 4px;
+}
+.markdown-editor__toolbar .ant-btn {
+  min-width: 28px;
+  color: #6f625d;
+}
+.markdown-editor textarea.ant-input {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  padding: 14px;
+  box-shadow: none;
+  line-height: 1.8;
+}
+.markdown-editor__preview {
+  min-height: 300px;
+  max-height: 600px;
+  padding: 14px 20px;
+  overflow: auto;
+}
+.ant-form-item-has-error .markdown-editor {
+  border-color: #ff4d4f;
+}
+@media (max-width: 640px) {
+  .markdown-editor__toolbar {
+    width: 100%;
+    gap: 4px;
+  }
+  .markdown-editor__toolbar .ant-btn {
+    min-width: 32px;
+    min-height: 32px;
+  }
+}

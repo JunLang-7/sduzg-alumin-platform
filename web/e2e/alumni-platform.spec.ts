@@ -109,7 +109,55 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
   }
 });
 
+test('正文工具栏、快捷键和预览可用于编辑 Markdown', async ({ page }) => {
+  await login(page, '13800001111');
+  await page.goto('/history/editor?mode=create');
+  const editor = page.locator('.history-editor');
+  const textarea = editor.getByLabel('正文', { exact: true });
+  await expect(textarea).toHaveAttribute('placeholder', '请输入正文');
+  await expect(editor.locator('.markdown-editor__hint')).toHaveCount(0);
+  await expect(editor.locator('.ant-form-item-extra')).toHaveCount(0);
+  await textarea.fill('学科简介');
+  await textarea.press('ControlOrMeta+a');
+  await editor.getByRole('button', { name: '加粗', exact: true }).click();
+  await expect(textarea).toHaveValue('**学科简介**');
+  await textarea.press('ControlOrMeta+i');
+  await expect(textarea).toHaveValue('***学科简介***');
+  await editor.getByRole('button', { name: '插入标题' }).click();
+  await page.getByRole('menuitem', { name: '四级标题 H4' }).click();
+  await expect(textarea).toHaveValue('#### ***学科简介***');
+  await editor.getByRole('tab', { name: '预览', exact: true }).click();
+  const preview = editor.getByRole('tabpanel', { name: '预览', exact: true });
+  await expect(preview.getByRole('heading', { name: '学科简介', level: 4 })).toBeVisible();
+  await expect(preview.locator('strong')).toHaveText('学科简介');
+  await expect(preview.locator('em')).toHaveText('学科简介');
+  await editor.getByRole('tab', { name: '编辑', exact: true }).click();
+  await textarea.focus();
+  await textarea.press('ControlOrMeta+Alt+6');
+  await expect(textarea).toHaveValue('###### ***学科简介***');
+  await textarea.fill('学院网站');
+  await textarea.press('ControlOrMeta+a');
+  await textarea.press('ControlOrMeta+k');
+  await expect(textarea).toHaveValue('[学院网站](https://example.com)');
+  await textarea.pressSequentially('https://www.sdu.edu.cn');
+  await editor.getByRole('tab', { name: '预览', exact: true }).click();
+  await expect(preview.getByRole('link', { name: '学院网站' })).toHaveAttribute(
+    'href',
+    'https://www.sdu.edu.cn',
+  );
+  await editor.getByRole('tab', { name: '编辑', exact: true }).click();
+  await page.screenshot({ path: 'test-results/markdown-editor-desktop.png', fullPage: true });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(editor.getByRole('button', { name: '任务列表', exact: true })).toBeVisible();
+  const fits = await editor
+    .locator('.markdown-editor')
+    .evaluate((element) => element.scrollWidth <= element.clientWidth);
+  expect(fits).toBe(true);
+  await page.screenshot({ path: 'test-results/markdown-editor-mobile.png', fullPage: true });
+});
+
 test('校友上传院史资料，管理员审核后可阅读正式词条', async ({ page }) => {
+  test.setTimeout(90_000);
   const title = `E2E院史词条${Date.now()}`;
 
   await login(page, '13800001111');
@@ -120,7 +168,7 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
 
   const editor = page.locator('.history-editor');
   await editor.getByLabel('词条标题').fill(title);
-  await editor.getByLabel('正文').fill('用于端到端验证的院史投稿正文');
+  await editor.getByLabel('正文', { exact: true }).fill('用于端到端验证的院史投稿正文');
   await editor.getByLabel('资料来源').fill('E2E 测试资料来源');
   await editor.locator('input[type="file"]').setInputFiles({
     name: 'history-e2e.pdf',
@@ -145,14 +193,18 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.locator('.ant-modal-confirm-btns .ant-btn-primary').click();
   await expect(page.getByText('处理成功')).toBeVisible();
 
-  const revisedBody = '管理员修改后应在投稿预览中同步显示的新正文';
+  const headingTitles = ['一级概况', '二级沿革', '三级学科', '四级方向', '五级成果', '六级资料'];
+  const revisedBody = [
+    '管理员修改后应在投稿预览中同步显示的新正文',
+    ...headingTitles.map((heading, index) => `${'#'.repeat(index + 1)} ${heading}\n章节正文`),
+  ].join('\n');
   await page.goto('/history');
   const adminSearch = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
   await adminSearch.fill(title);
   await adminSearch.press('Enter');
-  await expect(page.locator('.history-page__content h2')).toHaveText(title);
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(title);
   await page.getByRole('button', { name: '编辑词条' }).click();
-  await page.locator('.history-editor').getByLabel('正文').fill(revisedBody);
+  await page.locator('.history-editor').getByLabel('正文', { exact: true }).fill(revisedBody);
   await page.getByRole('button', { name: '保存更改' }).click();
   await expect(page).toHaveURL(/\/history$/);
 
@@ -163,6 +215,19 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await search.fill(title);
   await search.press('Enter');
   await expect(page.getByText(title).first()).toBeVisible();
+  const toc = page.getByRole('navigation', { name: '本页目录' });
+  for (const [index, heading] of headingTitles.entries()) {
+    const section = page.locator('.history-page__body').getByRole('heading', {
+      name: heading,
+      level: index + 1,
+      exact: true,
+    });
+    await expect(section).toHaveAttribute('id', heading);
+    const link = toc.getByRole('button', { name: heading, exact: true });
+    await expect(link).toHaveCSS('padding-left', `${10 + index * 10}px`);
+    await link.click();
+    await expect(section).toBeInViewport();
+  }
   await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
   const details = page.getByRole('dialog', { name: '投稿详情' });
   await expect(details.getByText('当前正式正文', { exact: true })).toHaveCount(0);
@@ -171,7 +236,14 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
     revisedBody,
   );
   await details.getByRole('button', { name: '查看详情' }).click();
-  await expect(
-    page.getByRole('dialog', { name: '正文详情', exact: true }).getByText(revisedBody),
-  ).toBeVisible();
+  const fullContent = page.getByRole('dialog', { name: '正文详情', exact: true });
+  await expect(fullContent.getByText('管理员修改后应在投稿预览中同步显示的新正文')).toBeVisible();
+  for (const [index, heading] of headingTitles.entries()) {
+    await expect(
+      fullContent.getByRole('heading', { name: heading, level: index + 1 }),
+    ).toBeVisible();
+  }
+  await fullContent.locator('.ant-modal-close').click();
+  await details.locator('.ant-modal-close').click();
+  await expect(page.getByRole('button', { name: '删除词条', exact: true })).toHaveCount(0);
 });

@@ -148,8 +148,8 @@
   font-size: 14px;
   line-height: 20px;
   text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .history-page__toc button:hover,
 .history-page__toc button.active {
@@ -157,7 +157,6 @@
   color: var(--sdu-red);
 }
 .history-page__toc button.is-subsection {
-  padding-left: 20px;
   font-size: 13px;
 }
 .history-page__mobile-directory-trigger {
@@ -323,27 +322,20 @@
   padding: 22px 38px;
   background: #fffdfa;
 }
-.history-page__content article h2 {
+.history-page__content article > h2 {
   margin: 12px 0;
   font-family: STSong, serif;
   font-size: 36px;
 }
-.history-page__content article h3 {
+.history-page__content article > h3 {
   margin-top: 34px;
   border-left: 4px solid #a1261e;
   padding-left: 10px;
 }
-.history-page__content article h3[id],
-.history-page__content article h4[id] {
-  scroll-margin-top: 24px;
-}
-.history-page__content article h4 {
-  margin: 24px 0 10px;
-  color: #4d3a34;
-  font-size: 18px;
-}
 .history-page__meta {
   display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
   align-items: center;
   border-block: 1px solid #eadfd8;
   justify-content: space-between;
@@ -355,15 +347,6 @@
   margin-top: 14px;
   color: #8b501d;
   font-size: 14px;
-}
-.history-page__body {
-  font-family: STSong, serif;
-  font-size: 17px;
-  line-height: 2;
-}
-.history-page__body p {
-  margin: 0 0 16px;
-  white-space: pre-wrap;
 }
 @media (max-width: 1180px) {
   .history-page__header {

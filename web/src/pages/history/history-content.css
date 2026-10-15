@@ -1,0 +1,105 @@
+.history-page__body {
+  min-width: 0;
+  font-family: STSong, serif;
+  font-size: 17px;
+  line-height: 2;
+  overflow-wrap: anywhere;
+}
+.history-page__body p {
+  margin: 0 0 16px;
+  white-space: pre-wrap;
+}
+.history-page__body .history-page__heading {
+  margin: 24px 0 10px;
+  border: 0;
+  padding: 0;
+  color: #4d3a34;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  scroll-margin-top: 24px;
+}
+.history-page__body .history-page__heading[data-level='1'] {
+  margin-top: 34px;
+  font-size: 24px;
+}
+.history-page__body .history-page__heading[data-level='2'] {
+  margin-top: 34px;
+  font-size: 20px;
+}
+.history-page__body .history-page__heading[data-level='4'] {
+  font-size: 17px;
+}
+.history-page__body .history-page__heading[data-level='5'] {
+  font-size: 16px;
+}
+.history-page__body .history-page__heading[data-level='6'] {
+  font-size: 15px;
+}
+.history-page__body blockquote {
+  margin: 16px 0;
+  border-left: 3px solid #d6c8be;
+  padding: 4px 16px;
+  background: #faf7f4;
+  color: #786c66;
+}
+.history-page__body blockquote p:last-child {
+  margin-bottom: 0;
+}
+.history-page__body pre {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 5px;
+  padding: 14px;
+  background: #f5f2ef;
+  line-height: 1.6;
+}
+.history-page__body code {
+  border-radius: 3px;
+  padding: 2px 4px;
+  background: #f5f2ef;
+  font-family: Consolas, monospace;
+  font-size: 0.85em;
+}
+.history-page__body pre code {
+  padding: 0;
+  white-space: pre;
+}
+.history-page__body ul,
+.history-page__body ol {
+  padding-left: 24px;
+}
+.history-page__body li > p {
+  margin-bottom: 4px;
+}
+.history-page__body .contains-task-list {
+  padding-left: 4px;
+  list-style: none;
+}
+.history-page__body .task-list-item input {
+  margin-right: 8px;
+}
+.history-content__table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin-bottom: 16px;
+}
+.history-content__table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+}
+.history-content__table th,
+.history-content__table td {
+  border: 1px solid #eadfd8;
+  padding: 6px 12px;
+}
+.history-content__table th {
+  background: #faf7f4;
+}
+.history-page__body img {
+  max-width: 100%;
+  height: auto;
+}

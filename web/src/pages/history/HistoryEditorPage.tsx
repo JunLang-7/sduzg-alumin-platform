@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
 import type { HistoryAttachment, HistoryContribution, HistoryEntry } from '../../types/history';
+import { MarkdownEditor } from './MarkdownEditor';
 import './history-editor.css';
 
 const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
@@ -222,7 +223,7 @@ export function HistoryEditorPage() {
               <Input />
             </Form.Item>
             <Form.Item name="content" label="正文" rules={[{ required: true }]}>
-              <Input.TextArea rows={12} />
+              <MarkdownEditor />
             </Form.Item>
             <Form.Item name="source_note" label="资料来源" rules={[{ required: true }]}>
               <Input.TextArea rows={3} placeholder="请注明资料出处" />
