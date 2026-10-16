@@ -56,7 +56,7 @@
 角色与数据域：
 
 - 游客（未登录）只能调用上列公开接口，不可读取校友个人资料或院史内容。
-- 校友（`alumni`）的产品入口为本人资料维护与院史共编，不提供校友通讯录或档案文件管理入口。当前后端通用查询接口的实际访问范围另见[查询说明](#查询参数与返回字段)，不能把前端入口限制视为 API 授权。
+- 校友（`alumni`）只能维护本人资料、参与院史共编，不能调用管理员通用档案查询或档案文件接口。本人资料使用 `/alumni/me`，不能通过 `/alumni/:id` 查询，即使 ID 为本人档案。
 - 管理员（`admin`）按已分配的有效数据域维护校友档案、查询统计及审计记录；超级管理员（`super_admin`）拥有全部数据域与功能权限，并独占管理员账号管理接口。
 - 数据域编码：`undergraduate`（本科生）、`academic_graduate`（学术学位研究生）、`mpa`（MPA 专业学位研究生）。不要硬编码数据库 ID；当前授权域取自 `GET /auth/me` 的 `domains`，超级管理员可通过 `GET /super-admin/data-domains` 获取有效域。
 - 功能权限 `alumni.sensitive.read` 控制手机号、邮箱、工作单位、职务、通讯地址的读取及管理员写入；无权限的列表/详情对应字段为 `null`，导出列为空，也不能用敏感字段筛选。本人资料读取不屏蔽本人字段。
@@ -171,8 +171,8 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 
 | 方法   | 路径                | 权限                      | `data` / 说明                                                |
 | ------ | ------------------- | ------------------------- | ------------------------------------------------------------ |
-| GET    | `/alumni`           | 已登录，实际范围见下文    | 校友分页列表                                                 |
-| GET    | `/alumni/:id`       | 已登录，实际范围见下文    | `AlumniDetail`                                               |
+| GET    | `/alumni`           | 管理员/超级管理员         | 校友分页列表                                                 |
+| GET    | `/alumni/:id`       | 数据域内管理员/超级管理员 | `AlumniDetail`                                               |
 | POST   | `/admin/alumni`     | 管理员/超级管理员         | 新增档案，HTTP 201，返回详情                                 |
 | PUT    | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 修改档案，返回详情                                           |
 | DELETE | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 软删除档案，返回 `{ deleted: true }`，并尽力级联清理档案文件 |
@@ -192,7 +192,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 
 普通管理员不传 `data_domain_id` 时查询其全部授权域，无授权域不能查询；单条详情越域或已删除均返回 404。超级管理员默认全域。列表按 ID 降序排列。
 
-> 实现边界：当前 `GET /alumni` 和 `GET /alumni/:id` 未设置管理员角色门禁，校友令牌也可调用并读取非敏感字段（本人详情还可读取本人敏感字段）。这与“校友端仅本人资料与院史共编”的产品边界存在差异；本文如实记录现状，不代表新增通讯录能力，也不宣称后端已限制校友只能查本人。
+> 这两个通用查询接口均由后端校验管理员角色：未登录返回 401，校友令牌返回 403，且不返回档案数据；校友请求本人 ID 也不会绕过门禁。本人资料入口 `/alumni/me` 不受该管理员门禁影响。
 
 列表项字段：`id`、`data_domain_id`、`name`、`grade`、`class_name`、`cohort`、`counselor`、`mentor`、`major`、`training_mode`、`industry`、`work_unit`、`position`、`gender`、`mobile`、`email`、`updated_at`。`AlumniDetail` 在此基础上增加 `mailing_address`、`status`、`created_at`。可选字符串可为 `null`；`remark` 虽可写入，但当前详情 DTO 不返回。
 
