@@ -96,6 +96,17 @@ jobs:
       - run: go vet ./...
       - run: go test -race -count=1 ./...
       - run: go build ./cmd/api
+      - name: Verify generated interface docs are up to date
+        working-directory: .
+        run: |
+          make swagger-tool
+          make swagger
+          if [ -n "$(git status --porcelain -- server/internal/docs)" ];
+          then
+            git --no-pager diff --stat -- server/internal/docs
+            echo '接口注解与生成结果不一致，请在仓库根目录运行 make swagger 并提交。' >&2
+            exit 1
+          fi
 
   web:
     name: Web quality
