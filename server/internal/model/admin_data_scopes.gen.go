@@ -10,10 +10,10 @@ import (
 
 const TableNameAdminDataScope = "admin_data_scopes"
 
-// AdminDataScope administrator alumni data scopes
+// AdminDataScope 管理员校友数据范围
 type AdminDataScope struct {
-	UserID       uint64    `gorm:"column:user_id;type:bigint unsigned;primaryKey;comment:administrator user id" json:"user_id"`                                                                         // administrator user id
-	DataDomainID uint64    `gorm:"column:data_domain_id;type:bigint unsigned;primaryKey;index:fk_admin_data_scopes_data_domain,priority:1;comment:allowed alumni data domain id" json:"data_domain_id"` // allowed alumni data domain id
+	UserID       uint64    `gorm:"column:user_id;type:bigint unsigned;primaryKey;comment:管理员用户 ID" json:"user_id"`                                                                      // 管理员用户 ID
+	DataDomainID uint64    `gorm:"column:data_domain_id;type:bigint unsigned;primaryKey;index:fk_admin_data_scopes_data_domain,priority:1;comment:允许访问的校友数据域 ID" json:"data_domain_id"` // 允许访问的校友数据域 ID
 	CreatedAt    time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 

@@ -68,6 +68,16 @@ jobs:
           PR_AUTHOR_TYPE: ${{ github.event.pull_request.user.type }}
         run: bash .github/scripts/check-linked-issue.sh
 
+  wiki-sync:
+    name: Wiki sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Test wiki synchronization without remote access
+        run: bash .github/scripts/sync-wiki.test.sh
+
   backend:
     name: Backend quality
     runs-on: ubuntu-latest

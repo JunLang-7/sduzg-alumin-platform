@@ -125,12 +125,12 @@ func New(deps Dependencies) *gin.Engine {
 		api.POST("/auth/setup-password", authHandler.SetupPassword)
 		api.POST("/auth/verify-code/send", authHandler.SendVerifyCode)
 
-		// 校友查询与更新
-		api.GET("/alumni", alumniHandler.List)
+		// 通用档案查询仅供管理员使用；校友通过 /alumni/me 维护本人资料。
+		api.GET("/alumni", middleware.RequireRoles(common.RoleAdmin, common.RoleSuperAdmin), alumniHandler.List)
 		api.GET("/alumni/me", alumniHandler.Me)
 		api.PUT("/alumni/me", alumniHandler.UpdateMe)
 		api.PUT("/alumni/me/contact", authHandler.UpdateContact)
-		api.GET("/alumni/:id", alumniHandler.Detail)
+		api.GET("/alumni/:id", middleware.RequireRoles(common.RoleAdmin, common.RoleSuperAdmin), alumniHandler.Detail)
 
 		// 院史共编（所有接口均需已登录；投稿与审核均由服务层校验角色和数据域）
 		history := api.Group("/history")
@@ -138,6 +138,11 @@ func New(deps Dependencies) *gin.Engine {
 			history.GET("/entries", historyHandler.ListEntries)
 			history.GET("/entries/:id", historyHandler.GetEntry)
 			history.PUT("/entries/:id", historyHandler.UpdateEntry)
+			history.DELETE("/entries/:id", historyHandler.DeleteEntry)
+			history.POST("/entries/:id/deletion-requests", historyHandler.RequestEntryDeletion)
+			history.GET("/deletion-requests/me", historyHandler.ListMyDeletionRequests)
+			history.GET("/deletion-requests", historyHandler.ListPendingDeletionRequests)
+			history.POST("/deletion-requests/:id/review", historyHandler.ReviewEntryDeletion)
 			history.GET("/contributions/me", historyHandler.ListMine)
 			history.GET("/contributions/:id", historyHandler.GetContribution)
 			history.POST("/contributions", historyHandler.CreateDraft)

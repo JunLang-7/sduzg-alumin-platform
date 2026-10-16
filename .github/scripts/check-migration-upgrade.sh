@@ -69,7 +69,12 @@ resolve_base_tag() {
     git describe --tags --abbrev=0 'HEAD^'
     return 0
   fi
-  git tag --sort=v:refname | head -n 1 || true
+  local first_tag=""
+  while IFS= read -r tag; do
+    first_tag="$tag"
+    break
+  done < <(git tag --sort=v:refname)
+  printf '%s' "$first_tag"
 }
 
 base_tag="$(resolve_base_tag)"
@@ -115,10 +120,44 @@ for name in "${base_files[@]}"; do
   [ -f "$migrations_dir/$name" ] || fail "旧迁移文件不存在：$name"
   echo "  应用旧迁移：$name"
   mysql_db < "$migrations_dir/$name" || fail "应用旧迁移失败：$name"
+  if [ "$(query "SELECT COUNT(*) FROM information_schema.tables
+    WHERE table_schema = DATABASE() AND table_name = 'schema_migrations';")" = "1" ]; then
+    mysql_db -e "INSERT IGNORE INTO schema_migrations (name) VALUES ('$name');" ||
+      fail "记录旧迁移失败：$name"
+  fi
 done
 
 # 2) 旧 schema 下的样例数据：升级前写入，用于验证回填与数据保留。
-mysql_db <<'SQL' || fail "写入旧数据失败"
+#    基线不含 006（如 v0.3.1）时无 data_domain_id 列，用于验证 006 回填；
+#    基线已含 006（如 v0.4.0 及之后）时 data_domain_id 为必填外键，关联 mpa 写入。
+legacy_has_domain_column="$(query "SELECT COUNT(*) FROM information_schema.columns
+  WHERE table_schema = DATABASE() AND table_name = 'alumni_profiles'
+    AND column_name = 'data_domain_id';")"
+
+if [ "$legacy_has_domain_column" = "1" ]; then
+  mysql_db <<'SQL' || fail "写入旧数据失败"
+SET NAMES utf8mb4;
+
+SET @mpa_domain_id = (SELECT id FROM data_domains WHERE code = 'mpa' LIMIT 1);
+
+INSERT INTO alumni_profiles
+  (data_domain_id, name, grade, class_name, cohort, counselor, mentor, major,
+   training_mode, industry, work_unit, position, mobile, gender)
+VALUES
+  (@mpa_domain_id, '旧卷校友甲', '2018', 'MPA2班', '2018', '王导员', '赵导师', '公共管理',
+   '非全日制', '事业单位', '某某区教育局', '副主任', '13900001111', '女'),
+  (@mpa_domain_id, '旧卷校友乙', '2019', 'MPA3班', '2019', '孙导员', '钱导师', '行政管理',
+   '全日制', '高校', '某某大学', '讲师', '13900002222', '男');
+
+INSERT INTO users (account, password_hash, role, alumni_id, real_name, mobile, status)
+SELECT 'legacy-alumni', users.password_hash, 'alumni', alumni_profiles.id,
+       '旧卷校友甲', '13900001111', 'active'
+FROM users
+JOIN alumni_profiles ON alumni_profiles.name = '旧卷校友甲'
+WHERE users.account = 'admin';
+SQL
+else
+  mysql_db <<'SQL' || fail "写入旧数据失败"
 SET NAMES utf8mb4;
 
 INSERT INTO alumni_profiles
@@ -137,19 +176,33 @@ FROM users
 JOIN alumni_profiles ON alumni_profiles.name = '旧卷校友甲'
 WHERE users.account = 'admin';
 SQL
+fi
 
 profiles_before="$(query "SELECT COUNT(*) FROM alumni_profiles;")"
 echo "  升级前 alumni_profiles 行数：$profiles_before"
 
-# 3) 执行生产同款迁移脚本（migrate.sh 固定读取 /migrations）。
+# 3) 执行生产同款迁移脚本（migrate.sh 默认读取 /migrations，只读根文件系统下回退临时目录）。
+migrations_mount="/migrations"
+cleanup_mount=""
+cleanup() {
+  if [ -n "$cleanup_mount" ]; then
+    rm -rf "$cleanup_mount"
+  fi
+  return 0
+}
+trap cleanup EXIT
+
 prepare_migrations_mount() {
   if mkdir -p /migrations 2> /dev/null && [ -w /migrations ]; then
     rm -f /migrations/*.sql
     cp "$migrations_dir"/*.sql /migrations/
+  elif sudo -n mkdir -p /migrations 2> /dev/null; then
+    sudo -n rm -f /migrations/*.sql
+    sudo -n cp "$migrations_dir"/*.sql /migrations/
   else
-    sudo mkdir -p /migrations
-    sudo rm -f /migrations/*.sql
-    sudo cp "$migrations_dir"/*.sql /migrations/
+    cleanup_mount="$(mktemp -d)"
+    migrations_mount="$cleanup_mount"
+    cp "$migrations_dir"/*.sql "$migrations_mount"/
   fi
 }
 
@@ -158,7 +211,7 @@ prepare_migrations_mount || fail "无法准备 /migrations 目录"
 echo "执行 migrate.sh（旧库升级）"
 MYSQL_HOST="$MYSQL_HOST" MYSQL_PORT="$MYSQL_PORT" \
   MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
-  MYSQL_DATABASE="$MYSQL_DATABASE" \
+  MYSQL_DATABASE="$MYSQL_DATABASE" MIGRATIONS_DIR="$migrations_mount" \
   bash server/scripts/migrate.sh || fail "migrate.sh 升级失败"
 
 # 4) 断言。
@@ -219,7 +272,7 @@ marks_before="$(query "SELECT COUNT(*) FROM schema_migrations;")"
 echo "重复执行 migrate.sh（幂等性）"
 MYSQL_HOST="$MYSQL_HOST" MYSQL_PORT="$MYSQL_PORT" \
   MYSQL_USER="$MYSQL_USER" MYSQL_PASSWORD="$MYSQL_PASSWORD" \
-  MYSQL_DATABASE="$MYSQL_DATABASE" \
+  MYSQL_DATABASE="$MYSQL_DATABASE" MIGRATIONS_DIR="$migrations_mount" \
   bash server/scripts/migrate.sh || fail "migrate.sh 重复执行失败"
 assert_eq "$(query "SELECT COUNT(*) FROM schema_migrations;")" "$marks_before" \
   "重复执行未新增迁移记录"

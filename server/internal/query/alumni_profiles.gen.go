@@ -63,7 +63,7 @@ type alumniProfile struct {
 
 	ALL            field.Asterisk
 	ID             field.Uint64
-	DataDomainID   field.Uint64 // alumni data domain id
+	DataDomainID   field.Uint64 // 校友数据域 ID
 	Name           field.String // name
 	Grade          field.String // grade
 	ClassName      field.String // class

@@ -1,11 +1,11 @@
 .history-review__action-column {
   vertical-align: middle !important;
 }
-.history-review__review-button {
+.history-review__action-column .history-review__review-button {
   display: inline-flex;
   align-items: center;
   height: 22px;
-  padding-block: 0;
+  padding: 0;
   line-height: 22px;
 }
 .history-review__review-button .anticon {
@@ -70,6 +70,31 @@
   font-size: 14px;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+.history-review__deletion-table .ant-table-cell {
+  padding: 16px 20px;
+  vertical-align: middle;
+}
+.history-review__deletion-table .ant-btn-link {
+  padding-inline: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  height: auto;
+}
+.history-review__deletion-dialog .ant-modal-confirm-content {
+  margin-inline-start: 0 !important;
+}
+.history-review__deletion-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+.history-review__deletion-form p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.history-review__deletion-entry {
+  font-weight: 500;
 }
 @media (max-width: 640px) {
   .history-review__header {

@@ -10,13 +10,13 @@ import (
 
 const TableNameDataDomain = "data_domains"
 
-// DataDomain alumni data domains
+// DataDomain 校友数据域
 type DataDomain struct {
 	ID        uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true" json:"id"`
-	Code      string    `gorm:"column:code;type:varchar(64);not null;uniqueIndex:uk_data_domains_code,priority:1;comment:stable domain code" json:"code"`              // stable domain code
-	Name      string    `gorm:"column:name;type:varchar(100);not null;comment:display name" json:"name"`                                                               // display name
+	Code      string    `gorm:"column:code;type:varchar(64);not null;uniqueIndex:uk_data_domains_code,priority:1;comment:稳定数据域编码" json:"code"`                         // 稳定数据域编码
+	Name      string    `gorm:"column:name;type:varchar(100);not null;comment:展示名称" json:"name"`                                                                       // 展示名称
 	Status    string    `gorm:"column:status;type:varchar(32);not null;index:idx_data_domains_status,priority:1;default:active;comment:active/disabled" json:"status"` // active/disabled
-	SortOrder int32     `gorm:"column:sort_order;type:int;not null;comment:display order" json:"sort_order"`                                                           // display order
+	SortOrder int32     `gorm:"column:sort_order;type:int;not null;comment:展示顺序" json:"sort_order"`                                                                    // 展示顺序
 	CreatedAt time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP" json:"updated_at"`
 }

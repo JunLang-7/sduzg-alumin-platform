@@ -7,13 +7,15 @@ type HistoryEntryListRequest struct {
 }
 
 type HistoryEntryItem struct {
-	ID             uint64    `json:"id"`
-	Title          string    `json:"title"`
-	Summary        string    `json:"summary"`
-	Content        string    `json:"content"`
-	SourceNote     string    `json:"source_note"`
-	CurrentVersion uint      `json:"current_version"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	CanRequestDeletion bool      `json:"can_request_deletion"`
+	CanDelete          bool      `json:"can_delete"`
+	ID                 uint64    `json:"id"`
+	Title              string    `json:"title"`
+	Summary            string    `json:"summary"`
+	Content            string    `json:"content"`
+	SourceNote         string    `json:"source_note"`
+	CurrentVersion     uint      `json:"current_version"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
 
 type HistoryEntryUpdateRequest struct {
@@ -36,6 +38,15 @@ type HistoryContributionRequest struct {
 type HistoryReviewRequest struct {
 	Action        string `json:"action" binding:"required,oneof=approve return reject"`
 	ReviewComment string `json:"review_comment" binding:"max=5000"`
+}
+
+type HistoryDeletionRequest struct {
+	Reason string `json:"reason" binding:"required,max=2000"`
+}
+
+type HistoryDeletionReviewRequest struct {
+	Action        string `json:"action" binding:"required,oneof=approve reject"`
+	ReviewComment string `json:"review_comment" binding:"max=2000"`
 }
 
 type HistoryAttachmentUploadRequest struct {

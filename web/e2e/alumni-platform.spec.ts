@@ -37,6 +37,37 @@ test('普通校友不能进入管理员功能', async ({ page }) => {
   await expect(page).toHaveURL(/\/403$/);
 });
 
+test('校友令牌不能查询通用档案，但本人资料和院史仍可访问', async ({ page }) => {
+  for (const path of ['/api/v1/alumni', '/api/v1/alumni/1']) {
+    const response = await page.request.get(path);
+    expect(response.status()).toBe(401);
+  }
+
+  await login(page, '13800001111');
+  const token = await page.evaluate(() => window.localStorage.getItem('sdu_alumni_access_token'));
+  expect(token).toBeTruthy();
+  const headers = { Authorization: `Bearer ${token}` };
+  const meResponse = await page.request.get('/api/v1/alumni/me', { headers });
+  expect(meResponse.status()).toBe(200);
+  const ownProfile = (await meResponse.json()).data;
+  expect(ownProfile.id).toBeGreaterThan(0);
+
+  for (const path of [
+    '/api/v1/alumni',
+    `/api/v1/alumni/${ownProfile.id}`,
+    '/api/v1/alumni/0',
+    '/api/v1/alumni/not-a-number',
+  ]) {
+    const response = await page.request.get(path, { headers });
+    expect(response.status()).toBe(403);
+    const body = await response.json();
+    expect(body.code).toBe(40300);
+    expect(body).not.toHaveProperty('data');
+  }
+  const historyResponse = await page.request.get('/api/v1/history/entries', { headers });
+  expect(historyResponse.status()).toBe(200);
+});
+
 test('管理员可以创建、编辑并清理校友档案', async ({ page }) => {
   const alumniName = `E2E校友${Date.now()}`;
   await login(page, 'admin');
@@ -246,4 +277,133 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await fullContent.locator('.ant-modal-close').click();
   await details.locator('.ant-modal-close').click();
   await expect(page.getByRole('button', { name: '删除词条', exact: true })).toHaveCount(0);
+  const alumniToken = await page.evaluate(() =>
+    window.localStorage.getItem('sdu_alumni_access_token'),
+  );
+  const alumniHeaders = { Authorization: `Bearer ${alumniToken}` };
+  const entryResponse = await page.request.get(
+    `/api/v1/history/entries?keyword=${encodeURIComponent(title)}`,
+    { headers: alumniHeaders },
+  );
+  const entryID = (await entryResponse.json()).data[0].id;
+  const forbidden = await page.request.delete(`/api/v1/history/entries/${entryID}`, {
+    headers: alumniHeaders,
+  });
+  expect(forbidden.status()).toBe(403);
+  await expect(page.getByRole('button', { name: '申请删除词条', exact: true })).toHaveCount(0);
+  const forbiddenRequest = await page.request.post(
+    `/api/v1/history/entries/${entryID}/deletion-requests`,
+    {
+      headers: alumniHeaders,
+      data: { reason: '校友不能申请删除' },
+    },
+  );
+  expect(forbiddenRequest.status()).toBe(403);
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  await page.goto('/history');
+  await page.getByRole('button', { name: '申请删除词条', exact: true }).click();
+  const deletionDialog = page.getByRole('dialog', { name: '申请删除词条', exact: true });
+  await deletionDialog.getByLabel('删除原因').fill('原投稿人申请删除测试词条');
+  await deletionDialog.getByRole('button', { name: '提交申请', exact: true }).click();
+  await expect(page.getByRole('button', { name: '删除申请待审核' })).toBeDisabled();
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(title);
+
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  await page.goto('/admin/history/reviews');
+  const requestRow = page.getByRole('row').filter({ hasText: '原投稿人申请删除测试词条' });
+  await requestRow.getByRole('button', { name: /驳\s*回/ }).click();
+  const rejectDialog = page.getByRole('dialog', { name: '驳回申请' });
+  await rejectDialog.getByLabel('驳回原因').fill('资料仍有参考价值，请补充原因');
+  await rejectDialog.getByRole('button', { name: /驳\s*回/ }).click();
+  await expect(requestRow).toHaveCount(0);
+
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  await page.goto('/history');
+  await expect(page.getByText('资料仍有参考价值，请补充原因', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: '申请删除词条', exact: true }).click();
+  await deletionDialog.getByLabel('删除原因').fill('再次申请删除，确认测试数据应撤下');
+  await deletionDialog.getByRole('button', { name: '提交申请', exact: true }).click();
+  // 等待申请落库后再切换账号，否则在途请求会被导航取消。
+  await expect(page.getByRole('button', { name: '删除申请待审核' })).toBeDisabled();
+
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  await page.goto('/admin/history/reviews');
+  const approvedRow = page.getByRole('row').filter({ hasText: '再次申请删除，确认测试数据应撤下' });
+  await approvedRow.getByRole('button', { name: /同\s*意/ }).click();
+  await page
+    .getByRole('dialog', { name: '同意删除？' })
+    .getByRole('button', { name: /同\s*意/ })
+    .click();
+  await expect(approvedRow).toHaveCount(0);
+
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, '13800001111');
+  await page.goto('/history');
+  await expect(page.locator('.history-page__content article > h2')).toHaveText('暂无已发布词条');
+  await expect(page.getByText('我的删除申请', { exact: true })).toHaveCount(0);
+  await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
+  await expect(details.locator('.history-page__contribution-preview > span')).toHaveText(
+    '用于端到端验证的院史投稿正文',
+  );
+  await expect(details.getByText('history-e2e.pdf')).toBeVisible();
+  await details.locator('.ant-modal-close').click();
+
+  // A separate entry exercises administrator direct deletion and cancellation.
+  const token = await page.evaluate(() => window.localStorage.getItem('sdu_alumni_access_token'));
+  const headers = { Authorization: `Bearer ${token}` };
+  const created = await page.request.post('/api/v1/history/contributions', {
+    headers,
+    data: { title: `${title}-direct`, content: '直接删除测试正文', source_note: 'E2E' },
+  });
+  expect(created.status()).toBe(201);
+  const contributionID = (await created.json()).data.id;
+  expect(
+    (
+      await page.request.post(`/api/v1/history/contributions/${contributionID}/submit`, { headers })
+    ).ok(),
+  ).toBe(true);
+  await page.evaluate(() => window.localStorage.clear());
+  await login(page, 'admin');
+  const adminToken = await page.evaluate(() =>
+    window.localStorage.getItem('sdu_alumni_access_token'),
+  );
+  const reviewed = await page.request.post(`/api/v1/history/reviews/${contributionID}`, {
+    headers: { Authorization: `Bearer ${adminToken}` },
+    data: { action: 'approve', review_comment: '' },
+  });
+  expect(reviewed.ok()).toBe(true);
+  await page.goto('/history');
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(`${title}-direct`);
+  const deleteButton = page
+    .locator('.history-page__meta')
+    .getByRole('button', { name: '删除词条', exact: true });
+  await deleteButton.click();
+  const directDialog = page.getByRole('dialog').filter({ hasText: `删除词条“${title}-direct”？` });
+  await directDialog.getByRole('button', { name: /取\s*消/ }).click();
+  await expect(directDialog).toHaveCount(0);
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(`${title}-direct`);
+  const entryURL = '**/api/v1/history/entries/*';
+  await page.route(entryURL, async (route) => {
+    if (route.request().method() === 'DELETE')
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ code: 50300, message: '测试删除失败', data: null }),
+      });
+    else await route.continue();
+  });
+  await deleteButton.click();
+  await directDialog.getByRole('button', { name: '删除词条', exact: true }).click();
+  await expect(page.getByText('测试删除失败', { exact: true })).toBeVisible();
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(`${title}-direct`);
+  await directDialog.getByRole('button', { name: /取\s*消/ }).click();
+  await expect(directDialog).toHaveCount(0);
+  await page.unroute(entryURL);
+  await deleteButton.click();
+  await directDialog.getByRole('button', { name: '删除词条', exact: true }).click();
+  await expect(page.locator('.history-page__content article > h2')).toHaveText('暂无已发布词条');
 });

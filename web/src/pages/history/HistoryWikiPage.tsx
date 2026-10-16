@@ -1,12 +1,14 @@
-import { EditOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, MenuOutlined, SearchOutlined } from '@ant-design/icons';
 import { App, Button, Drawer, Empty, Input, List, Modal, Popconfirm, Space, Spin, Tag } from 'antd';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { historyApi } from '../../api/history';
 import { useAuthStore } from '../../store/authStore';
 import type { HistoryAttachment, HistoryContribution, HistoryEntry } from '../../types/history';
+import type { HistoryDeletionRequest } from '../../types/history';
 import { historyContributionStatusColor, historyContributionStatusText } from './historyState';
 import { HistoryContent } from './HistoryContent';
+import { DeletionReasonPreview } from './DeletionReasonPreview';
 import { loadContributionPreview, type ContributionPreview } from './contributionPreview';
 import { extractToc, type TocItem } from './toc';
 import './history-wiki.css';
@@ -58,7 +60,7 @@ function HistoryDirectory({
 }
 
 export function HistoryWikiPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const isAdmin = user?.role === 'admin' || user?.role === 'super_admin';
@@ -66,6 +68,11 @@ export function HistoryWikiPage() {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
   const [mine, setMine] = useState<HistoryContribution[]>([]);
   const [active, setActive] = useState<HistoryEntry | null>(null);
+  const [deletingEntryID, setDeletingEntryID] = useState<number | null>(null);
+  const [deletionRequests, setDeletionRequests] = useState<HistoryDeletionRequest[]>([]);
+  const [requestEntry, setRequestEntry] = useState<HistoryEntry | null>(null);
+  const [deletionReason, setDeletionReason] = useState('');
+  const [requestingDeletion, setRequestingDeletion] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [searched, setSearched] = useState(false);
   const [mobileDirectoryOpen, setMobileDirectoryOpen] = useState(() => window.innerWidth <= 1180);
@@ -82,22 +89,26 @@ export function HistoryWikiPage() {
   const [contentDetailOpen, setContentDetailOpen] = useState(false);
   const load = async (search = keyword) => {
     try {
-      const [items, contributions] = await Promise.all([
+      const [items, contributions, requests] = await Promise.all([
         historyApi.listEntries(search.trim() || undefined),
         isAlumni || isAdmin ? historyApi.listMine() : Promise.resolve([]),
+        isAdmin ? historyApi.listMyDeletionRequests() : Promise.resolve([]),
       ]);
       setEntries(items);
+      setDeletionRequests(requests);
       setMine(
         [...contributions].sort(
           (left, right) =>
             new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
         ),
       );
-      setActive((current) => items.find((item) => item.id === current?.id) ?? items[0] ?? null);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '院史内容加载失败');
     }
   };
+  useEffect(() => {
+    setActive((current) => entries.find((item) => item.id === current?.id) ?? entries[0] ?? null);
+  }, [entries]);
   useEffect(() => {
     void load(''); // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]);
@@ -165,6 +176,48 @@ export function HistoryWikiPage() {
     } finally {
       if (request === contributionRequest.current) setAttachmentsLoading(false);
     }
+  };
+  const submitDeletionRequest = async () => {
+    if (!requestEntry || !deletionReason.trim()) {
+      message.warning('请填写删除原因');
+      return;
+    }
+    setRequestingDeletion(true);
+    try {
+      const request = await historyApi.requestEntryDeletion(requestEntry.id, deletionReason.trim());
+      setDeletionRequests((items) => [request, ...items]);
+      setRequestEntry(null);
+      setDeletionReason('');
+      message.success('删除申请已提交，管理员同意后才会删除词条');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '删除申请提交失败');
+    } finally {
+      setRequestingDeletion(false);
+    }
+  };
+  const deleteEntry = async (entry: HistoryEntry) => {
+    setDeletingEntryID(entry.id);
+    try {
+      await historyApi.deleteEntry(entry.id);
+      setEntries((items) => items.filter((item) => item.id !== entry.id));
+      message.success('词条已删除');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '词条删除失败');
+      throw error;
+    } finally {
+      setDeletingEntryID(null);
+    }
+  };
+  const confirmDeleteEntry = (entry: HistoryEntry) => {
+    modal.confirm({
+      title: `删除词条“${displayTitle(entry.title)}”？`,
+      content: '删除后词条将不再展示，历史投稿、版本和附件记录会保留。',
+      okText: '删除词条',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      autoFocusButton: 'cancel',
+      onOk: () => deleteEntry(entry),
+    });
   };
   const deleteDraft = async (contribution: HistoryContribution) => {
     try {
@@ -247,18 +300,53 @@ export function HistoryWikiPage() {
             <span>
               最近更新：{active ? new Date(active.updated_at).toLocaleDateString('zh-CN') : '—'}
             </span>
-            {user?.role === 'alumni' && active && (
-              <Button onClick={() => openEditor('contribute')}>补充修改</Button>
-            )}
-            {isAdmin && active && (
-              <Button
-                type="primary"
-                icon={<EditOutlined />}
-                onClick={() => openEditor('admin-edit')}
-              >
-                编辑词条
-              </Button>
-            )}
+            <Space className="history-page__meta-actions" wrap>
+              {user?.role === 'alumni' && active && (
+                <Button onClick={() => openEditor('contribute')}>补充修改</Button>
+              )}
+              {isAdmin && active?.can_request_deletion && (
+                <Button
+                  danger
+                  disabled={deletionRequests.some(
+                    (item) => item.entry_id === active.id && item.status === 'pending',
+                  )}
+                  onClick={() => {
+                    setRequestEntry(active);
+                    setDeletionReason('');
+                  }}
+                >
+                  {deletionRequests.some(
+                    (item) => item.entry_id === active.id && item.status === 'pending',
+                  )
+                    ? '删除申请待审核'
+                    : '申请删除词条'}
+                </Button>
+              )}
+              {isAdmin && active && (
+                <Space wrap>
+                  <Button
+                    type="primary"
+                    icon={<EditOutlined />}
+                    disabled={deletingEntryID !== null}
+                    onClick={() => openEditor('admin-edit')}
+                  >
+                    编辑词条
+                  </Button>
+                  {active.can_delete && (
+                    <Button
+                      danger
+                      aria-label="删除词条"
+                      icon={<DeleteOutlined />}
+                      loading={deletingEntryID === active.id}
+                      disabled={deletingEntryID !== null && deletingEntryID !== active.id}
+                      onClick={() => confirmDeleteEntry(active)}
+                    >
+                      删除词条
+                    </Button>
+                  )}
+                </Space>
+              )}
+            </Space>
           </div>
           <h3>词条正文</h3>
           <HistoryContent content={active?.content ?? '暂时没有内容'} toc={toc} />
@@ -318,8 +406,70 @@ export function HistoryWikiPage() {
               />
             </aside>
           )}
+          {isAdmin && deletionRequests.length > 0 && (
+            <aside className="history-page__mine">
+              <strong>我的删除申请</strong>
+              <List
+                dataSource={deletionRequests}
+                renderItem={(item) => (
+                  <List.Item>
+                    <div className="history-page__mine-item-content">
+                      <Tag
+                        color={
+                          item.status === 'pending'
+                            ? 'blue'
+                            : item.status === 'approved'
+                              ? 'green'
+                              : 'red'
+                        }
+                      >
+                        {
+                          { pending: '待审核', approved: '已同意删除', rejected: '已驳回' }[
+                            item.status
+                          ]
+                        }
+                      </Tag>
+                      <b>{displayTitle(item.title)}</b>
+                      <DeletionReasonPreview reason={item.reason} />
+                      {item.review_comment && <p>审核意见：{item.review_comment}</p>}
+                      <span className="history-page__mine-item-time">
+                        申请时间：{formatHistoryDate(item.created_at)}
+                      </span>
+                    </div>
+                  </List.Item>
+                )}
+              />
+            </aside>
+          )}
         </div>
       </main>
+      <Modal
+        open={Boolean(requestEntry)}
+        title="申请删除词条"
+        okText="提交申请"
+        cancelText="取消"
+        confirmLoading={requestingDeletion}
+        onOk={() => void submitDeletionRequest()}
+        onCancel={() => {
+          if (!requestingDeletion) setRequestEntry(null);
+        }}
+      >
+        <p>词条：{requestEntry?.title}</p>
+        <p>申请提交后词条仍会保留，管理员同意后才会删除。</p>
+        <div className="history-page__deletion-reason">
+          <Input.TextArea
+            aria-label="删除原因"
+            placeholder="请填写删除原因"
+            value={deletionReason}
+            maxLength={2000}
+            rows={4}
+            onChange={(event) => setDeletionReason(event.target.value)}
+          />
+          <span className="history-page__deletion-count" aria-live="polite">
+            {deletionReason.length} / 2000
+          </span>
+        </div>
+      </Modal>
       <Drawer
         className="history-page__mobile-directory"
         closable

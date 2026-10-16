@@ -10,7 +10,7 @@ import (
 
 const TableNameHistoryEntryVersion = "history_entry_versions"
 
-// HistoryEntryVersion ????????????
+// HistoryEntryVersion 院史词条正式版本
 type HistoryEntryVersion struct {
 	ID             uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true" json:"id"`
 	EntryID        uint64    `gorm:"column:entry_id;type:bigint unsigned;not null;uniqueIndex:uk_history_entry_version,priority:1;index:idx_history_versions_entry_created,priority:1" json:"entry_id"`

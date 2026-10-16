@@ -36,13 +36,13 @@ func newAdminDataScope(db *gorm.DB, opts ...gen.DOOption) adminDataScope {
 	return _adminDataScope
 }
 
-// adminDataScope administrator alumni data scopes
+// adminDataScope 管理员校友数据范围
 type adminDataScope struct {
 	adminDataScopeDo adminDataScopeDo
 
 	ALL          field.Asterisk
-	UserID       field.Uint64 // administrator user id
-	DataDomainID field.Uint64 // allowed alumni data domain id
+	UserID       field.Uint64 // 管理员用户 ID
+	DataDomainID field.Uint64 // 允许访问的校友数据域 ID
 	CreatedAt    field.Time
 
 	fieldMap map[string]field.Expr

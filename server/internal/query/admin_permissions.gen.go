@@ -36,13 +36,13 @@ func newAdminPermission(db *gorm.DB, opts ...gen.DOOption) adminPermission {
 	return _adminPermission
 }
 
-// adminPermission administrator permission codes
+// adminPermission 管理员权限编码
 type adminPermission struct {
 	adminPermissionDo adminPermissionDo
 
 	ALL            field.Asterisk
-	UserID         field.Uint64 // administrator user id
-	PermissionCode field.String // permission code
+	UserID         field.Uint64 // 管理员用户 ID
+	PermissionCode field.String // 权限编码
 	CreatedAt      field.Time
 
 	fieldMap map[string]field.Expr

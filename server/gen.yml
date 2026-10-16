@@ -14,6 +14,7 @@ database:
     - history_entry_versions
     - history_contributions
     - history_attachments
+    - history_entry_deletion_requests
   # 是否只生成 model，不生成 query
   onlyModel: false
   # 指定生成的查询代码文件的输出目录

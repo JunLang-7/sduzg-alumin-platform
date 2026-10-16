@@ -155,6 +155,27 @@ func (r *HistoryRepository) AlumniDomainID(ctx context.Context, alumniID uint64)
 	return profile.DataDomainID, nil
 }
 
+// DeletePublished serializes deletion with publication/editing and keeps all
+// contribution, attachment and version rows available for historical lookup.
+func (r *HistoryRepository) DeletePublished(ctx context.Context, id uint64, access common.AccessContext) error {
+	if access.UserID == 0 || !access.IsSuperAdmin() {
+		return common.ErrPermissionDenied
+	}
+	if r == nil || r.db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var entry model.HistoryEntry
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ? AND status = ?", id, "published").First(&entry).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return common.ErrHistoryEntryNotFound
+			}
+			return err
+		}
+		return deleteHistoryEntry(tx, &entry, access.UserID, "管理员已删除词条")
+	})
+}
+
 func (r *HistoryRepository) CreateContribution(ctx context.Context, item *model.HistoryContribution) (*model.HistoryContribution, error) {
 	if r == nil || r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
@@ -336,6 +357,13 @@ func (r *HistoryRepository) Review(ctx context.Context, id, reviewerID uint64, a
 				}
 				entryID = &entry.ID
 			} else {
+				var entry model.HistoryEntry
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(entries.ID.Eq(*entryID), entries.Status.Eq("published")).First(&entry).Error; err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						return common.ErrHistoryEntryNotFound
+					}
+					return err
+				}
 				// Defend the domain boundary again at publication time.  The
 				// service validates it when a draft is created, but the target
 				// entry can only safely be trusted while this transaction holds
@@ -356,10 +384,6 @@ func (r *HistoryRepository) Review(ctx context.Context, id, reviewerID uint64, a
 				}
 				if latestContribution.DataDomainID == nil || *latestContribution.DataDomainID != *item.DataDomainID {
 					return common.ErrPermissionDenied
-				}
-				var entry model.HistoryEntry
-				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where(entries.ID.Eq(*entryID)).First(&entry).Error; err != nil {
-					return err
 				}
 				entry.Title, entry.Summary, entry.Content = item.Title, item.ChangeNote, item.Content
 				entry.CurrentVersion++

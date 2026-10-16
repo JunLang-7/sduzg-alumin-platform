@@ -40,16 +40,16 @@ func newDataDomain(db *gorm.DB, opts ...gen.DOOption) dataDomain {
 	return _dataDomain
 }
 
-// dataDomain alumni data domains
+// dataDomain 校友数据域
 type dataDomain struct {
 	dataDomainDo dataDomainDo
 
 	ALL       field.Asterisk
 	ID        field.Uint64
-	Code      field.String // stable domain code
-	Name      field.String // display name
+	Code      field.String // 稳定数据域编码
+	Name      field.String // 展示名称
 	Status    field.String // active/disabled
-	SortOrder field.Int32  // display order
+	SortOrder field.Int32  // 展示顺序
 	CreatedAt field.Time
 	UpdatedAt field.Time
 
