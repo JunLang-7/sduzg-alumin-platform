@@ -1,5 +1,64 @@
 import { describe, expect, it } from 'vitest';
-import { applyMarkdownAction } from './markdownEditing';
+import { applyMarkdownAction, resolveMarkdownShortcut } from './markdownEditing';
+
+const press = (
+  key: string,
+  modifiers: Partial<Record<'ctrl' | 'meta' | 'alt' | 'shift', boolean>> = {},
+) =>
+  resolveMarkdownShortcut({
+    key,
+    code: /^[1-6]$/.test(key) ? `Digit${key}` : `Key${key.toUpperCase()}`,
+    ctrlKey: modifiers.ctrl ?? false,
+    metaKey: modifiers.meta ?? false,
+    altKey: modifiers.alt ?? false,
+    shiftKey: modifiers.shift ?? false,
+  });
+
+describe('Markdown keyboard shortcuts', () => {
+  it('accepts Command on macOS and Control everywhere else for the same actions', () => {
+    expect(press('b', { ctrl: true })).toBe('bold');
+    expect(press('b', { meta: true })).toBe('bold');
+    expect(press('i', { ctrl: true })).toBe('italic');
+    expect(press('k', { meta: true })).toBe('link');
+  });
+
+  it('does not treat an unmodified or unknown key as a shortcut', () => {
+    expect(press('b')).toBeUndefined();
+    expect(press('z', { ctrl: true })).toBeUndefined();
+  });
+
+  it('keeps browser shortcuts starting with Shift untouched', () => {
+    expect(press('b', { ctrl: true, shift: true })).toBeUndefined();
+    expect(press('k', { ctrl: true, shift: true })).toBeUndefined();
+  });
+
+  it('switches heading levels with Alt plus a digit from one to six', () => {
+    for (const level of ['1', '2', '3', '4', '5', '6'] as const) {
+      expect(press(level, { ctrl: true, alt: true })).toBe(`heading-${level}`);
+      expect(press(level, { meta: true, alt: true })).toBe(`heading-${level}`);
+    }
+    expect(press('7', { ctrl: true, alt: true })).toBeUndefined();
+    expect(press('b', { ctrl: true, alt: true })).toBeUndefined();
+  });
+
+  it('reads the layout-independent digit code so macOS Option symbols still resolve', () => {
+    expect(
+      resolveMarkdownShortcut({
+        key: '¡',
+        code: 'Digit1',
+        ctrlKey: false,
+        metaKey: true,
+        altKey: true,
+        shiftKey: false,
+      }),
+    ).toBe('heading-1');
+  });
+
+  it('requires the exact heading combination and ignores an extra Shift', () => {
+    expect(press('1', { ctrl: true, alt: true, shift: true })).toBeUndefined();
+    expect(press('1', { meta: true, alt: true, shift: true })).toBeUndefined();
+  });
+});
 
 describe('Markdown editing actions', () => {
   it('formats a Chinese selection without changing surrounding text and can toggle it off', () => {

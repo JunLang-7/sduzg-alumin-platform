@@ -16,7 +16,11 @@ import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { flushSync } from 'react-dom';
 import { useId, useRef, useState, type AriaAttributes, type KeyboardEvent } from 'react';
 import { HistoryContent } from './HistoryContent';
-import { applyMarkdownAction, type MarkdownAction } from './markdownEditing';
+import {
+  applyMarkdownAction,
+  resolveMarkdownShortcut,
+  type MarkdownAction,
+} from './markdownEditing';
 import './markdown-editor.css';
 
 interface MarkdownEditorProps extends AriaAttributes {
@@ -68,15 +72,8 @@ export function MarkdownEditor({ value = '', onChange, id, ...inputProps }: Mark
     if (onChange) flushSync(() => onChange(edit.value));
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.nativeEvent.isComposing || !(event.ctrlKey || event.metaKey)) return;
-    const key = event.key.toLowerCase();
-    const headingKey = /^Digit([1-6])$/.exec(event.code)?.[1] ?? key;
-    const action: MarkdownAction | undefined =
-      event.altKey && /^[1-6]$/.test(headingKey)
-        ? `heading-${headingKey as '1' | '2' | '3' | '4' | '5' | '6'}`
-        : !event.altKey && !event.shiftKey
-          ? ({ b: 'bold', i: 'italic', k: 'link' } as const)[key as 'b' | 'i' | 'k']
-          : undefined;
+    if (event.nativeEvent.isComposing) return;
+    const action = resolveMarkdownShortcut(event.nativeEvent);
     if (action) {
       event.preventDefault();
       apply(action);
@@ -117,7 +114,7 @@ export function MarkdownEditor({ value = '', onChange, id, ...inputProps }: Mark
                 items: [1, 2, 3, 4, 5, 6].map((level) => ({
                   key: `heading-${level}`,
                   label: `${['一', '二', '三', '四', '五', '六'][level - 1]}级标题 H${level}`,
-                  title: `Ctrl/⌘ + Alt + ${level}`,
+                  title: `Ctrl/⌘ + Alt/⌥ + ${level}`,
                 })),
                 onClick: ({ key }) => apply(key as MarkdownAction),
               }}

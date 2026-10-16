@@ -17,6 +17,34 @@ export interface MarkdownEdit {
   end: number;
 }
 
+interface ShortcutEvent {
+  key: string;
+  code: string;
+  ctrlKey: boolean;
+  metaKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+}
+
+/**
+ * Maps a key combination to a toolbar action, or undefined when it is not a shortcut.
+ * Ctrl and Command are interchangeable, so the same hints hold on macOS.
+ * Shift is part of the combination, not a modifier to ignore: Ctrl/⌘+Shift+B and
+ * Ctrl/⌘+Shift+K belong to the browser and Ctrl/⌘+Shift+Alt+数字 is not a shortcut either.
+ */
+export function resolveMarkdownShortcut(event: ShortcutEvent): MarkdownAction | undefined {
+  if (!event.ctrlKey && !event.metaKey) return undefined;
+  const key = event.key.toLowerCase();
+  // Option/Alt turns digits into symbols on macOS, so read the layout-independent code first.
+  const headingKey = /^Digit([1-6])$/.exec(event.code)?.[1] ?? key;
+  if (event.altKey) {
+    if (event.shiftKey || !/^[1-6]$/.test(headingKey)) return undefined;
+    return `heading-${headingKey as '1' | '2' | '3' | '4' | '5' | '6'}`;
+  }
+  if (event.shiftKey) return undefined;
+  return ({ b: 'bold', i: 'italic', k: 'link' } as const)[key as 'b' | 'i' | 'k'];
+}
+
 export function applyMarkdownAction(
   value: string,
   start: number,
