@@ -37,6 +37,37 @@ test('普通校友不能进入管理员功能', async ({ page }) => {
   await expect(page).toHaveURL(/\/403$/);
 });
 
+test('校友令牌不能查询通用档案，但本人资料和院史仍可访问', async ({ page }) => {
+  for (const path of ['/api/v1/alumni', '/api/v1/alumni/1']) {
+    const response = await page.request.get(path);
+    expect(response.status()).toBe(401);
+  }
+
+  await login(page, '13800001111');
+  const token = await page.evaluate(() => window.localStorage.getItem('sdu_alumni_access_token'));
+  expect(token).toBeTruthy();
+  const headers = { Authorization: `Bearer ${token}` };
+  const meResponse = await page.request.get('/api/v1/alumni/me', { headers });
+  expect(meResponse.status()).toBe(200);
+  const ownProfile = (await meResponse.json()).data;
+  expect(ownProfile.id).toBeGreaterThan(0);
+
+  for (const path of [
+    '/api/v1/alumni',
+    `/api/v1/alumni/${ownProfile.id}`,
+    '/api/v1/alumni/0',
+    '/api/v1/alumni/not-a-number',
+  ]) {
+    const response = await page.request.get(path, { headers });
+    expect(response.status()).toBe(403);
+    const body = await response.json();
+    expect(body.code).toBe(40300);
+    expect(body).not.toHaveProperty('data');
+  }
+  const historyResponse = await page.request.get('/api/v1/history/entries', { headers });
+  expect(historyResponse.status()).toBe(200);
+});
+
 test('管理员可以创建、编辑并清理校友档案', async ({ page }) => {
   const alumniName = `E2E校友${Date.now()}`;
   await login(page, 'admin');
