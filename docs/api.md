@@ -119,10 +119,14 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 邮箱验证码登录示例：
 
 ```json
-{ "email": "alumni@example.com", "code": "<收到的验证码>", "grant_type": "email_code" }
+{
+  "email": "alumni@example.com",
+  "code": "<收到的验证码>",
+  "grant_type": "email_code"
+}
 ```
 
-正常登录的 `data` 包含 `access_token`、`token_type`（`Bearer`）、`expires_at`、`user`。`user` 字段为 `id`、`account`、`role`、可选的 `real_name` / `alumni_id` / `mobile`，以及 `domains`、`permissions`。**登录响应不加载管理员授权，客户端应再请求 `GET /auth/me` 获取当前能力**：
+正常登录的 `data` 包含 `access_token`、`token_type`（`Bearer`）、`expires_at`、`user`。`user` 字段为 `id`、`account`、`role`、可选的 `real_name` / `alumni_id` / `mobile`，以及 `domains`、`permissions`。**登录响应不加载管理员授权（二者为空数组），客户端应再请求 `GET /auth/me` 获取当前能力**。`GET /auth/me` 的 `data` 示例：
 
 ```json
 {
@@ -150,7 +154,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 
 首次设密与修改密码均要求新密码至少 8 位、同时含字母和数字，两次输入一致。创建管理员的密码校验单独见[管理员账号与授权](#管理员账号与授权)。
 
-常见失败：登录凭据错误返回 401；账号禁用返回 403；短时累计 5 次登录失败会临时锁定（5 分钟窗口），返回 429；验证码错误/过期返回 400。退出当前仅返回成功标记，**不撤销已签发 JWT**，客户端必须清除本地令牌；当前无刷新令牌接口。
+常见失败：登录凭据错误返回 401；验证码正确但找不到匹配的校友档案返回 401 / `40100`；账号禁用返回 403；短时累计 5 次登录失败会临时锁定（5 分钟窗口），返回 429；验证码错误/过期返回 400。退出当前仅返回成功标记，**不撤销已签发 JWT**，客户端必须清除本地令牌；当前无刷新令牌接口。
 
 ## 校友本人资料
 
@@ -165,7 +169,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 - 本人资料更新只处理上表允许的字段；不支持修改姓名、年级、数据域等学籍/归属信息。未提交或传 `null` 的字段不修改，传空字符串可清空。
 - 联系方式接口会校验手机号/邮箱格式和账号占用。验证码发送目标为账号**原有**对应联系方式；原值未设置时验证新值。仍通过 `/auth/verify-code/send`、`purpose=login` 获取验证码。建议手机号和邮箱分次提交，避免同一个 `code` 在两项校验中被重复消费。
 - `/alumni/me/contact` 同时更新账号联系方式并尝试同步绑定档案；`PUT /alumni/me` 中的 `mobile` 只更新档案，不等于变更登录手机号，也不执行验证码校验。需要调整登录联系方式时使用专用接口。
-- 未登录返回 401；非校友或未绑定资料返回 403；档案不存在返回 404；联系方式被占用、验证码错误或字段不合法返回 400。
+- 未登录返回 401；非校友返回 403；`GET/PUT /alumni/me` 另在账号未绑定校友档案时返回 403，档案不存在返回 404；`/alumni/me/contact` 不要求绑定档案，目标账号不存在返回 404。联系方式被占用、验证码错误或字段不合法返回 400。
 
 ## 校友档案查询与管理
 
@@ -401,25 +405,25 @@ curl 'http://127.0.0.1:8080/api/v1/admin/audit/operations?page=1&page_size=20&st
 
 ### 投稿
 
-| 方法   | 路径                                | 权限                                      | 说明                                                                  |
-| ------ | ----------------------------------- | ----------------------------------------- | --------------------------------------------------------------------- |
-| GET    | `/history/contributions/me`         | 校友、管理员或超级管理员                  | 本人全部投稿                                                          |
-| GET    | `/history/contributions/:id`        | 投稿作者本人，或数据域内管理员/超级管理员 | 投稿详情                                                              |
-| POST   | `/history/contributions`            | 校友、管理员或超级管理员                  | 新建词条或补充修改；管理员投稿必须指定本人数据域内的 `data_domain_id` |
-| PUT    | `/history/contributions/:id`        | 投稿作者本人                              | 编辑本人草稿或退回状态的投稿                                          |
-| DELETE | `/history/contributions/:id`        | 投稿作者本人                              | 删除本人草稿                                                          |
-| POST   | `/history/contributions/:id/submit` | 投稿作者本人                              | 提交审核，审核以最新内容为准                                          |
+| 方法   | 路径                                | 权限                                     | 说明                                                                  |
+| ------ | ----------------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
+| GET    | `/history/contributions/me`         | 校友、管理员或超级管理员                 | 本人全部投稿                                                          |
+| GET    | `/history/contributions/:id`        | 投稿作者本人（管理员作者限本人数据域内） | 投稿详情；其他管理员审核请用 `/history/reviews` 系列接口              |
+| POST   | `/history/contributions`            | 校友、管理员或超级管理员                 | 新建词条或补充修改；管理员投稿必须指定本人数据域内的 `data_domain_id` |
+| PUT    | `/history/contributions/:id`        | 投稿作者本人                             | 编辑本人草稿或退回状态的投稿                                          |
+| DELETE | `/history/contributions/:id`        | 投稿作者本人                             | 删除本人草稿                                                          |
+| POST   | `/history/contributions/:id/submit` | 投稿作者本人                             | 提交审核，审核以最新内容为准                                          |
 
 ### 投稿附件
 
-| 方法   | 路径                                                            | 权限                         | 说明                                                               |
-| ------ | --------------------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------ |
-| POST   | `/history/contributions/:id/attachments/upload-url`             | 投稿作者本人                 | 申请附件直传地址，类型限 JPG/PNG/WebP/PDF，单个 ≤10 MB，每篇 ≤6 个 |
-| POST   | `/history/contributions/:id/attachments/:attachmentId/confirm`  | 投稿作者本人                 | 确认上传完成                                                       |
-| GET    | `/history/contributions/:id/attachments`                        | 投稿作者本人或数据域内管理员 | 附件列表                                                           |
-| PUT    | `/history/contributions/:id/attachments/:attachmentId`          | 投稿作者本人                 | 更新附件说明                                                       |
-| DELETE | `/history/contributions/:id/attachments/:attachmentId`          | 投稿作者本人                 | 移除附件                                                           |
-| GET    | `/history/contributions/:id/attachments/:attachmentId/download` | 投稿作者本人或数据域内管理员 | 获取附件下载地址（已通过附件对全部登录用户开放）                   |
+| 方法   | 路径                                                            | 权限                         | 说明                                                                                                                   |
+| ------ | --------------------------------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/history/contributions/:id/attachments/upload-url`             | 投稿作者本人                 | 申请附件直传地址，类型限 JPG/PNG/WebP/PDF，单个 ≤10 MB，每篇 ≤6 个                                                     |
+| POST   | `/history/contributions/:id/attachments/:attachmentId/confirm`  | 投稿作者本人                 | 确认上传完成                                                                                                           |
+| GET    | `/history/contributions/:id/attachments`                        | 投稿作者本人或数据域内管理员 | 附件列表                                                                                                               |
+| PUT    | `/history/contributions/:id/attachments/:attachmentId`          | 投稿作者本人                 | 更新附件说明                                                                                                           |
+| DELETE | `/history/contributions/:id/attachments/:attachmentId`          | 投稿作者本人                 | 移除附件                                                                                                               |
+| GET    | `/history/contributions/:id/attachments/:attachmentId/download` | 投稿作者本人或数据域内管理员 | 获取附件下载地址（已通过附件对全部登录用户开放；管理员须在投稿所属数据域内，无数据域的投稿仅作者本人可下载未通过附件） |
 
 ### 投稿审核
 
