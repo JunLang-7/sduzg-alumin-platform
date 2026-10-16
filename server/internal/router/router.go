@@ -32,6 +32,11 @@ type Dependencies struct {
 	StorageClient *storage.Client
 }
 
+// redirectToSwaggerUI 把文档前缀跳转到入口页面。
+func redirectToSwaggerUI(c *gin.Context) {
+	c.Redirect(http.StatusFound, "/swagger/index.html")
+}
+
 func New(deps Dependencies) *gin.Engine {
 	engine := gin.New()
 	if err := engine.SetTrustedProxies(deps.Config.Server.TrustedProxies); err != nil && deps.Logger != nil {
@@ -53,8 +58,19 @@ func New(deps Dependencies) *gin.Engine {
 	})
 
 	// 在线接口文档。挂在认证组之外，接口调用本身仍受各路由的鉴权与数据域校验约束。
+	// gin-swagger 只用正则匹配具体文件名，裸前缀会被它当作未知文件返回 404，
+	// 因此在通配处理器里先把 /swagger 与 /swagger/ 跳到入口页，便于手工输入地址访问。
 	if deps.Config.Swagger.Enabled {
-		engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+		engine.GET("/swagger", redirectToSwaggerUI)
+		swaggerUI := ginSwagger.WrapHandler(swaggerFiles.Handler)
+		engine.GET("/swagger/*any", func(c *gin.Context) {
+			if c.Param("any") == "/" {
+				redirectToSwaggerUI(c)
+				return
+			}
+
+			swaggerUI(c)
+		})
 	}
 	// 健康检查路由
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
