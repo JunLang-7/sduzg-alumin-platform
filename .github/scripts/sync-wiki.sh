@@ -102,13 +102,16 @@ for mapping in "${page_map[@]}"; do
   fi
   if [[ "${mapping%%:*}" == "docs/api.md" ]]; then
     # Wiki 不保留仓库目录结构：文档链接转为 Wiki 页面，代码链接回到 main。
-    # 保留 #章节锚点和 API 示例中的地址，不改动仓库内的源文档。
+    # 带 #章节锚点的文档链接同样只指向 Wiki 页面，锚点在 Wiki 中不存在。
+    # 保留纯页内锚点（如 #通用约定）和 API 示例中的地址，不改动仓库内的源文档。
     sed \
       -e 's|](README.md)|](Home)|g' \
+      -e 's|](deployment.md#[^)]*)|](部署说明)|g' \
       -e 's|](deployment.md)|](部署说明)|g' \
       -e 's|](平台使用说明.md)|](平台使用说明)|g' \
       -e "s|](../server/internal/router/router.go)|](${source_repo_url}/blob/main/server/internal/router/router.go)|g" \
       -e "s|](../server/internal/dto/)|](${source_repo_url}/tree/main/server/internal/dto)|g" \
+      -e "s|](../server/README.md)|](${source_repo_url}/blob/main/server/README.md)|g" \
       "$src" >"$dest"
   else
     cp "$src" "$dest"

@@ -52,6 +52,7 @@ for link in \
   '[平台使用说明](平台使用说明)' \
   '[路由注册](https://example.com/owner/platform/blob/main/server/internal/router/router.go)' \
   '[请求与响应类型](https://example.com/owner/platform/tree/main/server/internal/dto)' \
+  '[后端开发说明](https://example.com/owner/platform/blob/main/server/README.md)' \
   '[通用约定](#通用约定)'; do
   grep -Fq "$link" "$workdir/api.md"
 done
