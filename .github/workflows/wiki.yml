@@ -9,6 +9,7 @@ on:
     paths:
       - docs/平台使用说明.md
       - docs/deployment.md
+      - docs/api.md
       - docs/release-notes/README.md
       - .github/scripts/sync-wiki.sh
       - .github/workflows/wiki.yml

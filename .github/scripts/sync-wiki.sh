@@ -55,6 +55,7 @@ done
 page_map=(
   "docs/平台使用说明.md:平台使用说明.md"
   "docs/deployment.md:部署说明.md"
+  "docs/api.md:接口文档.md"
   "docs/release-notes/README.md:版本发布记录.md"
 )
 
@@ -85,6 +86,7 @@ if ! git clone --depth 1 --quiet "$WIKI_REMOTE_URL" "$workdir/repo" >"$clone_log
 fi
 
 wiki_dir="$workdir/repo"
+source_repo_url="${WIKI_REPO_URL:-https://github.com/${GITHUB_REPOSITORY:-JunLang-7/sduzg-alumin-platform}}"
 
 skipped=()
 for mapping in "${page_map[@]}"; do
@@ -98,14 +100,24 @@ for mapping in "${page_map[@]}"; do
     echo "缺少源文件 ${mapping%%:*}：请同步更新 sync-wiki.sh 的页面映射。" >&2
     exit 1
   fi
-  cp "$src" "$dest"
+  if [[ "${mapping%%:*}" == "docs/api.md" ]]; then
+    # Wiki 不保留仓库目录结构：文档链接转为 Wiki 页面，代码链接回到 main。
+    # 保留 #章节锚点和 API 示例中的地址，不改动仓库内的源文档。
+    sed \
+      -e 's|](README.md)|](Home)|g' \
+      -e 's|](deployment.md)|](部署说明)|g' \
+      -e 's|](平台使用说明.md)|](平台使用说明)|g' \
+      -e "s|](../server/internal/router/router.go)|](${source_repo_url}/blob/main/server/internal/router/router.go)|g" \
+      -e "s|](../server/internal/dto/)|](${source_repo_url}/tree/main/server/internal/dto)|g" \
+      "$src" >"$dest"
+  else
+    cp "$src" "$dest"
+  fi
 done
 
 if ((${#skipped[@]} > 0)); then
   printf '警告：以下源文件尚不存在，已跳过对应页面：%s\n' "${skipped[*]}" >&2
 fi
-
-source_repo_url="${WIKI_REPO_URL:-https://github.com/${GITHUB_REPOSITORY:-JunLang-7/sduzg-alumin-platform}}"
 
 cat >"$wiki_dir/Home.md" <<EOF
 # 政管全球校友数字化平台文档
@@ -115,6 +127,7 @@ cat >"$wiki_dir/Home.md" <<EOF
 
 - [平台使用说明](平台使用说明) — 各角色的功能与操作步骤、限制条件
 - [部署说明](部署说明) — Compose 启动、服务端口、环境配置、迁移与排障
+- [接口文档](接口文档) — HTTP API 的认证、请求响应、权限与各模块接口
 - [版本发布记录](版本发布记录) — 各版本新增功能、数据库变化与升级说明
 
 源码、Issue 与 PR 见 ${source_repo_url}。
@@ -124,6 +137,7 @@ cat >"$wiki_dir/_Sidebar.md" <<'EOF'
 - [首页](Home)
 - [平台使用说明](平台使用说明)
 - [部署说明](部署说明)
+- [接口文档](接口文档)
 - [版本发布记录](版本发布记录)
 EOF
 
