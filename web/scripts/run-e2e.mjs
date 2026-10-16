@@ -30,6 +30,9 @@ const composeEnv = {
   REDIS_HOST_PORT: process.env.E2E_REDIS_PORT || '16379',
   API_HOST_PORT: apiPort,
   WEB_HOST_PORT: webPort,
+  // E2E 套件在一分钟内会多次登录，会与登录限流（RATE_LIMIT_AUTH_RPM）冲突；
+  // 显式关闭限流，避免本地 .env 的 RATE_LIMIT_* 配置影响 e2e 环境（与 CI 行为一致）。
+  RATE_LIMIT_ENABLED: 'false',
   MINIO_API_HOST_PORT: process.env.E2E_MINIO_API_PORT || '19000',
   MINIO_CONSOLE_HOST_PORT: process.env.E2E_MINIO_CONSOLE_PORT || '19001',
   MINIO_ROOT_USER: process.env.E2E_MINIO_ACCESS_KEY || 'e2e-minio-admin',
