@@ -29,6 +29,7 @@ type Config struct {
 	Email     EmailConfig
 	RateLimit RateLimitConfig
 	CORS      CORSConfig
+	Swagger   SwaggerConfig
 }
 
 type AppConfig struct {
@@ -119,6 +120,12 @@ type RateLimitConfig struct {
 type CORSConfig struct {
 	Enabled        bool
 	AllowedOrigins []string
+}
+
+// SwaggerConfig 控制在线接口文档入口。
+// 生产环境默认关闭，避免对外暴露完整接口清单与在线调用入口。
+type SwaggerConfig struct {
+	Enabled bool
 }
 
 func (c DatabaseConfig) DSN() string {
@@ -238,9 +245,22 @@ func Load() (Config, error) {
 			Enabled:        v.GetBool("CORS_ENABLED"),
 			AllowedOrigins: splitCSV(v.GetString("CORS_ALLOWED_ORIGINS")),
 		},
+		Swagger: SwaggerConfig{
+			Enabled: resolveSwaggerEnabled(v),
+		},
 	}
 
 	return cfg, nil
+}
+
+// resolveSwaggerEnabled 决定是否开启在线接口文档。
+// 显式设置 SWAGGER_ENABLED 时以其为准；未设置时仅非生产环境开启。
+func resolveSwaggerEnabled(v *viper.Viper) bool {
+	if v.IsSet("SWAGGER_ENABLED") {
+		return v.GetBool("SWAGGER_ENABLED")
+	}
+
+	return v.GetString("APP_ENV") != EnvProduction
 }
 
 func setDefaults(v *viper.Viper) {

@@ -43,3 +43,10 @@ type AlumniFileDownloadURLResponse struct {
 	ExpiresIn    int    `json:"expires_in"`
 	OriginalName string `json:"original_name"`
 }
+
+// AlumniFileUploadURLRequest 是申请预签名上传 URL 的请求体。
+type AlumniFileUploadURLRequest struct {
+	FileType     string `json:"file_type" binding:"required"`
+	OriginalName string `json:"original_name" binding:"required"`
+	MimeType     string `json:"mime_type" binding:"required"`
+}

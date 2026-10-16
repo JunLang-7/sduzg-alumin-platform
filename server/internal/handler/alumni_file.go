@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
@@ -22,15 +23,25 @@ func NewAlumniFileHandler(fileService *service.AlumniFileService) *AlumniFileHan
 	return &AlumniFileHandler{fileService: fileService}
 }
 
-// uploadRequest 客户端请求预签名上传 URL 的 JSON body。
-type uploadRequest struct {
-	FileType     string `json:"file_type"`
-	OriginalName string `json:"original_name"`
-	MimeType     string `json:"mime_type"`
-}
-
 // RequestUpload 请求预签名上传 URL POST /admin/alumni/:id/files/upload-url
 // 返回 Presigned PUT URL，客户端直传 MinIO 后需调用 ConfirmUpload 确认。
+//
+//	@Summary		申请档案文件上传地址
+//	@Description	生成预签名 PUT 地址，客户端直传对象存储后必须调用确认接口。需要 alumni.files.manage 功能权限，且档案必须在可访问数据域内；该权限与敏感字段权限互相独立。
+//	@Tags			校友档案文件
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		integer							true	"校友档案 ID"
+//	@Param			request	body		dto.AlumniFileUploadURLRequest	true	"文件类型与元信息"
+//	@Success		200		{object}	response.Body{data=dto.AlumniFileUploadURLResponse}
+//	@Failure		400		{object}	response.Body	"校友 ID 无效，或 file_type、original_name、mime_type 缺失"
+//	@Failure		403		{object}	response.Body	"权限不足，或档案不在可访问数据域内"
+//	@Failure		404		{object}	response.Body	"对应校友不存在"
+//	@Failure		413		{object}	response.Body	"文件大小超过限制（最大 50MB）"
+//	@Failure		415		{object}	response.Body	"不支持的文件类型，仅允许 PDF、Word、JPG、PNG"
+//	@Failure		503		{object}	response.Body	"存储或数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/admin/alumni/{id}/files/upload-url [post]
 func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -44,13 +55,9 @@ func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 		return
 	}
 
-	var req uploadRequest
+	var req dto.AlumniFileUploadURLRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "参数错误：需要 file_type, original_name, mime_type")
-		return
-	}
-	if req.FileType == "" || req.OriginalName == "" || req.MimeType == "" {
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "file_type, original_name, mime_type 不能为空")
 		return
 	}
 
@@ -65,6 +72,20 @@ func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 
 // ConfirmUpload 确认直传完成 POST /admin/alumni/:id/files/:fileId/confirm
 // 验证 MinIO 对象存在后将记录标记为 active。
+//
+//	@Summary		确认档案文件上传完成
+//	@Description	校验对象存储中的对象存在后，将文件记录标记为 active。需要 alumni.files.manage 功能权限。
+//	@Tags			校友档案文件
+//	@Produce		json
+//	@Param			id		path		integer	true	"校友档案 ID"
+//	@Param			fileId	path		integer	true	"文件记录 ID"
+//	@Success		200		{object}	response.Body{data=dto.AlumniFileUploadResponse}
+//	@Failure		403		{object}	response.Body	"权限不足"
+//	@Failure		404		{object}	response.Body	"文件记录不存在或未完成上传，或对应校友不存在"
+//	@Failure		413		{object}	response.Body	"文件大小超过限制（最大 50MB）"
+//	@Failure		503		{object}	response.Body	"存储或数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/admin/alumni/{id}/files/{fileId}/confirm [post]
 func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -109,6 +130,18 @@ func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 }
 
 // ListFiles 查看文件列表 GET /admin/alumni/:id/files（管理员专用）
+//
+//	@Summary		档案文件列表
+//	@Description	按类型分组返回该校友的档案文件。需要 alumni.files.manage 功能权限，该权限与敏感字段权限互相独立。
+//	@Tags			校友档案文件
+//	@Produce		json
+//	@Param			id	path		integer	true	"校友档案 ID"
+//	@Success		200	{object}	response.Body{data=dto.AlumniFileListResponse}
+//	@Failure		403	{object}	response.Body	"权限不足"
+//	@Failure		404	{object}	response.Body	"对应校友不存在"
+//	@Failure		503	{object}	response.Body	"存储或数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/admin/alumni/{id}/files [get]
 func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -132,6 +165,19 @@ func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
 
 // DownloadURL 获取预签名下载 URL GET /admin/alumni/:id/files/:fileId/download
 // 返回 Presigned GET URL，客户端直连 MinIO 下载，数据不经过 API Server。
+//
+//	@Summary		获取档案文件下载地址
+//	@Description	返回预签名 GET 地址，客户端直连对象存储下载，文件流不经过 API 服务。需要 alumni.files.manage 功能权限。
+//	@Tags			校友档案文件
+//	@Produce		json
+//	@Param			id		path		integer	true	"校友档案 ID"
+//	@Param			fileId	path		integer	true	"文件记录 ID"
+//	@Success		200		{object}	response.Body{data=dto.AlumniFileDownloadURLResponse}
+//	@Failure		403		{object}	response.Body	"权限不足"
+//	@Failure		404		{object}	response.Body	"文件不存在"
+//	@Failure		503		{object}	response.Body	"存储或数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/admin/alumni/{id}/files/{fileId}/download [get]
 func (h *AlumniFileHandler) DownloadURL(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -177,6 +223,19 @@ func (h *AlumniFileHandler) DownloadURL(c *gin.Context) {
 }
 
 // Delete 删除文件 DELETE /admin/alumni/:id/files/:fileId
+//
+//	@Summary		删除档案文件
+//	@Description	同时删除对象存储中的对象与文件记录。需要 alumni.files.manage 功能权限。
+//	@Tags			校友档案文件
+//	@Produce		json
+//	@Param			id		path		integer	true	"校友档案 ID"
+//	@Param			fileId	path		integer	true	"文件记录 ID"
+//	@Success		200		{object}	response.Body{data=dto.DeletedResult}
+//	@Failure		403		{object}	response.Body	"权限不足"
+//	@Failure		404		{object}	response.Body	"文件不存在"
+//	@Failure		503		{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/admin/alumni/{id}/files/{fileId} [delete]
 func (h *AlumniFileHandler) Delete(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -198,7 +257,7 @@ func (h *AlumniFileHandler) Delete(c *gin.Context) {
 
 	err = h.fileService.DeleteFile(c.Request.Context(), *access, alumniID, fileID)
 	if err == nil {
-		response.Success(c, gin.H{"deleted": true})
+		response.Success(c, dto.DeletedResult{Deleted: true})
 		return
 	}
 

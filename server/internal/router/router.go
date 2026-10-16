@@ -6,6 +6,9 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/config"
+
+	// 引入生成的接口规范，使 Swagger UI 能读取到已注册的文档。
+	_ "github.com/JunLang-7/sduzg-alumin-platform/server/internal/docs"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/handler"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/limiter"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
@@ -15,6 +18,8 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/storage"
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -47,6 +52,10 @@ func New(deps Dependencies) *gin.Engine {
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "route not found")
 	})
 
+	// 在线接口文档。挂在认证组之外，接口调用本身仍受各路由的鉴权与数据域校验约束。
+	if deps.Config.Swagger.Enabled {
+		engine.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	}
 	// 健康检查路由
 	healthHandler := handler.NewHealthHandler(deps.Config, deps.DB, deps.RedisClient)
 	// 用户仓库

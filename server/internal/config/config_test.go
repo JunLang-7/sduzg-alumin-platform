@@ -150,6 +150,41 @@ func TestLoadReadsEnvFile(t *testing.T) {
 	}
 }
 
+func TestSwaggerEnabledDefaultsByEnvironment(t *testing.T) {
+	cases := []struct {
+		name     string
+		env      string
+		explicit string
+		want     bool
+	}{
+		{name: "开发环境默认开启", env: EnvDevelopment, want: true},
+		{name: "生产环境默认关闭", env: EnvProduction, want: false},
+		{name: "生产环境显式开启", env: EnvProduction, explicit: "true", want: true},
+		{name: "开发环境显式关闭", env: EnvDevelopment, explicit: "false", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv("AUTH_JWT_SECRET", "test-secret")
+			t.Setenv("APP_ENV", tc.env)
+			if tc.explicit != "" {
+				t.Setenv("SWAGGER_ENABLED", tc.explicit)
+			}
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("unexpected load error: %v", err)
+			}
+
+			if cfg.Swagger.Enabled != tc.want {
+				t.Fatalf("APP_ENV=%s SWAGGER_ENABLED=%q: 期望 %v，实际 %v",
+					tc.env, tc.explicit, tc.want, cfg.Swagger.Enabled)
+			}
+		})
+	}
+}
+
 func clearConfigEnv(t *testing.T) {
 	t.Helper()
 
@@ -210,6 +245,7 @@ func clearConfigEnv(t *testing.T) {
 		"RATE_LIMIT_ADMIN_RPM",
 		"CORS_ENABLED",
 		"CORS_ALLOWED_ORIGINS",
+		"SWAGGER_ENABLED",
 	} {
 		t.Setenv(key, "")
 	}

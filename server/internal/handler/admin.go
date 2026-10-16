@@ -21,6 +21,20 @@ func NewAdminHandler(admin *service.AdminService) *AdminHandler {
 	return &AdminHandler{admin: admin}
 }
 
+// List 分页列出管理员账号（仅超级管理员）。
+//
+//	@Summary		管理员账号列表
+//	@Description	仅超级管理员可调用。返回账号、角色、状态、已分配数据域与功能权限。
+//	@Tags			管理员账号与授权
+//	@Produce		json
+//	@Param			page		query		int	false	"页码，默认 1"
+//	@Param			page_size	query		int	false	"每页条数，默认 20，最大 100"
+//	@Success		200			{object}	dto.AdminListItemPage
+//	@Failure		401			{object}	response.Body	"未登录或令牌失效"
+//	@Failure		403			{object}	response.Body	"非超级管理员"
+//	@Failure		503			{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/super-admin/admins [get]
 func (h *AdminHandler) List(c *gin.Context) {
 	var req dto.AdminListRequest
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -42,6 +56,20 @@ func (h *AdminHandler) List(c *gin.Context) {
 	}
 }
 
+// Create 新增管理员账号并分配数据域与功能权限（仅超级管理员），成功返回 HTTP 201。
+//
+//	@Summary		新增管理员账号
+//	@Description	仅超级管理员可调用。账号须为 4-32 位、以字母开头，仅可包含字母、数字、下划线和连字符；新建账号默认密码登录可用。
+//	@Tags			管理员账号与授权
+//	@Accept			json
+//	@Produce		json
+//	@Param			request	body		dto.AdminCreateRequest	true	"账号、初始密码、数据域与功能权限"
+//	@Success		201		{object}	response.Body{data=dto.AdminDetail}
+//	@Failure		400		{object}	response.Body	"账号或手机号格式不正确、数据域无效、账号已存在"
+//	@Failure		403		{object}	response.Body	"非超级管理员"
+//	@Failure		503		{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/super-admin/admins [post]
 func (h *AdminHandler) Create(c *gin.Context) {
 	operator, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -81,6 +109,19 @@ func (h *AdminHandler) Create(c *gin.Context) {
 	}
 }
 
+// Detail 查看指定管理员的数据域与功能权限（仅超级管理员）。
+//
+//	@Summary	管理员详情
+//	@Tags		管理员账号与授权
+//	@Produce	json
+//	@Param		id	path		integer	true	"管理员账号 ID"
+//	@Success	200	{object}	response.Body{data=dto.AdminDetail}
+//	@Failure	400	{object}	response.Body	"管理员 ID 无效"
+//	@Failure	403	{object}	response.Body	"非超级管理员"
+//	@Failure	404	{object}	response.Body	"对应管理员不存在"
+//	@Failure	503	{object}	response.Body	"数据库不可用"
+//	@Security	BearerAuth
+//	@Router		/super-admin/admins/{id} [get]
 func (h *AdminHandler) Detail(c *gin.Context) {
 	operator, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -101,6 +142,22 @@ func (h *AdminHandler) Detail(c *gin.Context) {
 	h.writeAccessError(c, err)
 }
 
+// ReplaceAccess 整体替换管理员的数据域与功能权限（仅超级管理员）。
+//
+//	@Summary		替换管理员授权
+//	@Description	整体替换而非合并，传入空数组即收回全部数据域与权限。不能修改超级管理员本人的授权。
+//	@Tags			管理员账号与授权
+//	@Accept			json
+//	@Produce		json
+//	@Param			id		path		integer							true	"管理员账号 ID"
+//	@Param			request	body		dto.AdminAccessUpdateRequest	true	"新的数据域与功能权限"
+//	@Success		200		{object}	response.Body{data=dto.AdminDetail}
+//	@Failure		400		{object}	response.Body	"参数不正确、数据域无效，或尝试修改超级管理员授权"
+//	@Failure		403		{object}	response.Body	"非超级管理员"
+//	@Failure		404		{object}	response.Body	"对应管理员不存在"
+//	@Failure		503		{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/super-admin/admins/{id}/access [put]
 func (h *AdminHandler) ReplaceAccess(c *gin.Context) {
 	operator, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -126,6 +183,17 @@ func (h *AdminHandler) ReplaceAccess(c *gin.Context) {
 	h.writeAccessError(c, err)
 }
 
+// ListDataDomains 列出全部有效数据域（仅超级管理员）。
+//
+//	@Summary		数据域列表
+//	@Description	返回当前有效的数据域，用于分配授权。不要硬编码数据库 ID。
+//	@Tags			管理员账号与授权
+//	@Produce		json
+//	@Success		200	{object}	response.Body{data=[]dto.AdminDataDomain}
+//	@Failure		403	{object}	response.Body	"非超级管理员"
+//	@Failure		503	{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/super-admin/data-domains [get]
 func (h *AdminHandler) ListDataDomains(c *gin.Context) {
 	result, err := h.admin.ListDataDomains(c.Request.Context())
 	if err == nil {
@@ -135,6 +203,20 @@ func (h *AdminHandler) ListDataDomains(c *gin.Context) {
 	h.writeAccessError(c, err)
 }
 
+// Delete 删除管理员账号（仅超级管理员）。
+//
+//	@Summary		删除管理员账号
+//	@Description	不能删除自己，也不能删除超级管理员账号。
+//	@Tags			管理员账号与授权
+//	@Produce		json
+//	@Param			id	path		integer	true	"管理员账号 ID"
+//	@Success		200	{object}	response.Body{data=dto.DeletedResult}
+//	@Failure		400	{object}	response.Body	"管理员 ID 无效、尝试删除自己或尝试删除超级管理员"
+//	@Failure		403	{object}	response.Body	"非超级管理员"
+//	@Failure		404	{object}	response.Body	"对应管理员不存在"
+//	@Failure		503	{object}	response.Body	"数据库不可用"
+//	@Security		BearerAuth
+//	@Router			/super-admin/admins/{id} [delete]
 func (h *AdminHandler) Delete(c *gin.Context) {
 	operator, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -150,7 +232,7 @@ func (h *AdminHandler) Delete(c *gin.Context) {
 
 	err = h.admin.Delete(c.Request.Context(), *operator, id)
 	if err == nil {
-		response.Success(c, gin.H{"deleted": true})
+		response.Success(c, dto.DeletedResult{Deleted: true})
 		return
 	}
 

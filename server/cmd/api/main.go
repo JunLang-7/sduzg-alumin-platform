@@ -18,6 +18,39 @@ import (
 	"go.uber.org/zap"
 )
 
+// @title						政管全球校友数字化平台 API
+// @version					1.0
+// @description				山东大学政管学院校友数字化平台与院史在线平台的后端接口。
+// @description				基础路径为 /api/v1。除健康检查与登录、首次设置密码、发送验证码外，其余接口都需要在 Authorize 中填入 `Bearer <access_token>`。
+// @description				响应统一为 `{ code, message, data }`，成功 `code=0`。错误码、角色与数据域规则的完整说明见仓库 docs/api.md。
+// @description				本页面的调用会真实访问当前服务，受同一套登录、角色、数据域与功能权限校验约束，未登录或越权调用不会被放过。
+// @contact.name				项目仓库
+// @contact.url				https://github.com/JunLang-7/sduzg-alumin-platform
+// @tag.name					健康检查
+// @tag.description			进程存活与依赖就绪状态，无需登录。
+// @tag.name					认证与账号
+// @tag.description			登录、退出、首次设置密码、验证码发送与当前用户信息。
+// @tag.name					校友本人资料
+// @tag.description			校友维护自己的资料与联系方式，不能访问他人档案。
+// @tag.name					校友档案查询与管理
+// @tag.description			管理员按数据域查询、新增、修改与删除校友档案。
+// @tag.name					校友导入导出
+// @tag.description			按模板批量导入与按筛选条件导出 Excel。
+// @tag.name					校友档案文件
+// @tag.description			档案文件的预签名上传、下载与删除，需独立的功能权限，且仅在启用对象存储时可用。
+// @tag.name					数据大屏
+// @tag.description			概览指标与分维度校友分布统计。
+// @tag.name					管理员账号与授权
+// @tag.description			仅超级管理员可用的账号、数据域与功能权限管理。
+// @tag.name					操作历史
+// @tag.description			校友档案变更与批量导入的审计记录。
+// @tag.name					院史共编
+// @tag.description			院史词条维护、投稿与交叉审核。
+// @BasePath					/api/v1
+// @securityDefinitions.apikey	BearerAuth
+// @in							header
+// @name						Authorization
+// @description				填入 `Bearer <access_token>`，access_token 来自 POST /auth/login 或 POST /auth/setup-password。
 func main() {
 	// 加载配置
 	cfg, err := config.Load()
