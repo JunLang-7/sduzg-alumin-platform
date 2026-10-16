@@ -41,3 +41,11 @@ jobs:
           fetch-depth: 0
       - name: Verify the old-volume upgrade path
         run: bash .github/scripts/check-migration-upgrade.sh
+      - name: Verify the pre-tracking volume upgrade path (v0.3.1)
+        env:
+          BASE_TAG: v0.3.1
+        run: bash .github/scripts/check-migration-upgrade.sh
+      - name: Verify the fallback (N-1) upgrade path
+        env:
+          BASE_TAG: HEAD
+        run: bash .github/scripts/check-migration-upgrade.sh

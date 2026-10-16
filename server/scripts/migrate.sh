@@ -6,6 +6,7 @@ set -eu
 : "${MYSQL_USER:?MYSQL_USER is required}"
 : "${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}"
 : "${MYSQL_DATABASE:?MYSQL_DATABASE is required}"
+: "${MIGRATIONS_DIR:=/migrations}"
 
 # Metadata is declared inside each migration file so this runner never
 # hardcodes migration filenames. New files only need the usual NNN_*.sql
@@ -82,7 +83,7 @@ fi
 # If a migration is marked applied but its proves/requires tables are missing,
 # clear the mark so the apply loop can rerun it (fixes stale 006/007 marks).
 repair_stale_marks() {
-  for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
+  for migration in "$MIGRATIONS_DIR"/[0-9][0-9][0-9]_*.sql; do
     [ -f "$migration" ] || continue
     name="$(basename "$migration")"
     proves="$(meta_tables "$migration" proves)"
@@ -123,7 +124,7 @@ baseline_from_schema() {
   [ "$migration_table_exists" = "0" ] || return 0
 
   prev_marked=0
-  for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
+  for migration in "$MIGRATIONS_DIR"/[0-9][0-9][0-9]_*.sql; do
     [ -f "$migration" ] || continue
     name="$(basename "$migration")"
     proves="$(meta_tables "$migration" proves)"
@@ -158,7 +159,7 @@ baseline_from_schema() {
 repair_stale_marks
 baseline_from_schema
 
-for migration in /migrations/[0-9][0-9][0-9]_*.sql; do
+for migration in "$MIGRATIONS_DIR"/[0-9][0-9][0-9]_*.sql; do
   [ -f "$migration" ] || continue
   name="$(basename "$migration")"
   if ! applied="$(mysql_cmd --batch --skip-column-names -e "
