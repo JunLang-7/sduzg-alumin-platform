@@ -39,6 +39,8 @@ curl --fail http://127.0.0.1:8080/api/v1/health/live
 curl --fail http://127.0.0.1:8080/api/v1/health/ready
 ```
 
+开发环境默认开启在线接口文档，启动后可访问 `http://127.0.0.1:8080/swagger/index.html`，在 Authorize 中填入 `Bearer <access_token>` 即可直接调试接口。默认值取决于 `APP_ENV`：非生产环境开启、生产环境关闭，可用 `SWAGGER_ENABLED` 覆盖，详见[部署说明](../docs/deployment.md#在线接口文档)。
+
 ## 代码结构与约定
 
 业务调用遵循 `handler → service → repository → model/database`：
@@ -50,6 +52,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health/ready
 | `internal/service`、`internal/repository` | 业务逻辑与数据访问                            |
 | `internal/model`、`internal/query`        | GORM Gen 生成模型与查询代码                   |
 | `internal/config`、`internal/response`    | 配置加载、统一 `{ code, message, data }` 响应 |
+| `internal/docs`                           | 由 handler 注解生成的接口规范，不要手工修改  |
 | `migrations`、`scripts`                   | 有序 SQL 迁移与运维验证脚本                   |
 
 具体权限、错误处理与生成代码要求见 [AGENTS.md](../AGENTS.md)。
@@ -76,3 +79,13 @@ make gendb
 ```
 
 [gen.yml](gen.yml) 管理数据库连接和生成范围，生成结果位于 `internal/model` 和 `internal/query`，不要手工修改生成文件；`gen.yml` 中的 DSN 指向本地 Compose MySQL（宿主机 3307），需先应用对应迁移再执行 `make gendb`。工具链升级时同步核对 Dockerfile、CI 与开发环境。
+
+## 接口文档注解
+
+接口规范由 handler 上的 swag 注解生成，结果提交在 `internal/docs`（`docs.go`、`swagger.json`），由 `internal/router` 挂载到 `/swagger/*any`。新增或修改接口时：
+
+1. 在 handler 方法上补 `@Summary`、`@Tags`、`@Param`、`@Success`、`@Failure`、`@Security` 和 `@Router` 注解；响应沿用 `response.Body{data=dto.X}` 组合，不要新增包装类型。
+2. 在仓库根目录运行 `make swagger`（首次需先 `make swagger-tool`）重新生成，并提交生成结果。
+3. 运行 `go test ./internal/docs/...`，它会按当前注解重新生成规范并与实际注册的路由双向比对，缺少注解时会指出具体的 `METHOD /path`。
+
+分页响应因为 swag 稳定版无法表达 `common.Pager[T]` 泛型，在 `internal/dto/page.go` 中按相同字段单独声明，由 `page_shape_test.go` 断言与 `common.Pager[T]` 一致。接口文档入口开关为 `SWAGGER_ENABLED`，默认非生产环境开启、生产环境关闭。

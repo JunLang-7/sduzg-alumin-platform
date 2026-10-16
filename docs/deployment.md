@@ -21,8 +21,9 @@ docker compose up --build
 | Redis          | `127.0.0.1:6379`        | `REDIS_HOST_PORT=6379`         |
 | 对象存储 API   | `http://127.0.0.1:9000` | `MINIO_API_HOST_PORT=9000`     |
 | 对象存储控制台 | `http://127.0.0.1:9001` | `MINIO_CONSOLE_HOST_PORT=9001` |
+| 接口文档       | `http://127.0.0.1:8080/swagger/index.html` | `SWAGGER_ENABLED` |
 
-初始化迁移提供开发账号：`admin` / `Admin@123456`，角色为 `super_admin`。公开部署前必须更换默认管理员密码、数据库与对象存储密码，并向 API 容器传入独立的 `AUTH_JWT_SECRET`。
+初始化迁移提供开发账号：`admin` / `Admin@123456`，角色为 `super_admin`。公开部署前必须更换默认管理员密码、数据库与对象存储密码，并向 API 容器传入独立的 `AUTH_JWT_SECRET`；同时确认接口文档已关闭（见下文）。
 
 ## 配置放在哪里
 
@@ -51,8 +52,30 @@ services:
 - 认证：`AUTH_JWT_SECRET`、`AUTH_ACCESS_TOKEN_TTL`。
 - 通知：腾讯云短信 `SMS_TENCENT_*`、SMTP 邮件 `EMAIL_*`；开发环境默认关闭。
 - 访问控制：`RATE_LIMIT_*`、`CORS_*`；API 位于反向代理后时配置 `SERVER_TRUSTED_PROXIES`。
+- 接口文档：`SWAGGER_ENABLED`；未设置时非生产环境开启、`APP_ENV=production` 时关闭。
 
 不提交真实 `.env`、生产密钥、日志或构建产物。示例文件与编排中的默认值用于启动和开发，部署时按实际环境设置。
+
+## 在线接口文档
+
+Swagger UI 挂在 API 服务的 `/swagger/index.html`，接口规范端点为 `/swagger/doc.json`。它可以浏览全部接口、查看参数与响应结构，并在 Authorize 中填入 `Bearer <access_token>` 后直接发起真实请求；这些请求与手工调用一样受登录、角色、数据域和功能权限校验，不会因为从文档发起而放宽。[接口文档](api.md)是接口约定的文字说明，两者内容一致。
+
+是否挂载由 `SWAGGER_ENABLED` 决定，未设置时的默认值取决于 `APP_ENV`：
+
+- `APP_ENV=production`（[docker-compose.yml](../docker-compose.yml) 的 API 默认值）：默认关闭，`/swagger/index.html` 与 `/swagger/doc.json` 都返回 HTTP 404。
+- 其他环境（如本地 `go run ./cmd/api`）：默认开启。
+
+本地编排显式传入 `SWAGGER_ENABLED=true`，所以 `docker compose up --build` 后可以直接访问；公开部署时应在编排中显式设为 `false`：
+
+```yaml
+# compose.production.yaml
+services:
+  api:
+    environment:
+      SWAGGER_ENABLED: "false"
+```
+
+接口文档关闭只影响这两个地址，不影响任何业务接口。规范由 handler 注解生成，重新生成与校验方式见[后端开发说明](../server/README.md)。
 
 ## 数据迁移与版本更新
 

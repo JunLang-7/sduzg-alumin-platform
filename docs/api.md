@@ -4,6 +4,8 @@
 
 本文档描述平台当前已实现的 HTTP API，覆盖健康检查、认证、本人资料、校友档案、导入导出、档案文件、数据大屏、管理员授权、操作历史和院史共编。接口以[路由注册](../server/internal/router/router.go)、[请求与响应类型](../server/internal/dto/)及服务层校验为准；新增或变更接口随对应 PR 一并更新本文档。
 
+在线调试入口：API 服务提供 Swagger UI（`/swagger/index.html`）与规范端点（`/swagger/doc.json`），可以浏览全部接口、查看参数与响应结构，并在 Authorize 中填入 `Bearer <access_token>` 后直接发起请求；从文档发起的请求同样受登录、角色、数据域与功能权限校验。是否挂载由 `SWAGGER_ENABLED` 控制，未设置时非生产环境开启、生产环境关闭，详见[部署说明](deployment.md#在线接口文档)。接口规范由 handler 注解生成，注解缺失或与路由不一致时后端测试会失败；重新生成方式见[后端开发说明](../server/README.md)。
+
 ## 目录
 
 - [通用约定](#通用约定)
