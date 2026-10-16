@@ -2090,7 +2090,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "投稿人可查看本人投稿，审核人可查看权限范围内的投稿。",
+                "description": "仅投稿作者本人可查看（管理员作者限本人数据域内）；审核人查看待审内容请使用 /history/reviews 系列接口。",
                 "produces": [
                     "application/json"
                 ],

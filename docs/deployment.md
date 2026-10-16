@@ -13,15 +13,15 @@ docker compose up --build
 
 已有 `.env` 时直接使用原配置。Compose 启动 MySQL、Redis、Silo 对象存储、数据库迁移任务、API 和 Web；Silo 兼容 MinIO 接口，服务名及配置项保留 `minio`／`MINIO_*` 命名。
 
-| 服务           | 默认地址                | 根 `.env` 中的端口配置         |
-| -------------- | ----------------------- | ------------------------------ |
-| Web            | `http://127.0.0.1`      | `WEB_HOST_PORT=80`             |
-| API            | `http://127.0.0.1:8080` | `API_HOST_PORT=8080`           |
-| MySQL          | `127.0.0.1:3307`        | `MYSQL_HOST_PORT=3307`         |
-| Redis          | `127.0.0.1:6379`        | `REDIS_HOST_PORT=6379`         |
-| 对象存储 API   | `http://127.0.0.1:9000` | `MINIO_API_HOST_PORT=9000`     |
-| 对象存储控制台 | `http://127.0.0.1:9001` | `MINIO_CONSOLE_HOST_PORT=9001` |
-| 接口文档       | `http://127.0.0.1:8080/swagger/index.html` | `SWAGGER_ENABLED` |
+| 服务           | 默认地址                                   | 根 `.env` 中的端口配置         |
+| -------------- | ------------------------------------------ | ------------------------------ |
+| Web            | `http://127.0.0.1`                         | `WEB_HOST_PORT=80`             |
+| API            | `http://127.0.0.1:8080`                    | `API_HOST_PORT=8080`           |
+| MySQL          | `127.0.0.1:3307`                           | `MYSQL_HOST_PORT=3307`         |
+| Redis          | `127.0.0.1:6379`                           | `REDIS_HOST_PORT=6379`         |
+| 对象存储 API   | `http://127.0.0.1:9000`                    | `MINIO_API_HOST_PORT=9000`     |
+| 对象存储控制台 | `http://127.0.0.1:9001`                    | `MINIO_CONSOLE_HOST_PORT=9001` |
+| 接口文档       | `http://127.0.0.1:8080/swagger/index.html` | `SWAGGER_ENABLED`              |
 
 初始化迁移提供开发账号：`admin` / `Admin@123456`，角色为 `super_admin`。公开部署前必须更换默认管理员密码、数据库与对象存储密码，并向 API 容器传入独立的 `AUTH_JWT_SECRET`；同时确认接口文档已关闭（见下文）。
 
@@ -62,10 +62,10 @@ Swagger UI 挂在 API 服务的 `/swagger/index.html`，接口规范端点为 `/
 
 是否挂载由 `SWAGGER_ENABLED` 决定，未设置时的默认值取决于 `APP_ENV`：
 
-- `APP_ENV=production`（[docker-compose.yml](../docker-compose.yml) 的 API 默认值）：默认关闭，`/swagger/index.html` 与 `/swagger/doc.json` 都返回 HTTP 404。
+- `APP_ENV=production` 且未设置 `SWAGGER_ENABLED`（如直接运行生产构建的二进制）：默认关闭，`/swagger/index.html` 与 `/swagger/doc.json` 都返回 HTTP 404。
 - 其他环境（如本地 `go run ./cmd/api`）：默认开启。
 
-本地编排显式传入 `SWAGGER_ENABLED=true`，所以 `docker compose up --build` 后可以直接访问；公开部署时应在编排中显式设为 `false`：
+注意 [docker-compose.yml](../docker-compose.yml) 中 API 的 `APP_ENV` 为 `production`，但同时把 `SWAGGER_ENABLED` 默认传为 `true`，所以 `docker compose up --build` 后默认**开启**接口文档，可以直接访问。该编排带有默认管理员账号，用它对外公开部署时，必须在编排中显式设为 `false`：
 
 ```yaml
 # compose.production.yaml

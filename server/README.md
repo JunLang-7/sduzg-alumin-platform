@@ -52,7 +52,7 @@ curl --fail http://127.0.0.1:8080/api/v1/health/ready
 | `internal/service`、`internal/repository` | 业务逻辑与数据访问                            |
 | `internal/model`、`internal/query`        | GORM Gen 生成模型与查询代码                   |
 | `internal/config`、`internal/response`    | 配置加载、统一 `{ code, message, data }` 响应 |
-| `internal/docs`                           | 由 handler 注解生成的接口规范，不要手工修改  |
+| `internal/docs`                           | 由 handler 注解生成的接口规范，不要手工修改   |
 | `migrations`、`scripts`                   | 有序 SQL 迁移与运维验证脚本                   |
 
 具体权限、错误处理与生成代码要求见 [AGENTS.md](../AGENTS.md)。

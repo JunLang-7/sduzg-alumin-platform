@@ -188,7 +188,7 @@ func (h *HistoryHandler) CreateDraft(c *gin.Context) {
 // GetContribution 返回单条院史投稿详情。
 //
 //	@Summary		院史投稿详情
-//	@Description	投稿人可查看本人投稿，审核人可查看权限范围内的投稿。
+//	@Description	仅投稿作者本人可查看（管理员作者限本人数据域内）；审核人查看待审内容请使用 /history/reviews 系列接口。
 //	@Tags			院史共编
 //	@Produce		json
 //	@Param			id	path		integer	true	"投稿 ID"
