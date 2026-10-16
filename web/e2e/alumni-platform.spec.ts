@@ -140,6 +140,59 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
   }
 });
 
+test('连续格式命令在同一帧内保留文本选区', { tag: '@selection-race' }, async ({ page }) => {
+  await login(page, '13800001111');
+  await page.goto('/history/editor?mode=create');
+  const editor = page.locator('.markdown-editor');
+  const textarea = page.locator('.history-editor').getByLabel('正文', { exact: true });
+
+  for (const mode of ['keyboard', 'toolbar'] as const) {
+    await textarea.fill('学科简介');
+    // All commands run in one JS task, so rAF cannot hide a selection-restoration race.
+    const snapshots = await editor.evaluate((root, mode) => {
+      const area = root.querySelector('textarea')!;
+      const button = (label: string) =>
+        root.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click();
+      const italic = () => {
+        if (mode === 'toolbar') button('斜体');
+        else
+          area.dispatchEvent(
+            new KeyboardEvent('keydown', {
+              key: 'i',
+              code: 'KeyI',
+              ctrlKey: true,
+              bubbles: true,
+              cancelable: true,
+            }),
+          );
+      };
+      const snapshot = () => ({
+        value: area.value,
+        start: area.selectionStart,
+        end: area.selectionEnd,
+        focused: document.activeElement === area,
+      });
+      area.focus();
+      area.setSelectionRange(0, 4);
+      button('加粗');
+      const bold = snapshot();
+      italic();
+      const combined = snapshot();
+      italic();
+      const unitalic = snapshot();
+      button('加粗');
+      return [bold, combined, unitalic, snapshot()];
+    }, mode);
+    expect(snapshots).toEqual([
+      { value: '**学科简介**', start: 2, end: 6, focused: true },
+      { value: '***学科简介***', start: 3, end: 7, focused: true },
+      { value: '**学科简介**', start: 2, end: 6, focused: true },
+      { value: '学科简介', start: 0, end: 4, focused: true },
+    ]);
+    await expect(textarea).toHaveValue('学科简介');
+  }
+});
+
 test('正文工具栏、快捷键和预览可用于编辑 Markdown', async ({ page }) => {
   await login(page, '13800001111');
   await page.goto('/history/editor?mode=create');
@@ -169,7 +222,7 @@ test('正文工具栏、快捷键和预览可用于编辑 Markdown', async ({ pa
   await textarea.fill('学院网站');
   await textarea.press('ControlOrMeta+a');
   await textarea.press('ControlOrMeta+k');
-  await expect(textarea).toHaveValue('[学院网站](https://example.com)');
+  await expect(textarea).toHaveValue('[学院网站](<https://example.com>)');
   await textarea.pressSequentially('https://www.sdu.edu.cn');
   await editor.getByRole('tab', { name: '预览', exact: true }).click();
   await expect(preview.getByRole('link', { name: '学院网站' })).toHaveAttribute(

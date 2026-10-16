@@ -41,7 +41,14 @@ describe('Markdown editing actions', () => {
 
   it('selects the link destination for immediate editing', () => {
     const result = applyMarkdownAction('学院网站', 0, 4, 'link');
-    expect(result.value).toBe('[学院网站](https://example.com)');
+    expect(result.value).toBe('[学院网站](<https://example.com>)');
+    expect(result.value.slice(result.start, result.end)).toBe('https://example.com');
+  });
+
+  it('escapes link labels and keeps only the URL selected', () => {
+    const label = '学院]网站[资料\\';
+    const result = applyMarkdownAction(label, 0, label.length, 'link');
+    expect(result.value).toBe('[学院\\]网站\\[资料\\\\](<https://example.com>)');
     expect(result.value.slice(result.start, result.end)).toBe('https://example.com');
   });
 

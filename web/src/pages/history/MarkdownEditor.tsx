@@ -13,6 +13,7 @@ import {
 } from '@ant-design/icons';
 import { Button, Dropdown, Empty, Input, Tooltip } from 'antd';
 import type { TextAreaRef } from 'antd/es/input/TextArea';
+import { flushSync } from 'react-dom';
 import { useId, useRef, useState, type AriaAttributes, type KeyboardEvent } from 'react';
 import { HistoryContent } from './HistoryContent';
 import { applyMarkdownAction, type MarkdownAction } from './markdownEditing';
@@ -54,14 +55,17 @@ export function MarkdownEditor({ value = '', onChange, id, ...inputProps }: Mark
     const { start, end } = textarea
       ? { start: textarea.selectionStart, end: textarea.selectionEnd }
       : selection.current;
-    const edit = applyMarkdownAction(value, start, end, action);
-    onChange?.(edit.value);
+    // Read the live DOM for commands dispatched before a controlled render commits.
+    const edit = applyMarkdownAction(textarea?.value ?? value, start, end, action);
     selection.current = { start: edit.start, end: edit.end };
-    requestAnimationFrame(() => {
-      const current = input.current?.resizableTextArea?.textArea;
-      current?.focus({ preventScroll: true });
-      current?.setSelectionRange(edit.start, edit.end);
-    });
+    if (textarea) {
+      // Synchronize before notifying React: the next command must not wait for a frame.
+      textarea.value = edit.value;
+      textarea.focus({ preventScroll: true });
+      textarea.setSelectionRange(edit.start, edit.end);
+    }
+    // Commit the controlled field too, so rapid toggles cannot use a stale Form callback.
+    if (onChange) flushSync(() => onChange(edit.value));
   };
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing || !(event.ctrlKey || event.metaKey)) return;

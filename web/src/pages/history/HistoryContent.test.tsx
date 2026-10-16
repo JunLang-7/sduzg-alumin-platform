@@ -2,8 +2,18 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { HistoryContent } from './HistoryContent';
 import { extractToc } from './toc';
+import { applyMarkdownAction } from './markdownEditing';
 
 describe('HistoryContent', () => {
+  it('renders toolbar links with brackets in the label and parentheses in the URL', () => {
+    const label = '学院]网站[资料';
+    const edit = applyMarkdownAction(label, 0, label.length, 'link');
+    const content =
+      edit.value.slice(0, edit.start) + 'https://example.com/a)b' + edit.value.slice(edit.end);
+    const html = renderToStaticMarkup(<HistoryContent content={content} />);
+    expect(html).toContain('href="https://example.com/a)b"');
+    expect(html).toContain('>学院]网站[资料</a>');
+  });
   it('renders all six heading levels with the exact anchors used by the TOC', () => {
     const content = '# 一级\n## 二级\n### 三级\n#### 四级\n##### 五级\n###### 六级\n普通正文';
     const toc = extractToc(content);

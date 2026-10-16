@@ -47,6 +47,7 @@ export function applyMarkdownAction(
     let right = 0;
     while (value[start - left - 1] === mark[0]) left++;
     while (value[end + right] === mark[0]) right++;
+    // Toggle markers surrounding the selected content, not markers inside the selection.
     const wrapped =
       action === 'italic'
         ? left % 2 === 1 && right % 2 === 1
@@ -57,14 +58,14 @@ export function applyMarkdownAction(
     return replace(start, end, mark + text + mark, mark.length, mark.length + text.length);
   }
   if (action === 'link') {
-    const label = selected || '链接文字';
+    const label = (selected || '链接文字').replace(/([\\[\]])/g, '\\$1');
     const url = 'https://example.com';
     return replace(
       start,
       end,
-      `[${label}](${url})`,
-      label.length + 3,
-      label.length + 3 + url.length,
+      `[${label}](<${url}>)`,
+      label.length + 4,
+      label.length + 4 + url.length,
     );
   }
   if (action === 'code-block') {
