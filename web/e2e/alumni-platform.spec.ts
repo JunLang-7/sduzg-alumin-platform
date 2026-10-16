@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const password = 'Admin@123456';
@@ -24,6 +25,34 @@ async function removeAlumni(page: Page, name: string) {
     .getByRole('button', { name: /确\s*定/ })
     .last()
     .click();
+}
+
+async function searchHistory(page: Page, title: string) {
+  // Finish the initial load before searching, so its response cannot overwrite the search.
+  const [initialEntries] = await Promise.all([
+    page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === '/api/v1/history/entries' && !url.search;
+    }),
+    page.goto('/history'),
+  ]);
+  expect(initialEntries.ok()).toBe(true);
+  await expect(page.locator('.history-page__directory').getByRole('listitem')).toHaveCount(
+    (await initialEntries.json()).data.length,
+  );
+  const search = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
+  await search.fill(title);
+  const responsePromise = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return url.pathname === '/api/v1/history/entries' && url.searchParams.get('keyword') === title;
+  });
+  await search.press('Enter');
+  expect((await responsePromise).ok()).toBe(true);
+}
+
+async function openHistoryEntry(page: Page, title: string) {
+  await searchHistory(page, title);
+  await expect(page.locator('.history-page__content article > h2')).toHaveText(title);
 }
 
 test('未登录校友不能访问院史共编', async ({ page }) => {
@@ -242,7 +271,7 @@ test('正文工具栏、快捷键和预览可用于编辑 Markdown', async ({ pa
 
 test('校友上传院史资料，管理员审核后可阅读正式词条', async ({ page }) => {
   test.setTimeout(90_000);
-  const title = `E2E院史词条${Date.now()}`;
+  const title = `E2E院史词条${randomUUID()}`;
 
   await login(page, '13800001111');
   await page.goto('/history');
@@ -262,7 +291,9 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await editor.getByText('我确认附件来源真实且有权提交').click();
   await editor.getByRole('button', { name: '提交审核' }).click();
   await expect(page).toHaveURL(/\/history$/);
-  await expect(page.getByText(title).last()).toBeVisible();
+  await expect(
+    page.locator('.history-page__mine-item').getByText(title, { exact: true }),
+  ).toBeVisible();
 
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
@@ -280,13 +311,14 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   const headingTitles = ['一级概况', '二级沿革', '三级学科', '四级方向', '五级成果', '六级资料'];
   const revisedBody = [
     '管理员修改后应在投稿预览中同步显示的新正文',
-    ...headingTitles.map((heading, index) => `${'#'.repeat(index + 1)} ${heading}\n章节正文`),
-  ].join('\n');
-  await page.goto('/history');
-  const adminSearch = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
-  await adminSearch.fill(title);
-  await adminSearch.press('Enter');
-  await expect(page.locator('.history-page__content article > h2')).toHaveText(title);
+    // Keep even H1 offscreen initially; every TOC click must actually scroll.
+    ...Array.from({ length: 24 }, (_, index) => `导言第 ${index + 1} 段。`),
+    ...headingTitles.flatMap((heading, index) => [
+      `${'#'.repeat(index + 1)} ${heading}`,
+      ...Array.from({ length: 16 }, (_, line) => `${heading}第 ${line + 1} 段正文。`),
+    ]),
+  ].join('\n\n');
+  await openHistoryEntry(page, title);
   await page.getByRole('button', { name: '编辑词条' }).click();
   await page.locator('.history-editor').getByLabel('正文', { exact: true }).fill(revisedBody);
   await page.getByRole('button', { name: '保存更改' }).click();
@@ -294,23 +326,24 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
 
   await page.evaluate(() => window.localStorage.clear());
   await login(page, '13800001111');
-  await page.goto('/history');
-  const search = page.getByPlaceholder('搜索正式词条的标题、简介或正文');
-  await search.fill(title);
-  await search.press('Enter');
-  await expect(page.getByText(title).first()).toBeVisible();
+  await openHistoryEntry(page, title);
   const toc = page.getByRole('navigation', { name: '本页目录' });
+  await expect(toc.getByRole('button')).toHaveText(headingTitles);
   for (const [index, heading] of headingTitles.entries()) {
-    const section = page.locator('.history-page__body').getByRole('heading', {
-      name: heading,
-      level: index + 1,
-      exact: true,
+    await test.step(`目录跳转到 H${index + 1} ${heading}`, async () => {
+      const section = page.locator('.history-page__body').getByRole('heading', {
+        name: heading,
+        level: index + 1,
+        exact: true,
+      });
+      await expect(section).toHaveAttribute('id', heading);
+      await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
+      const link = toc.getByRole('button', { name: heading, exact: true });
+      await expect(link).toBeInViewport();
+      await expect(section).not.toBeInViewport();
+      await link.click();
+      await expect(section).toBeInViewport();
     });
-    await expect(section).toHaveAttribute('id', heading);
-    const link = toc.getByRole('button', { name: heading, exact: true });
-    await expect(link).toHaveCSS('padding-left', `${10 + index * 10}px`);
-    await link.click();
-    await expect(section).toBeInViewport();
   }
   await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
   const details = page.getByRole('dialog', { name: '投稿详情' });
@@ -338,7 +371,11 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
     `/api/v1/history/entries?keyword=${encodeURIComponent(title)}`,
     { headers: alumniHeaders },
   );
-  const entryID = (await entryResponse.json()).data[0].id;
+  expect(entryResponse.ok()).toBe(true);
+  const matchingEntries = (await entryResponse.json()).data;
+  expect(matchingEntries).toHaveLength(1);
+  expect(matchingEntries[0].title).toBe(title);
+  const entryID = matchingEntries[0].id;
   const forbidden = await page.request.delete(`/api/v1/history/entries/${entryID}`, {
     headers: alumniHeaders,
   });
@@ -354,7 +391,7 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   expect(forbiddenRequest.status()).toBe(403);
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
-  await page.goto('/history');
+  await openHistoryEntry(page, title);
   await page.getByRole('button', { name: '申请删除词条', exact: true }).click();
   const deletionDialog = page.getByRole('dialog', { name: '申请删除词条', exact: true });
   await deletionDialog.getByLabel('删除原因').fill('原投稿人申请删除测试词条');
@@ -365,7 +402,10 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
   await page.goto('/admin/history/reviews');
-  const requestRow = page.getByRole('row').filter({ hasText: '原投稿人申请删除测试词条' });
+  const requestRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('button', { name: title, exact: true }) })
+    .filter({ hasText: '原投稿人申请删除测试词条' });
   await requestRow.getByRole('button', { name: /驳\s*回/ }).click();
   const rejectDialog = page.getByRole('dialog', { name: '驳回申请' });
   await rejectDialog.getByLabel('驳回原因').fill('资料仍有参考价值，请补充原因');
@@ -374,8 +414,12 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
 
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
-  await page.goto('/history');
-  await expect(page.getByText('资料仍有参考价值，请补充原因', { exact: false })).toBeVisible();
+  await openHistoryEntry(page, title);
+  const rejectedRequest = page
+    .getByRole('listitem')
+    .filter({ has: page.getByText(title, { exact: true }) })
+    .filter({ hasText: '原投稿人申请删除测试词条' });
+  await expect(rejectedRequest.getByText('审核意见：资料仍有参考价值，请补充原因')).toBeVisible();
   await page.getByRole('button', { name: '申请删除词条', exact: true }).click();
   await deletionDialog.getByLabel('删除原因').fill('再次申请删除，确认测试数据应撤下');
   await deletionDialog.getByRole('button', { name: '提交申请', exact: true }).click();
@@ -385,7 +429,10 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
   await page.goto('/admin/history/reviews');
-  const approvedRow = page.getByRole('row').filter({ hasText: '再次申请删除，确认测试数据应撤下' });
+  const approvedRow = page
+    .getByRole('row')
+    .filter({ has: page.getByRole('button', { name: title, exact: true }) })
+    .filter({ hasText: '再次申请删除，确认测试数据应撤下' });
   await approvedRow.getByRole('button', { name: /同\s*意/ }).click();
   await page
     .getByRole('dialog', { name: '同意删除？' })
@@ -395,8 +442,11 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
 
   await page.evaluate(() => window.localStorage.clear());
   await login(page, '13800001111');
-  await page.goto('/history');
-  await expect(page.locator('.history-page__content article > h2')).toHaveText('暂无已发布词条');
+  await searchHistory(page, title);
+  await expect(
+    page.locator('.history-page__directory-list').getByText(title, { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('.history-page__content article > h2')).not.toHaveText(title);
   await expect(page.getByText('我的删除申请', { exact: true })).toHaveCount(0);
   await page.locator('.history-page__mine-item').filter({ hasText: title }).click();
   await expect(details.locator('.history-page__contribution-preview > span')).toHaveText(
@@ -429,8 +479,7 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
     data: { action: 'approve', review_comment: '' },
   });
   expect(reviewed.ok()).toBe(true);
-  await page.goto('/history');
-  await expect(page.locator('.history-page__content article > h2')).toHaveText(`${title}-direct`);
+  await openHistoryEntry(page, `${title}-direct`);
   const deleteButton = page
     .locator('.history-page__meta')
     .getByRole('button', { name: '删除词条', exact: true });
@@ -458,5 +507,10 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.unroute(entryURL);
   await deleteButton.click();
   await directDialog.getByRole('button', { name: '删除词条', exact: true }).click();
-  await expect(page.locator('.history-page__content article > h2')).toHaveText('暂无已发布词条');
+  await expect(
+    page.locator('.history-page__directory-list').getByText(`${title}-direct`, { exact: true }),
+  ).toHaveCount(0);
+  await expect(page.locator('.history-page__content article > h2')).not.toHaveText(
+    `${title}-direct`,
+  );
 });
