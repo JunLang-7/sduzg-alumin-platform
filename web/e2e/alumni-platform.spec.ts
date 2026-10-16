@@ -225,6 +225,8 @@ test('校友上传院史资料，管理员审核后可阅读正式词条', async
   await page.getByRole('button', { name: '申请删除词条', exact: true }).click();
   await deletionDialog.getByLabel('删除原因').fill('再次申请删除，确认测试数据应撤下');
   await deletionDialog.getByRole('button', { name: '提交申请', exact: true }).click();
+  // 等待申请落库后再切换账号，否则在途请求会被导航取消。
+  await expect(page.getByRole('button', { name: '删除申请待审核' })).toBeDisabled();
 
   await page.evaluate(() => window.localStorage.clear());
   await login(page, 'admin');
