@@ -14,6 +14,8 @@ npm run dev
 
 开发服务默认地址为 `http://127.0.0.1:5173`；Vite 将 `/api` 代理到 `http://127.0.0.1:8080`，需先启动 API。接口基础路径默认为 `/api/v1`，可用 [.env.example](.env.example) 中的 `VITE_API_BASE_URL` 配置。
 
+在线接口文档（Swagger UI）不是前端页面，也不经前端 dev server 代理：Vite 只代理 `/api` 与对象存储路径，`/swagger/...` 会落在 `src/router/index.tsx` 的通配路由上渲染[未找到页面](src/pages/common/NotFoundPage.tsx)。请直接访问 API 端口 `http://127.0.0.1:8080/swagger/index.html`（Compose 部署同理，Web 端口的 `/swagger/` 也不会转发）。说明见[部署说明](../docs/deployment.md#在线接口文档)。
+
 ## 检查与构建
 
 以下命令在 `web/` 执行：
