@@ -34,9 +34,8 @@ updates:
       interval: weekly
     commit-message:
       prefix: "ci(actions)"
-    ignore:
-      - dependency-name: "*"
-        update-types: ["version-update:semver-major"]
+    # 不屏蔽 major：action 的 major 多为运行时升级（如 Node.js 20 → 24 弃用），
+    # 屏蔽后机器人不会提 PR，弃用告警只能靠人工发现（见 #194）。
   - package-ecosystem: docker
     directory: /server
     schedule:
