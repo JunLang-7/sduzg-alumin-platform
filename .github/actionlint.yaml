@@ -1,9 +1,17 @@
 # actionlint 配置（仓库 CI 目前不运行 actionlint，此文件供本地与编辑器使用）。
+#
+# paths 的键是 glob 模式（doublestar），不是正则；ignore 里的条目才是正则。
+# 需要跨文件生效的豁免集中写在一个 glob 键下，避免同文件命中多个键时的取值歧义。
 config-version: 1
 
 paths:
-  .github/workflows/ci.yml:
+  '.github/workflows/*.yml':
     ignore:
+      # ubuntu-26.04 是 GitHub 官方托管标签（见 actions/runner-images README 的
+      # 可用镜像表），但 actionlint 内置标签表在 v1.7.12（当前最新）里仍只到
+      # ubuntu-24.04，属工具侧滞后，非仓库问题。
+      # 注意：ignore 匹配的是 err.Message，不含格式化输出追加的 [runner-label] kind 标签。
+      - 'label "ubuntu-26.04" is unknown'
       # GitHub 会使用 services 的 command：实测 silo 镜像不带 command 时只打印版本号
       # 就退出，而集成测试 TestAlumniFileUploadDownloadDeleteE2E 需要真实的上传/下载/
       # 删除，它一直通过说明服务确实在跑。actionlint 的 schema 尚未收录该键，属误报。

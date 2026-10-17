@@ -1,5 +1,7 @@
 name: CI
 
+# runner 显式固定为 ubuntu-26.04：与生产服务器（Ubuntu 26.04 LTS）保持一致，
+# 同时避免 ubuntu-latest 灰度迁移到 Ubuntu 26 期间镜像版本不确定（见 #195）。
 on:
   pull_request:
     branches: [main]
@@ -25,7 +27,7 @@ jobs:
   commit-message:
     name: Commit messages
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -56,7 +58,7 @@ jobs:
   issue-link:
     name: Linked issue
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Test Issue reference policy
@@ -70,7 +72,7 @@ jobs:
 
   wiki-sync:
     name: Wiki sync
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -80,7 +82,7 @@ jobs:
 
   backend:
     name: Backend quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: server
@@ -110,7 +112,7 @@ jobs:
 
   web:
     name: Web quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     defaults:
       run:
         working-directory: web
@@ -132,7 +134,7 @@ jobs:
   e2e:
     name: E2E
     if: github.event_name == 'pull_request' || inputs.run_e2e
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     defaults:
       run:
@@ -169,7 +171,7 @@ jobs:
 
   integration:
     name: Integration and migration
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     services:
       mysql:
         image: mysql:8.0
@@ -242,7 +244,7 @@ jobs:
 
   security:
     name: Security
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -265,7 +267,7 @@ jobs:
 
   containers:
     name: Containers and health checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Test the release artifact check

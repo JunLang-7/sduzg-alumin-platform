@@ -1,5 +1,8 @@
 name: Wiki
 
+# runner 显式固定为 ubuntu-26.04：与生产服务器（Ubuntu 26.04 LTS）保持一致，
+# 同时避免 ubuntu-latest 灰度迁移到 Ubuntu 26 期间镜像版本不确定（见 #195）。
+
 # 把 docs/ 中指定的文档同步到 GitHub Wiki。Wiki 是下游副本，内容以仓库为准。
 # 首次使用需要先在仓库 Wiki 页面手工保存任意一页：GitHub 只有在那之后才会
 # 创建 <repo>.wiki.git，否则同步会以退出码 3 提示尚未初始化。
@@ -25,7 +28,7 @@ concurrency:
 jobs:
   publish:
     name: Publish wiki pages
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # 回退到内置 GITHUB_TOKEN 推送 .wiki.git 时需要 contents: write。
     permissions:
       contents: write

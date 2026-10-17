@@ -1,5 +1,8 @@
 name: Migration upgrade path
 
+# runner 显式固定为 ubuntu-26.04：与生产服务器（Ubuntu 26.04 LTS）保持一致，
+# 同时避免 ubuntu-latest 灰度迁移到 Ubuntu 26 期间镜像版本不确定（见 #195）。
+
 # 由 Nightly 与 Release 通过 workflow_call 复用；不进 PR 门禁。
 on:
   workflow_call:
@@ -10,7 +13,7 @@ permissions:
 jobs:
   upgrade:
     name: Migration upgrade path
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     services:
       mysql:
         image: mysql:8.0

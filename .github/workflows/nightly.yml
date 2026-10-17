@@ -1,5 +1,7 @@
 name: Nightly
 
+# runner 显式固定为 ubuntu-26.04：与生产服务器（Ubuntu 26.04 LTS）保持一致，
+# 同时避免 ubuntu-latest 灰度迁移到 Ubuntu 26 期间镜像版本不确定（见 #195）。
 on:
   # 每天 02:00（北京时间，UTC+8）在仓库默认分支 main 上执行一次。
   schedule:
@@ -28,7 +30,7 @@ jobs:
   artifacts:
     name: Nightly artifacts
     needs: [quality, migration-upgrade]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       # v5.1.0
       # 不上传凭据到构建产物。

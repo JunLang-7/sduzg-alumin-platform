@@ -1,5 +1,7 @@
 name: Release
 
+# runner 显式固定为 ubuntu-26.04：与生产服务器（Ubuntu 26.04 LTS）保持一致，
+# 同时避免 ubuntu-latest 灰度迁移到 Ubuntu 26 期间镜像版本不确定（见 #195）。
 on:
   push:
     tags:
@@ -15,7 +17,7 @@ concurrency:
 jobs:
   validate:
     name: Validate tag
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
@@ -63,7 +65,7 @@ jobs:
   build:
     name: Build release artifacts
     needs: [validate, quality, migration-upgrade]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       # v5.1.0
       # 不上传凭据到构建产物。
@@ -130,7 +132,7 @@ jobs:
   publish:
     name: Publish GitHub Release
     needs: [validate, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     # 在仓库 Settings → Environments 为 release 环境配置 required reviewers 后，
     # 打标签不会直接对外发布，需要人工放行。
     environment: release
