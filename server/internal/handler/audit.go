@@ -29,8 +29,10 @@ func NewAuditHandler(audit *service.AuditService) *AuditHandler {
 //	@Produce		json
 //	@Param			page				query		int		false	"页码，默认 1"
 //	@Param			page_size			query		int		false	"每页条数，默认 20，最大 100"
-//	@Param			start_date			query		string	false	"开始日期（YYYY-MM-DD，含当天）"
-//	@Param			end_date			query		string	false	"结束日期（YYYY-MM-DD，含当天）"
+//	@Param			start_date			query		string	false	"开始日期（YYYY-MM-DD，UTC 日边界，含当天；兼容参数）"
+//	@Param			end_date			query		string	false	"结束日期（YYYY-MM-DD，UTC 日边界，含当天；兼容参数）"
+//	@Param			start_at			query		string	false	"开始时间（RFC3339，含）"
+//	@Param			end_at				query		string	false	"结束时间（RFC3339，不含）"
 //	@Param			management_scope	query		string	false	"管理范围，取数据域中文名，如 本科生、学术学位研究生、MPA专业学位研究生"
 //	@Param			action				query		string	false	"操作类型"	Enums(create,update,delete,import)
 //	@Param			target_id			query		integer	false	"目标校友档案 ID"

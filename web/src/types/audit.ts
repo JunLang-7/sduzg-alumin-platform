@@ -52,6 +52,8 @@ export interface AuditOperation {
 export interface AuditQuery extends PageQuery {
   start_date?: string;
   end_date?: string;
+  start_at?: string;
+  end_at?: string;
   management_scope?: string;
   action?: AuditAction;
   target_id?: number;

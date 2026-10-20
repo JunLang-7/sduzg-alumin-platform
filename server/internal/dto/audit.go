@@ -15,6 +15,8 @@ type AuditListRequest struct {
 	PageSize        int    `form:"page_size"`
 	StartDate       string `form:"start_date"`
 	EndDate         string `form:"end_date"`
+	StartAt         string `form:"start_at"`
+	EndAt           string `form:"end_at"`
 	ManagementScope string `form:"management_scope"`
 	Action          string `form:"action"`
 	TargetID        uint64 `form:"target_id"`
@@ -35,14 +37,26 @@ func (r AuditListRequest) ToQuery() (do.AuditQuery, error) {
 		query.TargetID = &r.TargetID
 	}
 
-	if r.StartDate != "" {
+	if r.StartAt != "" {
+		start, err := time.Parse(time.RFC3339, r.StartAt)
+		if err != nil {
+			return do.AuditQuery{}, common.ErrInvalidRequest
+		}
+		query.StartAt = &start
+	} else if r.StartDate != "" {
 		start, err := time.Parse(auditDateFormat, r.StartDate)
 		if err != nil {
 			return do.AuditQuery{}, common.ErrInvalidRequest
 		}
 		query.StartAt = &start
 	}
-	if r.EndDate != "" {
+	if r.EndAt != "" {
+		end, err := time.Parse(time.RFC3339, r.EndAt)
+		if err != nil {
+			return do.AuditQuery{}, common.ErrInvalidRequest
+		}
+		query.EndAt = &end
+	} else if r.EndDate != "" {
 		end, err := time.Parse(auditDateFormat, r.EndDate)
 		if err != nil {
 			return do.AuditQuery{}, common.ErrInvalidRequest

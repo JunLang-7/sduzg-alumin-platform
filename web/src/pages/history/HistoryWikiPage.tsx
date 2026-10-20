@@ -11,10 +11,10 @@ import { HistoryContent } from './HistoryContent';
 import { DeletionReasonPreview } from './DeletionReasonPreview';
 import { loadContributionPreview, type ContributionPreview } from './contributionPreview';
 import { extractToc, type TocItem } from './toc';
+import { formatDate } from '../../utils/datetime';
 import './history-wiki.css';
 
 const displayTitle = (title: string) => title.replace(/\s*v\d+$/i, '');
-const formatHistoryDate = (value: string) => new Date(value).toLocaleDateString('zh-CN');
 const contributionNote = (item: HistoryContribution) =>
   item.review_comment || item.change_note || (item.status === 'pending' ? '等待审核' : '');
 
@@ -297,9 +297,7 @@ export function HistoryWikiPage() {
           <h2>{active ? displayTitle(active.title) : '暂无已发布词条'}</h2>
           {active?.summary && <p className="history-page__summary">{active.summary}</p>}
           <div className="history-page__meta">
-            <span>
-              最近更新：{active ? new Date(active.updated_at).toLocaleDateString('zh-CN') : '—'}
-            </span>
+            <span>最近更新：{active ? formatDate(active.updated_at) : '—'}</span>
             <Space className="history-page__meta-actions" wrap>
               {user?.role === 'alumni' && active && (
                 <Button onClick={() => openEditor('contribute')}>补充修改</Button>
@@ -398,7 +396,7 @@ export function HistoryWikiPage() {
                       <b>{item.title}</b>
                       {contributionNote(item) && <p>{contributionNote(item)}</p>}
                       <span className="history-page__mine-item-time">
-                        最后修改：{formatHistoryDate(item.updated_at)}
+                        最后修改：{formatDate(item.updated_at)}
                       </span>
                     </div>
                   </List.Item>
@@ -433,7 +431,7 @@ export function HistoryWikiPage() {
                       <DeletionReasonPreview reason={item.reason} />
                       {item.review_comment && <p>审核意见：{item.review_comment}</p>}
                       <span className="history-page__mine-item-time">
-                        申请时间：{formatHistoryDate(item.created_at)}
+                        申请时间：{formatDate(item.created_at)}
                       </span>
                     </div>
                   </List.Item>

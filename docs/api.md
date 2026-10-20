@@ -369,12 +369,13 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 | 参数                     | 类型   | 说明                                                              |
 | ------------------------ | ------ | ----------------------------------------------------------------- |
 | `page`、`page_size`      | int    | 通用分页                                                          |
-| `start_date`、`end_date` | string | `YYYY-MM-DD`，包含起止日期（按 UTC 日边界处理），格式错误返回 400 |
+| `start_date`、`end_date` | string | 兼容参数：`YYYY-MM-DD`，包含起止日期（按 UTC 日边界处理），格式错误返回 400 |
+| `start_at`、`end_at` | string | RFC3339 瞬时，`end_at` 不含；Web 端按浏览器本地日期换算（开始日 00:00 到结束日次日 00:00），格式错误返回 400 |
 | `management_scope`       | string | 管理范围名称精确匹配，例如“本科生”；不会扩大当前用户授权范围      |
 | `action`                 | string | 操作类型，例如 `create`、`update`、`delete`、`import`             |
 | `target_id`              | uint64 | 筛选指定校友的操作记录                                            |
 
-记录包含 `id`、`created_at`、`operator`、`operator_role`、`operator_role_label`、可选 `target_id`、`target_type`、`target_name`、可选 `target_meta`、`management_scope`、`action`、`source`、可选 `reason`、`status`。列表只返回上述字段与关联展示信息，不返回 `changes`、`batch_created_alumni` 等明细。
+记录包含 `id`、`created_at`、`operator`、`operator_role`、`operator_role_label`、可选 `target_id`、`target_type`、`target_name`、可选 `target_meta`、`management_scope`、`action`、`source`、可选 `reason`、`status`。列表只返回上述字段与关联展示信息，不返回 `changes`、`batch_created_alumni` 等明细。`created_at` 是 UTC 瞬时，Web 端按浏览器本地时区展示；日期筛选优先使用 `start_at`/`end_at`，保证筛选区间与列表展示为同一时区口径。
 
 列表查询按 `created_at DESC, id DESC` 排序，并依赖 `operation_logs` 上的复合索引 `idx_logs_created_id (created_at, id)`（由迁移 `011_add_audit_log_sort_index.sql` 创建）。这不是单纯的性能优化：`operation_logs.detail` 是 JSON 列，批量导入审计的明细可达数百 KB，而 MySQL 的 filesort 会在排序前物化包含被引用列的整行——只要查询引用了 `detail`（即使只取一个标量），多行叠加后就可能超过 `sort_buffer_size`（默认 256KB）而报 `1038 Out of sort memory`，导致列表接口返回 500。让排序走索引的反向扫描可以彻底避免 filesort，单条审计记录的 `detail` 体积因此不再影响列表查询。索引缺失时查询会降级为普通执行计划（并产生告警）而不是直接报错。
 

@@ -863,14 +863,26 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "开始日期（YYYY-MM-DD，含当天）",
+                        "description": "开始日期（YYYY-MM-DD，UTC 日边界，含当天；兼容参数）",
                         "name": "start_date",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "结束日期（YYYY-MM-DD，含当天）",
+                        "description": "结束日期（YYYY-MM-DD，UTC 日边界，含当天；兼容参数）",
                         "name": "end_date",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "开始时间（RFC3339，含）",
+                        "name": "start_at",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "结束时间（RFC3339，不含）",
+                        "name": "end_at",
                         "in": "query"
                     },
                     {

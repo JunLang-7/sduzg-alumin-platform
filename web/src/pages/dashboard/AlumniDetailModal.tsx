@@ -13,6 +13,7 @@ import { alumniApi } from '../../api/alumni';
 import type { AlumniFileItem, AlumniFileListResponse, AlumniProfile } from '../../types/alumni';
 import { useAuthStore } from '../../store/authStore';
 import { canManageFiles, canReadSensitive } from '../../utils/access';
+import { formatDateTime } from '../../utils/datetime';
 
 interface AlumniDetailModalProps {
   profile: AlumniProfile | null;
@@ -32,18 +33,7 @@ function displaySensitiveValue(value: string | undefined, readable: boolean) {
 }
 
 function displayTime(value?: string) {
-  if (!value) return '未填';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? value
-    : new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).format(date);
+  return formatDateTime(value, { fallback: '未填' });
 }
 
 function formatFileSize(bytes: number) {

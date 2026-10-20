@@ -15,6 +15,7 @@ import logoUrl from '../../assets/pspa-logo.png';
 import { useAuthStore } from '../../store/authStore';
 import type { AlumniProfile } from '../../types/alumni';
 import { canReadSensitive } from '../../utils/access';
+import { formatDateTime } from '../../utils/datetime';
 import { AlumniDetailModal } from './AlumniDetailModal';
 import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
@@ -393,19 +394,7 @@ export function DashboardPage() {
       3,
   );
 
-  const currentTime = useMemo(
-    () =>
-      new Intl.DateTimeFormat('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-      }).format(now),
-    [now],
-  );
+  const currentTime = useMemo(() => formatDateTime(now, { seconds: true }), [now]);
   const isCompactChart = viewportWidth <= 1500;
 
   const showLineChart = dimension === 'grade' || dimension === 'cohort';

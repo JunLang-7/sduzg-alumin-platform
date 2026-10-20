@@ -14,19 +14,13 @@ import { PageHeader } from '../../components/PageHeader';
 import { HistoryContent } from '../history/HistoryContent';
 import { DeletionReasonPreview } from '../history/DeletionReasonPreview';
 import { extractToc } from '../history/toc';
+import { formatDate } from '../../utils/datetime';
 import './history-review.css';
 
 const actionText: Record<HistoryReviewAction, string> = {
   approve: '通过',
   return: '退回',
   reject: '驳回',
-};
-
-const formatDate = (value?: string) => {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }).replace(/\//g, '-');
 };
 
 export function HistoryReviewPage() {

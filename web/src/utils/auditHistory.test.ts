@@ -7,6 +7,7 @@ import {
   getAuditActionColor,
   getAuditActionLabel,
 } from './auditHistory';
+import { formatDateTime } from './datetime';
 
 describe('audit history view model', () => {
   it('maps operation types to the labels and colors used by the UI', () => {
@@ -18,9 +19,13 @@ describe('audit history view model', () => {
 
   it('formats API timestamps for the operation history table', () => {
     expect(formatAuditDateTime('2026-09-05T10:21:45+08:00')).toBe('2026-09-05 10:21');
+    const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(formatAuditDateTime('2026-10-20T02:56:30Z')).toBe(
+      formatDateTime('2026-10-20T02:56:30Z', { timeZone: localTimeZone }),
+    );
   });
 
-  it('keeps only selected filters in the API query', () => {
+  it('converts selected local dates to UTC instants for the API filter', () => {
     expect(
       buildAuditQuery({
         page: 2,
@@ -33,13 +38,25 @@ describe('audit history view model', () => {
     ).toEqual({
       page: 2,
       page_size: 20,
-      start_date: '2026-09-01',
-      end_date: '2026-09-08',
+      start_at: new Date(2026, 8, 1, 0, 0, 0, 0).toISOString(),
+      end_at: new Date(2026, 8, 9, 0, 0, 0, 0).toISOString(),
       management_scope: '指定年级',
       action: 'update',
     });
 
     expect(buildAuditQuery({ page: 1, pageSize: 20 })).toEqual({ page: 1, page_size: 20 });
+  });
+
+  it('uses the next local day as the exclusive end boundary', () => {
+    const query = buildAuditQuery({
+      page: 1,
+      pageSize: 20,
+      startDate: '2026-10-20',
+      endDate: '2026-10-20',
+    });
+
+    expect(query.start_at).toBe(new Date(2026, 9, 20, 0, 0, 0, 0).toISOString());
+    expect(query.end_at).toBe(new Date(2026, 9, 21, 0, 0, 0, 0).toISOString());
   });
 
   it('shows five public batch-import fields without sensitive permission', () => {
