@@ -312,8 +312,26 @@ jobs:
             sdu-alumni-web-ci
           trap 'docker logs sdu-alumni-web-ci; docker rm -f sdu-alumni-web-ci' \
             EXIT
+          base=http://127.0.0.1:18081
           for attempt in $(seq 1 10); do
-            curl --fail --silent http://127.0.0.1:18081/ > /dev/null && exit 0
+            if curl --fail --silent "$base/" > /dev/null; then
+              break
+            fi
             sleep 2
           done
-          exit 1
+          curl --fail --silent "$base/" > /dev/null
+          # 入口 HTML 必须协商缓存，否则发版后浏览器可能长期停留在旧版本。
+          cache_control() {
+            curl --silent --head "$1" \
+              | tr -d '\r' \
+              | awk -F': ' 'tolower($1)=="cache-control" {print $2; exit}'
+          }
+          test "$(cache_control "$base/")" = "no-cache"
+          test "$(cache_control "$base/index.html")" = "no-cache"
+          test "$(cache_control "$base/admin/alumni")" = "no-cache"
+          # 带内容 hash 的构建产物应长期缓存。
+          asset="$(curl --fail --silent "$base/" \
+            | grep -o '/assets/[^"]*\.js' | head -1)"
+          test -n "$asset"
+          test "$(cache_control "$base$asset")" \
+            = "public, max-age=31536000, immutable"
