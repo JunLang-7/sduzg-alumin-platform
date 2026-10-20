@@ -1,0 +1,12 @@
+-- operation_logs: 复合索引支撑操作历史列表的有序扫描。
+--
+-- 列表查询按 created_at DESC, id DESC 排序。若 MySQL 走 filesort，会把包含
+-- detail 整列的排序行物化进 sort_buffer；批量导入审计的 detail 可达数百 KB，
+-- 排序行超限即报 1038 (Out of sort memory)。该复合索引让查询反向扫描索引完成
+-- 排序，filesort 不再发生，排序结果与 detail 体积彻底解耦。
+--
+-- 这里声明 requires 而不是 proves：proves 的语义是"该表存在即视为迁移已执行"，
+-- 而 operation_logs 在本迁移之前就已存在，用 proves 会让旧卷跳过本迁移、
+-- 导致索引缺失。requires 只校验依赖表存在，不影响迁移执行。
+-- migrate: requires operation_logs
+ALTER TABLE operation_logs ADD INDEX idx_logs_created_id (created_at, id);

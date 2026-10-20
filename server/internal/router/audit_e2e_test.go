@@ -272,13 +272,18 @@ func TestAuditOperationListWithOversizedDetail(t *testing.T) {
 	})
 
 	// 先写入若干小记录，保证 MySQL 走 filesort，而不是对单行跳过排序。
+	//
+	// 这些小记录的 target_type 不在列表筛选范围内（alumni_export 等），它们的作用是
+	// 迫使 MySQL 在排序前物化更多整行：filesort 会把包含被引用列的排序行写入
+	// sort_buffer，单条大记录本身可能刚好塞得下，但叠加多行后就会超过
+	// sort_buffer_size 而报 1038。实测阈值约 7 行，与生产环境一致。
 	for i := 0; i < 20; i++ {
 		small := fmt.Sprintf(`{"schema_version":1,"operator_name":"普通记录-%d","target_name":"校友档案批量导入"}`, i)
 		if err := db.Create(&model.OperationLog{
 			OperatorID:   operator.ID,
 			OperatorRole: common.RoleSuperAdmin,
-			Action:       "update",
-			TargetType:   "alumni_profile",
+			Action:       "export_alumni",
+			TargetType:   "alumni_export",
 			Detail:       &small,
 		}).Error; err != nil {
 			t.Fatalf("create small operation log: %v", err)
@@ -299,6 +304,12 @@ func TestAuditOperationListWithOversizedDetail(t *testing.T) {
 	}
 	if err := db.Create(bigLog).Error; err != nil {
 		t.Fatalf("create oversized operation log: %v", err)
+	}
+	// created_at 由数据库默认值填充，GORM 不会回读到结构体，需要单独查一次。
+	var bigCreatedAt time.Time
+	if err := db.Model(&model.OperationLog{}).Select("created_at").
+		Where("id = ?", bigLog.ID).Scan(&bigCreatedAt).Error; err != nil {
+		t.Fatalf("read oversized operation log created_at: %v", err)
 	}
 
 	gin.SetMode(gin.TestMode)
@@ -325,13 +336,14 @@ func TestAuditOperationListWithOversizedDetail(t *testing.T) {
 		Code int `json:"code"`
 		Data struct {
 			Items []struct {
-				ID              uint64 `json:"id"`
-				Operator        string `json:"operator"`
-				TargetName      string `json:"target_name"`
-				ManagementScope string `json:"management_scope"`
-				Source          string `json:"source"`
-				Reason          string `json:"reason"`
-				Status          string `json:"status"`
+				ID              uint64    `json:"id"`
+				CreatedAt       time.Time `json:"created_at"`
+				Operator        string    `json:"operator"`
+				TargetName      string    `json:"target_name"`
+				ManagementScope string    `json:"management_scope"`
+				Source          string    `json:"source"`
+				Reason          string    `json:"reason"`
+				Status          string    `json:"status"`
 			} `json:"items"`
 		} `json:"data"`
 	}
@@ -349,6 +361,12 @@ func TestAuditOperationListWithOversizedDetail(t *testing.T) {
 		found = true
 		if item.Operator != "超大明细管理员" || item.TargetName != "校友档案批量导入" || item.ManagementScope != "MPA专业学位研究生" || item.Source != "admin_import" || item.Reason != "导入校友档案" || item.Status != "applied" {
 			t.Fatalf("unexpected oversized list item: %+v", item)
+		}
+		// 列表查询 JOIN 了 users / alumni_profiles / data_domains，这几张表同样有 id 与
+		// created_at 列。列表必须显式列出所需列，一旦退化成 SELECT *，同名列会覆盖
+		// operation_logs 的取值，导致 id 与 created_at 变成其他表的字段。
+		if !item.CreatedAt.Equal(bigCreatedAt.Truncate(time.Second)) {
+			t.Fatalf("created_at = %s, want %s", item.CreatedAt, bigCreatedAt)
 		}
 	}
 	if !found {
@@ -414,6 +432,101 @@ func buildOversizedAuditDetail(t *testing.T, recordCount, payloadSize int) strin
 		t.Fatalf("marshal oversized detail: %v", err)
 	}
 	return string(detail)
+}
+
+// TestAuditOperationListKeepsNullTargetIDAbsent 验证 detail 中 target_id 为显式
+// null 时，列表不会把它当成 0 返回。
+//
+// JSON_UNQUOTE(JSON_EXTRACT(detail, '$.target_id')) 对 JSON null 返回字符串 'null'，
+// 直接 CAST(... AS UNSIGNED) 会得到 0，把“没有目标”错误地表达成“目标 ID 为 0”。
+// 列表 SQL 用 NULLIF 过滤掉 'null'，因此这里断言 target_id 字段整体缺省。
+func TestAuditOperationListKeepsNullTargetIDAbsent(t *testing.T) {
+	dsn := os.Getenv("TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("TEST_MYSQL_DSN is not configured")
+	}
+
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open test database: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("get test database: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	suffix := time.Now().UnixNano()
+	operator := &model.User{
+		Account:      fmt.Sprintf("audit-null-target-%d", suffix),
+		PasswordHash: "not-used-by-e2e",
+		Role:         common.RoleSuperAdmin,
+		RealName:     ptrString("空目标管理员"),
+		Status:       common.UserStatusActive,
+	}
+	if err := db.Create(operator).Error; err != nil {
+		t.Fatalf("create e2e operator: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Where("operator_id = ?", operator.ID).Delete(&model.OperationLog{}).Error
+		_ = db.Where("id = ?", operator.ID).Delete(&model.User{}).Error
+	})
+
+	nullTargetDetail := `{"schema_version":1,"operator_name":"空目标管理员","operator_role_label":"超级管理员","target_id":null,"target_name":"校友档案批量导入","management_scope":"全部校友","source":"admin_import","reason":"导入校友档案","status":"applied"}`
+	nullTargetLog := &model.OperationLog{
+		OperatorID:   operator.ID,
+		OperatorRole: common.RoleSuperAdmin,
+		Action:       "import",
+		TargetType:   "alumni_batch",
+		Detail:       &nullTargetDetail,
+	}
+	if err := db.Create(nullTargetLog).Error; err != nil {
+		t.Fatalf("create null target operation log: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	secret := "audit-null-target-secret"
+	engine := New(Dependencies{
+		Config: config.Config{
+			App:  config.AppConfig{Name: "audit-null-target-e2e", Env: config.EnvDevelopment},
+			Auth: config.AuthConfig{JWTSecret: secret, AccessTokenTTL: time.Hour},
+		},
+		Logger: zap.NewNop(),
+		DB:     db,
+	})
+	token := testAccessTokenForUser(t, secret, operator.ID, time.Now().Add(time.Hour))
+
+	listRequest := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/operations?page=1&page_size=50", nil)
+	listRequest.Header.Set("Authorization", "Bearer "+token)
+	listResponse := httptest.NewRecorder()
+	engine.ServeHTTP(listResponse, listRequest)
+	if listResponse.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body = %s", listResponse.Code, listResponse.Body.String())
+	}
+
+	var listBody struct {
+		Code int `json:"code"`
+		Data struct {
+			Items []map[string]json.RawMessage `json:"items"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(listResponse.Body.Bytes(), &listBody); err != nil {
+		t.Fatalf("decode list response: %v", err)
+	}
+	for _, item := range listBody.Data.Items {
+		var id uint64
+		if err := json.Unmarshal(item["id"], &id); err != nil {
+			continue
+		}
+		if id != nullTargetLog.ID {
+			continue
+		}
+		if _, exists := item["target_id"]; exists {
+			t.Fatalf("target_id should be absent for null detail target: %s", string(item["target_id"]))
+		}
+		return
+	}
+	t.Fatalf("null target operation log %d not found in list", nullTargetLog.ID)
 }
 
 func ptrString(value string) *string {
