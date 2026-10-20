@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/xuri/excelize/v2"
@@ -130,6 +132,71 @@ func TestImportAllValidRows(t *testing.T) {
 	}
 	if len(result.Errors) != 0 {
 		t.Fatalf("expected 0 errors, got %+v", result.Errors)
+	}
+}
+
+func TestImportAuditTruncatesBatchRecords(t *testing.T) {
+	writer := &fakeExportOperationLogger{}
+	svc := NewAlumniService(&fakeAlumniStore{}, nil).WithOperationLogger(writer)
+	domainID := uint64(1)
+	total := maxAuditBatchRecords + 1
+	created := make([]*model.AlumniProfile, 0, total)
+	for i := 0; i < total; i++ {
+		created = append(created, &model.AlumniProfile{ID: uint64(i + 1), Name: fmt.Sprintf("校友%04d", i+1)})
+	}
+
+	svc.writeImportAudit(
+		context.Background(),
+		common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
+		[]do.AlumniCreateProfile{{DataDomainID: &domainID}},
+		created,
+		&dto.AlumniImportResult{Total: total, Success: total},
+	)
+
+	if len(writer.logs) != 1 || writer.logs[0].Detail == nil {
+		t.Fatalf("expected one import audit log, got %+v", writer.logs)
+	}
+	var detail importAuditDetail
+	if err := json.Unmarshal([]byte(*writer.logs[0].Detail), &detail); err != nil {
+		t.Fatalf("parse import audit detail: %v", err)
+	}
+	if len(detail.BatchCreatedAlumni) != maxAuditBatchRecords {
+		t.Fatalf("saved batch records = %d, want %d", len(detail.BatchCreatedAlumni), maxAuditBatchRecords)
+	}
+	if detail.BatchCreatedAlumniTotal != total || !detail.BatchCreatedAlumniTruncated {
+		t.Fatalf("unexpected truncation metadata: total=%d truncated=%v", detail.BatchCreatedAlumniTotal, detail.BatchCreatedAlumniTruncated)
+	}
+	if len(*writer.logs[0].Detail) > 256*1024 {
+		t.Fatalf("import audit detail is too large: %d bytes", len(*writer.logs[0].Detail))
+	}
+}
+
+func TestImportAuditKeepsBatchRecordsUnderLimit(t *testing.T) {
+	writer := &fakeExportOperationLogger{}
+	svc := NewAlumniService(&fakeAlumniStore{}, nil).WithOperationLogger(writer)
+	domainID := uint64(1)
+	created := make([]*model.AlumniProfile, 0, maxAuditBatchRecords)
+	for i := 0; i < maxAuditBatchRecords; i++ {
+		created = append(created, &model.AlumniProfile{ID: uint64(i + 1), Name: fmt.Sprintf("校友%04d", i+1)})
+	}
+
+	svc.writeImportAudit(
+		context.Background(),
+		common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
+		[]do.AlumniCreateProfile{{DataDomainID: &domainID}},
+		created,
+		&dto.AlumniImportResult{Total: maxAuditBatchRecords, Success: maxAuditBatchRecords},
+	)
+
+	if len(writer.logs) != 1 || writer.logs[0].Detail == nil {
+		t.Fatalf("expected one import audit log, got %+v", writer.logs)
+	}
+	var detail importAuditDetail
+	if err := json.Unmarshal([]byte(*writer.logs[0].Detail), &detail); err != nil {
+		t.Fatalf("parse import audit detail: %v", err)
+	}
+	if len(detail.BatchCreatedAlumni) != maxAuditBatchRecords || detail.BatchCreatedAlumniTruncated {
+		t.Fatalf("under-limit import should keep all records: %+v", detail)
 	}
 }
 

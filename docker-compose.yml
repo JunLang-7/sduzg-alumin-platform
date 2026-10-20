@@ -6,6 +6,7 @@ services:
       - --default-authentication-plugin=mysql_native_password
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
+      - --sort-buffer-size=8M
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sdu_alumni_db}

@@ -3162,6 +3162,12 @@ button {
   color: var(--muted);
   font-size: 12px;
 }
+
+.audit-page .audit-batch-records-note {
+  margin: 8px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
 .audit-page .audit-date-range {
   width: 300px;
 }

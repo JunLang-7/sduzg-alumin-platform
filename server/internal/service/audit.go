@@ -85,6 +85,9 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiv
 	detail := auditLogDetail{}
 	if item.Detail != nil && strings.TrimSpace(*item.Detail) != "" {
 		_ = json.Unmarshal([]byte(*item.Detail), &detail)
+	} else {
+		// 列表查询不取整块 detail，改用单独提取的标量列还原相同结构。
+		detail = auditDetailFromColumns(item)
 	}
 
 	operator := detail.OperatorName
@@ -170,6 +173,12 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiv
 		if item.TargetType == auditTargetBatch {
 			result.BatchImportFields = mapBatchFields(sensitiveReadable)
 			result.BatchCreatedAlumni = mapBatchRecords(detail.BatchCreatedAlumni)
+			result.BatchCreatedAlumniTotal = detail.BatchCreatedAlumniTotal
+			result.BatchCreatedAlumniTruncated = detail.BatchCreatedAlumniTruncated
+			if result.BatchCreatedAlumniTotal == 0 {
+				// 旧记录没有 total 字段，按实际返回条数兜底且不标截断。
+				result.BatchCreatedAlumniTotal = len(result.BatchCreatedAlumni)
+			}
 			result.BatchHiddenSensitiveCount = detail.BatchHiddenSensitiveCount
 			if result.BatchHiddenSensitiveCount == 0 && len(result.BatchCreatedAlumni) > 0 {
 				result.BatchHiddenSensitiveCount = len(auditBatchSensitiveFields)
@@ -303,6 +312,40 @@ func sensitiveValueFilled(value string) bool {
 	default:
 		return true
 	}
+}
+
+// auditDetailFromColumns 用列表查询提取的 detail 标量列还原详情结构，
+// 与解析整块 detail 得到的结果一致；详情接口仍走 json.Unmarshal。
+func auditDetailFromColumns(item repository.AuditEntry) auditLogDetail {
+	detail := auditLogDetail{}
+	if item.DetailOperatorName != nil {
+		detail.OperatorName = *item.DetailOperatorName
+	}
+	if item.DetailOperatorRoleLabel != nil {
+		detail.OperatorRoleLabel = *item.DetailOperatorRoleLabel
+	}
+	if item.DetailTargetID != nil {
+		detail.TargetID = item.DetailTargetID
+	}
+	if item.DetailTargetName != nil {
+		detail.TargetName = *item.DetailTargetName
+	}
+	if item.DetailTargetMeta != nil {
+		detail.TargetMeta = *item.DetailTargetMeta
+	}
+	if item.DetailManagementScope != nil {
+		detail.ManagementScope = *item.DetailManagementScope
+	}
+	if item.DetailSource != nil {
+		detail.Source = *item.DetailSource
+	}
+	if item.DetailReason != nil {
+		detail.Reason = *item.DetailReason
+	}
+	if item.DetailStatus != nil {
+		detail.Status = *item.DetailStatus
+	}
+	return detail
 }
 
 func roleFromDetail(roleLabel string) string {

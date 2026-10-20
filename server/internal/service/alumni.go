@@ -550,21 +550,23 @@ type exportAuditDetail struct {
 }
 
 type importAuditDetail struct {
-	SchemaVersion             int                `json:"schema_version"`
-	TargetName                string             `json:"target_name,omitempty"`
-	TargetMeta                string             `json:"target_meta,omitempty"`
-	ManagementScope           string             `json:"management_scope,omitempty"`
-	Source                    string             `json:"source,omitempty"`
-	Reason                    string             `json:"reason,omitempty"`
-	Status                    string             `json:"status,omitempty"`
-	DataDomainIDs             []uint64           `json:"data_domain_ids,omitempty"`
-	Total                     int                `json:"total"`
-	Success                   int                `json:"success"`
-	Failed                    int                `json:"failed"`
-	SensitiveFieldsIncluded   bool               `json:"sensitive_fields_included"`
-	BatchImportFields         []auditBatchField  `json:"batch_import_fields,omitempty"`
-	BatchCreatedAlumni        []auditBatchRecord `json:"batch_created_alumni,omitempty"`
-	BatchHiddenSensitiveCount int                `json:"batch_hidden_sensitive_count,omitempty"`
+	SchemaVersion               int                `json:"schema_version"`
+	TargetName                  string             `json:"target_name,omitempty"`
+	TargetMeta                  string             `json:"target_meta,omitempty"`
+	ManagementScope             string             `json:"management_scope,omitempty"`
+	Source                      string             `json:"source,omitempty"`
+	Reason                      string             `json:"reason,omitempty"`
+	Status                      string             `json:"status,omitempty"`
+	DataDomainIDs               []uint64           `json:"data_domain_ids,omitempty"`
+	Total                       int                `json:"total"`
+	Success                     int                `json:"success"`
+	Failed                      int                `json:"failed"`
+	SensitiveFieldsIncluded     bool               `json:"sensitive_fields_included"`
+	BatchImportFields           []auditBatchField  `json:"batch_import_fields,omitempty"`
+	BatchCreatedAlumni          []auditBatchRecord `json:"batch_created_alumni,omitempty"`
+	BatchCreatedAlumniTotal     int                `json:"batch_created_alumni_total,omitempty"`
+	BatchCreatedAlumniTruncated bool               `json:"batch_created_alumni_truncated,omitempty"`
+	BatchHiddenSensitiveCount   int                `json:"batch_hidden_sensitive_count,omitempty"`
 }
 
 func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common.AccessContext, query do.AlumniListQuery, items []*model.AlumniProfile, format string) (*ExportResult, error) {
@@ -936,6 +938,10 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 // maxImportDataRows 是单次导入允许的数据行上限，不含表头。
 const maxImportDataRows = 5000
 
+// maxAuditBatchRecords 限制单条导入审计保存的明细条数，给 detail 体积设上限；
+// 超出部分只保留真实总数，并在详情中标明已截断。
+const maxAuditBatchRecords = 200
+
 // readImportWorkbookRows 读取工作簿，并在累计行数超过上限时立即停止。
 //
 // 不能先读完再判断行数：畸形工作簿可以把有效数据放在末尾行号（Excel 最大
@@ -1005,28 +1011,37 @@ func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.Ac
 	sort.Slice(domainIDs, func(i, j int) bool { return domainIDs[i] < domainIDs[j] })
 	managementScope := s.importManagementScope(ctx, domainIDs)
 	batchRecords := make([]auditBatchRecord, 0, len(createdProfiles))
+	totalCreated := 0
 	for _, profile := range createdProfiles {
-		if profile != nil && profile.ID != 0 {
-			batchRecords = append(batchRecords, batchAuditRecord(profile))
+		if profile == nil || profile.ID == 0 {
+			continue
 		}
+		totalCreated++
+		if len(batchRecords) >= maxAuditBatchRecords {
+			continue
+		}
+		batchRecords = append(batchRecords, batchAuditRecord(profile))
 	}
+	truncated := totalCreated > len(batchRecords)
 
 	detail, err := json.Marshal(importAuditDetail{
-		SchemaVersion:             1,
-		DataDomainIDs:             domainIDs,
-		Total:                     result.Total,
-		Success:                   result.Success,
-		Failed:                    result.Total - result.Success,
-		SensitiveFieldsIncluded:   sensitiveFieldsIncluded,
-		TargetName:                "校友档案批量导入",
-		TargetMeta:                fmt.Sprintf("%d 条校友档案", result.Success),
-		ManagementScope:           managementScope,
-		Source:                    "admin_import",
-		Reason:                    "导入校友档案",
-		Status:                    "applied",
-		BatchImportFields:         auditBatchFields(),
-		BatchCreatedAlumni:        batchRecords,
-		BatchHiddenSensitiveCount: len(auditBatchSensitiveFields),
+		SchemaVersion:               1,
+		DataDomainIDs:               domainIDs,
+		Total:                       result.Total,
+		Success:                     result.Success,
+		Failed:                      result.Total - result.Success,
+		SensitiveFieldsIncluded:     sensitiveFieldsIncluded,
+		TargetName:                  "校友档案批量导入",
+		TargetMeta:                  fmt.Sprintf("%d 条校友档案", result.Success),
+		ManagementScope:             managementScope,
+		Source:                      "admin_import",
+		Reason:                      "导入校友档案",
+		Status:                      "applied",
+		BatchImportFields:           auditBatchFields(),
+		BatchCreatedAlumni:          batchRecords,
+		BatchCreatedAlumniTotal:     totalCreated,
+		BatchCreatedAlumniTruncated: truncated,
+		BatchHiddenSensitiveCount:   len(auditBatchSensitiveFields),
 	})
 	if err != nil {
 		return

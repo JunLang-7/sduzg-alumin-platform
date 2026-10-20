@@ -43,6 +43,8 @@ export interface AuditOperation {
   status: AuditStatus | string;
   changes?: AuditChange[];
   batch_created_alumni?: AuditBatchAlumni[];
+  batch_created_alumni_total?: number;
+  batch_created_alumni_truncated?: boolean;
   batch_import_fields?: AuditBatchField[];
   batch_hidden_sensitive_count?: number;
 }

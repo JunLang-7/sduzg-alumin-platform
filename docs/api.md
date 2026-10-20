@@ -374,9 +374,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 | `action`                 | string | 操作类型，例如 `create`、`update`、`delete`、`import`             |
 | `target_id`              | uint64 | 筛选指定校友的操作记录                                            |
 
-记录包含 `id`、`created_at`、`operator`、`operator_role`、`operator_role_label`、可选 `target_id`、`target_type`、`target_name`、可选 `target_meta`、`management_scope`、`action`、`source`、可选 `reason`、`status`。
+记录包含 `id`、`created_at`、`operator`、`operator_role`、`operator_role_label`、可选 `target_id`、`target_type`、`target_name`、可选 `target_meta`、`management_scope`、`action`、`source`、可选 `reason`、`status`。列表只返回上述字段与关联展示信息，不返回 `changes`、`batch_created_alumni` 等明细；单条审计记录的 `detail` 体积不影响列表查询。
 
-详情中的 `changes` 每项为 `{ field_name, field_label, old_value, new_value, current_value?, sensitive? }`。敏感字段的历史差异只返回“未填写/首次填写/已修改”等安全状态，**即使拥有敏感权限也不返回历史原值**。批量导入详情另有 `batch_created_alumni`、`batch_import_fields`、`batch_hidden_sensitive_count`；有 `alumni.sensitive.read` 时，允许从当前可访问档案补充敏感字段的**当前值**，不是历史快照。
+详情中的 `changes` 每项为 `{ field_name, field_label, old_value, new_value, current_value?, sensitive? }`。敏感字段的历史差异只返回“未填写/首次填写/已修改”等安全状态，**即使拥有敏感权限也不返回历史原值**。批量导入详情另有 `batch_created_alumni`、`batch_import_fields`、`batch_hidden_sensitive_count`；单条审计最多保存前 200 条导入明细，超出时返回真实创建总数 `batch_created_alumni_total` 并置 `batch_created_alumni_truncated: true`，前端据此提示已截断。有 `alumni.sensitive.read` 时，允许从当前可访问档案补充敏感字段的**当前值**，不是历史快照。
 
 ```bash
 curl 'http://127.0.0.1:8080/api/v1/admin/audit/operations?page=1&page_size=20&start_date=2026-01-01&end_date=2026-01-31' \

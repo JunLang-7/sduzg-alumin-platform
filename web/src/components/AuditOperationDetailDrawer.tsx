@@ -4,6 +4,7 @@ import type { AuditOperation } from '../types/audit';
 import {
   getAuditActionColor,
   getAuditActionLabel,
+  getAuditBatchRecordSummary,
   getAuditBatchVisibleFields,
 } from '../utils/auditHistory';
 
@@ -43,6 +44,7 @@ function renderBatchImportedRecords(record: AuditOperation, sensitiveReadable: b
     sensitiveReadable,
   ).filter((field) => field.field_name !== 'name');
   const hiddenSensitiveCount = record.batch_hidden_sensitive_count || 0;
+  const batchSummary = getAuditBatchRecordSummary(record);
 
   return (
     <div className="audit-batch-records-scroll">
@@ -81,6 +83,11 @@ function renderBatchImportedRecords(record: AuditOperation, sensitiveReadable: b
           </tfoot>
         ) : null}
       </table>
+      {batchSummary.truncated ? (
+        <p className="audit-batch-records-note">
+          仅展示前 {batchSummary.displayed} 条，本次共创建 {batchSummary.total} 条校友档案。
+        </p>
+      ) : null}
     </div>
   );
 }

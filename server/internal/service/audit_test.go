@@ -152,6 +152,98 @@ func TestAuditServiceListPassesFiltersAndMapsOperation(t *testing.T) {
 	}
 }
 
+func TestAuditServiceListMapsDetailScalarColumns(t *testing.T) {
+	operatorName := "张三"
+	operatorRoleLabel := "子管理员"
+	detailTargetID := uint64(99)
+	targetName := "王海宁"
+	targetMeta := "2020级 · 公共管理"
+	managementScope := "MPA专业学位研究生"
+	source := "admin_import"
+	reason := "导入校友档案"
+	status := "applied"
+
+	store := &fakeAuditStore{
+		items: []repository.AuditEntry{{
+			ID:                      23,
+			OperatorRole:            common.RoleAdmin,
+			Action:                  AuditActionImport,
+			TargetType:              auditTargetBatch,
+			CreatedAt:               time.Date(2026, 9, 5, 10, 21, 0, 0, time.UTC),
+			DetailOperatorName:      &operatorName,
+			DetailOperatorRoleLabel: &operatorRoleLabel,
+			DetailTargetID:          &detailTargetID,
+			DetailTargetName:        &targetName,
+			DetailTargetMeta:        &targetMeta,
+			DetailManagementScope:   &managementScope,
+			DetailSource:            &source,
+			DetailReason:            &reason,
+			DetailStatus:            &status,
+		}},
+		total: 1,
+	}
+
+	pager, err := NewAuditService(store).List(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, dto.AuditListRequest{})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(pager.Items) != 1 {
+		t.Fatalf("unexpected pager: %+v", pager)
+	}
+	item := pager.Items[0]
+	if item.Operator != operatorName || item.OperatorRoleLabel != operatorRoleLabel {
+		t.Fatalf("unexpected operator mapping: %+v", item)
+	}
+	if item.TargetID == nil || *item.TargetID != detailTargetID {
+		t.Fatalf("target id = %+v, want %d", item.TargetID, detailTargetID)
+	}
+	if item.TargetName != targetName || item.TargetMeta != targetMeta || item.ManagementScope != managementScope {
+		t.Fatalf("unexpected target mapping: %+v", item)
+	}
+	if item.Source != source || item.Reason != reason || item.Status != status {
+		t.Fatalf("unexpected detail scalar mapping: %+v", item)
+	}
+	if len(item.Changes) != 0 || len(item.BatchCreatedAlumni) != 0 {
+		t.Fatalf("list item should not include detail payload: %+v", item)
+	}
+}
+
+func TestAuditServiceBatchDetailReportsTruncation(t *testing.T) {
+	detail := `{"schema_version":1,"target_name":"校友档案批量导入","batch_created_alumni":[{"id":401,"name":"周七"},{"id":402,"name":"周八"}],"batch_created_alumni_total":5000,"batch_created_alumni_truncated":true}`
+	store := &fakeAuditStore{detail: &repository.AuditEntry{
+		ID:         24,
+		Action:     AuditActionImport,
+		TargetType: auditTargetBatch,
+		Detail:     &detail,
+	}}
+
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 24)
+	if err != nil {
+		t.Fatalf("Detail() error = %v", err)
+	}
+	if len(item.BatchCreatedAlumni) != 2 || item.BatchCreatedAlumniTotal != 5000 || !item.BatchCreatedAlumniTruncated {
+		t.Fatalf("unexpected truncation metadata: %+v", item)
+	}
+}
+
+func TestAuditServiceBatchDetailFallsBackForLegacyRecords(t *testing.T) {
+	detail := `{"schema_version":1,"batch_created_alumni":[{"id":401,"name":"周七"}]}`
+	store := &fakeAuditStore{detail: &repository.AuditEntry{
+		ID:         25,
+		Action:     AuditActionImport,
+		TargetType: auditTargetBatch,
+		Detail:     &detail,
+	}}
+
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25)
+	if err != nil {
+		t.Fatalf("Detail() error = %v", err)
+	}
+	if item.BatchCreatedAlumniTotal != 1 || item.BatchCreatedAlumniTruncated {
+		t.Fatalf("legacy record should not be marked truncated: %+v", item)
+	}
+}
+
 func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 	targetID := uint64(88)
 	detail := `{"schema_version":1,"operator_name":"李四","operator_role_label":"子管理员","target_name":"王海宁","management_scope":"本科生","source":"admin","changes":[{"field_name":"work_unit","field_label":"工作单位","old_value":"旧单位","new_value":"新单位","current_value":"新单位"},{"field_name":"mobile","field_label":"手机号","old_value":"13800000000","new_value":"13900000000"}]}`

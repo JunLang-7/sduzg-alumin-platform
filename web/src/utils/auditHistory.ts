@@ -54,6 +54,21 @@ export function buildAlumniHistoryQuery(alumniId: number, page = 1, pageSize = 2
   return buildAuditQuery({ page, pageSize, targetId: alumniId });
 }
 
+// 批量导入审计只保存有限条明细；旧记录缺少 total 字段时按实际条数兜底。
+export function getAuditBatchRecordSummary(record: {
+  batch_created_alumni?: unknown[];
+  batch_created_alumni_total?: number;
+  batch_created_alumni_truncated?: boolean;
+}): { displayed: number; total: number; truncated: boolean } {
+  const displayed = record.batch_created_alumni?.length ?? 0;
+  const total = Math.max(record.batch_created_alumni_total || 0, displayed);
+  return {
+    displayed,
+    total,
+    truncated: Boolean(record.batch_created_alumni_truncated) || total > displayed,
+  };
+}
+
 export const AUDIT_BATCH_PUBLIC_FIELDS: AuditBatchField[] = [
   { field_name: 'name', field_label: '姓名' },
   { field_name: 'grade', field_label: '年级' },

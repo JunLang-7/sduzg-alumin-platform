@@ -107,21 +107,23 @@ type AuditEventWriter interface {
 }
 
 type auditLogDetail struct {
-	SchemaVersion             int                `json:"schema_version"`
-	OperatorName              string             `json:"operator_name,omitempty"`
-	OperatorRoleLabel         string             `json:"operator_role_label,omitempty"`
-	TargetID                  *uint64            `json:"target_id,omitempty"`
-	TargetName                string             `json:"target_name,omitempty"`
-	TargetMeta                string             `json:"target_meta,omitempty"`
-	ManagementScope           string             `json:"management_scope,omitempty"`
-	Source                    string             `json:"source,omitempty"`
-	Reason                    string             `json:"reason,omitempty"`
-	Status                    string             `json:"status,omitempty"`
-	Changes                   []AuditChange      `json:"changes,omitempty"`
-	DataDomainIDs             []uint64           `json:"data_domain_ids,omitempty"`
-	BatchImportFields         []auditBatchField  `json:"batch_import_fields,omitempty"`
-	BatchCreatedAlumni        []auditBatchRecord `json:"batch_created_alumni,omitempty"`
-	BatchHiddenSensitiveCount int                `json:"batch_hidden_sensitive_count,omitempty"`
+	SchemaVersion               int                `json:"schema_version"`
+	OperatorName                string             `json:"operator_name,omitempty"`
+	OperatorRoleLabel           string             `json:"operator_role_label,omitempty"`
+	TargetID                    *uint64            `json:"target_id,omitempty"`
+	TargetName                  string             `json:"target_name,omitempty"`
+	TargetMeta                  string             `json:"target_meta,omitempty"`
+	ManagementScope             string             `json:"management_scope,omitempty"`
+	Source                      string             `json:"source,omitempty"`
+	Reason                      string             `json:"reason,omitempty"`
+	Status                      string             `json:"status,omitempty"`
+	Changes                     []AuditChange      `json:"changes,omitempty"`
+	DataDomainIDs               []uint64           `json:"data_domain_ids,omitempty"`
+	BatchImportFields           []auditBatchField  `json:"batch_import_fields,omitempty"`
+	BatchCreatedAlumni          []auditBatchRecord `json:"batch_created_alumni,omitempty"`
+	BatchCreatedAlumniTotal     int                `json:"batch_created_alumni_total,omitempty"`
+	BatchCreatedAlumniTruncated bool               `json:"batch_created_alumni_truncated,omitempty"`
+	BatchHiddenSensitiveCount   int                `json:"batch_hidden_sensitive_count,omitempty"`
 }
 
 // WriteAudit 写入结构化审计记录。审计写入失败不应覆盖已经成功的业务操作，调用方负责记录告警。

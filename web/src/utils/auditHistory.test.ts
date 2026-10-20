@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAuditQuery,
   formatAuditDateTime,
+  getAuditBatchRecordSummary,
   getAuditBatchVisibleFields,
   getAuditActionColor,
   getAuditActionLabel,
@@ -68,5 +69,32 @@ describe('audit history view model', () => {
       'position',
       'mailing_address',
     ]);
+  });
+
+  it('reports truncated batch records with the real created total', () => {
+    const summary = getAuditBatchRecordSummary({
+      batch_created_alumni: new Array(200).fill({}),
+      batch_created_alumni_total: 5000,
+      batch_created_alumni_truncated: true,
+    });
+
+    expect(summary).toEqual({ displayed: 200, total: 5000, truncated: true });
+  });
+
+  it('does not report truncation for legacy records without new fields', () => {
+    const summary = getAuditBatchRecordSummary({
+      batch_created_alumni: new Array(3).fill({}),
+    });
+
+    expect(summary).toEqual({ displayed: 3, total: 3, truncated: false });
+  });
+
+  it('infers truncation when the total exceeds the returned records', () => {
+    const summary = getAuditBatchRecordSummary({
+      batch_created_alumni: new Array(2).fill({}),
+      batch_created_alumni_total: 10,
+    });
+
+    expect(summary).toEqual({ displayed: 2, total: 10, truncated: true });
   });
 });
