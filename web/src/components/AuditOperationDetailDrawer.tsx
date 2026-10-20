@@ -2,6 +2,7 @@ import { Descriptions, Divider, Drawer, Empty, Space, Tag, Typography } from 'an
 import { Link } from 'react-router-dom';
 import type { AuditOperation } from '../types/audit';
 import {
+  formatAuditDateTime,
   getAuditActionColor,
   getAuditActionLabel,
   getAuditBatchRecordSummary,
@@ -120,7 +121,7 @@ export function AuditOperationDetailDrawer({
                 {record.operator}
                 {getAuditActionLabel(record.action)}了 {record.target_name}
               </h2>
-              <p>{record.created_at}</p>
+              <p>{formatAuditDateTime(record.created_at)}</p>
             </div>
           </div>
 

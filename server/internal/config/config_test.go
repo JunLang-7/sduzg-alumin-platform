@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 func TestLoadUsesDefaults(t *testing.T) {
@@ -50,6 +52,25 @@ func TestLoadUsesDefaults(t *testing.T) {
 	}
 	if cfg.Storage.PublicEndpoint != "" {
 		t.Fatalf("expected default public endpoint to be empty, got %q", cfg.Storage.PublicEndpoint)
+	}
+}
+
+func TestDefaultDatabaseParamsUseUTC(t *testing.T) {
+	clearConfigEnv(t)
+	t.Setenv("TZ", "Asia/Shanghai")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := mysql.ParseDSN(cfg.Database.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !parsed.ParseTime || parsed.Loc != time.UTC {
+		t.Fatalf("database must parse DATETIME as UTC independently of process TZ: parseTime=%v loc=%v", parsed.ParseTime, parsed.Loc)
+	}
+	if parsed.Params["time_zone"] != "'+00:00'" {
+		t.Fatalf("database session must use UTC, got %q", parsed.Params["time_zone"])
 	}
 }
 

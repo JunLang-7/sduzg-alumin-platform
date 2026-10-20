@@ -7,6 +7,7 @@ services:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
       - --sort-buffer-size=8M
+      - --default-time-zone=+00:00
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-change-me}
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sdu_alumni_db}
@@ -97,7 +98,7 @@ services:
       DB_USER: ${MYSQL_USER:-sdu_alumni}
       DB_PASSWORD: ${MYSQL_PASSWORD:-change-me}
       DB_NAME: ${MYSQL_DATABASE:-sdu_alumni_db}
-      DB_PARAMS: "charset=utf8mb4&parseTime=true&loc=Local"
+      DB_PARAMS: "charset=utf8mb4&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27"
       REDIS_ENABLED: "true"
       REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}

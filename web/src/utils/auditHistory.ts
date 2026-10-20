@@ -43,16 +43,16 @@ export function formatAuditDateTime(value: string): string {
 function localDayBoundaryISO(date: string, nextDay: boolean): string | undefined {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!match) return undefined;
-  const value = new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]) + (nextDay ? 1 : 0),
-    0,
-    0,
-    0,
-    0,
-  );
-  return Number.isNaN(value.getTime()) ? undefined : value.toISOString();
+  // Date 会把 2 月 30 日等非法日期归一化；先验证日历日期，不能悄悄改掉筛选范围。
+  const calendarDate = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(calendarDate.getTime()) || calendarDate.toISOString().slice(0, 10) !== date) {
+    return undefined;
+  }
+  const value = new Date(0);
+  // setFullYear 避免 Date(year, ...) 把 0–99 年当成 1900–1999 年。
+  value.setFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + (nextDay ? 1 : 0));
+  value.setHours(0, 0, 0, 0);
+  return value.toISOString();
 }
 
 export function buildAuditQuery(input: AuditQueryInput): AuditQuery {
@@ -61,8 +61,9 @@ export function buildAuditQuery(input: AuditQueryInput): AuditQuery {
   return {
     page: input.page,
     page_size: input.pageSize,
-    ...(startAt ? { start_at: startAt } : {}),
-    ...(endAt ? { end_at: endAt } : {}),
+    // 非法日期原样交给后端兼容参数校验并返回 400，避免静默退化为无日期筛选。
+    ...(input.startDate ? (startAt ? { start_at: startAt } : { start_date: input.startDate }) : {}),
+    ...(input.endDate ? (endAt ? { end_at: endAt } : { end_date: input.endDate }) : {}),
     ...(input.managementScope ? { management_scope: input.managementScope } : {}),
     ...(input.action ? { action: input.action } : {}),
     ...(input.targetId !== undefined ? { target_id: input.targetId } : {}),

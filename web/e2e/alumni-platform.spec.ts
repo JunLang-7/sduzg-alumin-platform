@@ -116,7 +116,14 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     await row.getByRole('button', { name: '编辑' }).click();
     const editDialog = page.getByRole('dialog', { name: '编辑校友' });
     await editDialog.getByTestId('alumni-grade-input').fill('2027级');
+    const saved = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
+    );
     await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+    expect((await saved).ok()).toBe(true);
+    await expect(editDialog).toBeHidden();
     await page.reload();
     await expect(page.getByRole('row').filter({ hasText: alumniName })).toContainText('2027级');
   } finally {

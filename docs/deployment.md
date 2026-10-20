@@ -56,6 +56,17 @@ services:
 
 不提交真实 `.env`、生产密钥、日志或构建产物。示例文件与编排中的默认值用于启动和开发，部署时按实际环境设置。
 
+## 时间与时区契约
+
+- 数据库业务时间列（包括 `operation_logs.created_at`）使用 `DATETIME` 保存 UTC 墙上时间；`DATETIME` 本身不携带时区。
+- 默认、示例与 Compose 的 API 数据库连接使用 `DB_PARAMS=charset=utf8mb4&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27`。`loc=UTC` 控制驱动按 UTC 读写时间，`time_zone` 解码为 SQL 字符串 `'+00:00'`，固定每条连接的会话时区，保证 `CURRENT_TIMESTAMP` 也按 UTC 写入；只配置其中一项不够。Compose 同时显式设置 MySQL 的 `--default-time-zone=+00:00`，避免默认会话依赖宿主机时区。
+- API 将这些时间以 RFC3339 UTC 瞬时（`Z` 结尾）返回；Web 统一按**浏览器本地时区**展示，包括操作历史列表、详情抽屉、校友历史卡片、院史审核/词条日期和大屏时钟。院史审核不再固定使用北京时间，海外管理员看到的是当地日期。
+- Web 操作历史筛选把本地开始日 00:00、结束日次日 00:00 转换为 `start_at` / `end_at`，区间左闭右开；夏令时切换日可能是 23 或 25 小时，不能简单加 24 小时。旧 `start_date` / `end_date` 仍按 UTC 日边界解析。
+
+升级时检查并更新已有 `server/.env` 或部署覆盖文件中的 `DB_PARAMS`；旧文件不会随示例自动更新，不能保留 `loc=Local`，也不要通过给 API 设置本地 `TZ` 来修正业务时间。新默认连接参数不依赖 API 进程的 `TZ`。MySQL 启动参数需重建容器才能生效，保留原数据卷。
+
+以上约定基于现有数据已经存储为 UTC，不会改写历史记录。如果自定义部署曾以本地时间写入 `DATETIME`，应先备份并核实数据的真实时区，再制定单独的数据校正方案，不能直接批量加减 8 小时。
+
 ## 在线接口文档
 
 Swagger UI 挂在 API 服务的 `/swagger/index.html`，接口规范端点为 `/swagger/doc.json`。它可以浏览全部接口、查看参数与响应结构，并在 Authorize 中填入 `Bearer <access_token>` 后直接发起真实请求；这些请求与手工调用一样受登录、角色、数据域和功能权限校验，不会因为从文档发起而放宽。[接口文档](api.md)是接口约定的文字说明，两者内容一致。文档只由 API 服务提供，Web 容器（默认 80 端口）不代理该路径：从 Web 入口访问 `/swagger/index.html` 只会返回前端页面，请直接访问上表中的 API 地址。

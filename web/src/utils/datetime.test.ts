@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { formatDate, formatDateTime } from './datetime';
 
 describe('datetime formatting', () => {
+  afterEach(() => vi.unstubAllEnvs());
   it('converts UTC instants to the requested time zone', () => {
     expect(formatDateTime('2026-10-20T02:56:30Z', { timeZone: 'Asia/Shanghai' })).toBe(
       '2026-10-20 10:56',
@@ -23,10 +24,18 @@ describe('datetime formatting', () => {
     ).toBe('2026-10-20 10:56:30');
   });
 
-  it('uses the browser local time zone by default', () => {
-    const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    expect(formatDateTime('2026-10-20T02:56:30Z')).toBe(
-      formatDateTime('2026-10-20T02:56:30Z', { timeZone: localTimeZone }),
+  it.each([
+    ['Asia/Shanghai', '2026-10-20 10:56'],
+    ['UTC', '2026-10-20 02:56'],
+    ['America/New_York', '2026-10-19 22:56'],
+  ])('uses the browser local time zone by default in %s', (zone, expected) => {
+    vi.stubEnv('TZ', zone);
+    expect(formatDateTime('2026-10-20T02:56:30Z')).toBe(expected);
+  });
+
+  it('renders midnight as 00 rather than 24', () => {
+    expect(formatDateTime('2026-10-19T16:00:00Z', { timeZone: 'Asia/Shanghai' })).toBe(
+      '2026-10-20 00:00',
     );
   });
 

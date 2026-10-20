@@ -216,7 +216,7 @@ jobs:
         working-directory: server
     env:
       TEST_MYSQL_DSN: "root:test-password@tcp(127.0.0.1:3306)/sdu_alumni_db\
-        ?charset=utf8mb4&parseTime=true&loc=Local"
+        ?charset=utf8mb4&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27"
       TEST_REDIS_ADDR: 127.0.0.1:6379
       TEST_MINIO_ENDPOINT: 127.0.0.1:9000
       TEST_MINIO_ACCESS_KEY: minioadmin

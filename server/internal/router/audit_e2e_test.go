@@ -154,6 +154,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 				Items []struct {
 					Operator   string
 					ID         uint64 `json:"id"`
+					CreatedAt  string `json:"created_at"`
 					TargetName string `json:"target_name"`
 					Action     string `json:"action"`
 				} `json:"items"`
@@ -168,6 +169,63 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		}
 		if listBody.Data.Items[0].ID != log.ID || listBody.Data.Items[0].Operator != "E2E超级管理员" || listBody.Data.Items[0].TargetName != profile.Name || listBody.Data.Items[0].Action != "update" {
 			return fmt.Errorf("unexpected list item: %+v", listBody.Data.Items[0])
+		}
+
+		createdAt, err := time.Parse(time.RFC3339, listBody.Data.Items[0].CreatedAt)
+		if err != nil || !strings.HasSuffix(listBody.Data.Items[0].CreatedAt, "Z") || time.Since(createdAt).Abs() > time.Minute {
+			return fmt.Errorf("new audit timestamp must represent the current instant in UTC: %q (parse error: %v)", listBody.Data.Items[0].CreatedAt, err)
+		}
+
+		// 上海 10 月 20 日对应 UTC [10 月 19 日 16:00, 10 月 20 日 16:00)。
+		start := time.Date(2026, 10, 19, 16, 0, 0, 0, time.UTC)
+		end := start.AddDate(0, 0, 1)
+		boundaryLogs := []model.OperationLog{}
+		for _, at := range []time.Time{start.Add(-time.Second), start, end.Add(-time.Second), end} {
+			boundaryLogs = append(boundaryLogs, model.OperationLog{
+				OperatorID: operator.ID, OperatorRole: common.RoleSuperAdmin,
+				Action: "create", TargetType: "alumni_profile", TargetID: &profile.ID, CreatedAt: at,
+			})
+		}
+		if err := tx.Create(&boundaryLogs).Error; err != nil {
+			return fmt.Errorf("create time-boundary logs: %w", err)
+		}
+		for _, bounds := range []struct{ start, end string }{
+			{"2026-10-20T00:00:00+08:00", "2026-10-21T00:00:00+08:00"},
+			{"2026-10-19T16:00:00.000Z", "2026-10-20T16:00:00.000Z"},
+		} {
+			params := url.Values{
+				"target_id": {fmt.Sprint(profile.ID)}, "action": {"create"},
+				"start_at": {bounds.start}, "end_at": {bounds.end},
+				// 显式瞬时应优先于旧参数，即使旧参数格式不合法。
+				"start_date": {"ignored"}, "end_date": {"ignored"},
+			}
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/operations?"+params.Encode(), nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			if response.Code != http.StatusOK {
+				return fmt.Errorf("time filter status = %d, body = %s", response.Code, response.Body.String())
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &listBody); err != nil {
+				return fmt.Errorf("decode time filter: %w", err)
+			}
+			if listBody.Code != 0 || listBody.Data.Total != 2 || len(listBody.Data.Items) != 2 ||
+				listBody.Data.Items[0].ID != boundaryLogs[2].ID || listBody.Data.Items[1].ID != boundaryLogs[1].ID ||
+				listBody.Data.Items[1].CreatedAt != "2026-10-19T16:00:00Z" {
+				return fmt.Errorf("expected left-closed, right-open UTC filter for %+v, got %s", bounds, response.Body.String())
+			}
+		}
+		for _, invalid := range []url.Values{
+			{"start_at": {"not-a-time"}}, {"end_at": {"2026-10-20"}},
+			{"start_date": {"2026-02-30"}}, {"end_date": {"2026-13-01"}},
+		} {
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/audit/operations?"+invalid.Encode(), nil)
+			request.Header.Set("Authorization", "Bearer "+token)
+			response := httptest.NewRecorder()
+			engine.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				return fmt.Errorf("invalid time filter must return 400: query=%v status=%d body=%s", invalid, response.Code, response.Body.String())
+			}
 		}
 
 		viewerToken := testAccessTokenForUser(t, secret, viewer.ID, time.Now().Add(time.Hour))

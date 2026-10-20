@@ -1,6 +1,6 @@
 version: "0.1"
 database:
-  dsn: "sdu_alumni:sdu_alumni_password@tcp(127.0.0.1:3307)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=Local"
+  dsn: "sdu_alumni:sdu_alumni_password@tcp(127.0.0.1:3307)/sdu_alumni_db?charset=utf8mb4&parseTime=true&loc=UTC&time_zone=%27%2B00%3A00%27"
   db: "mysql"
   tables:
     - users
