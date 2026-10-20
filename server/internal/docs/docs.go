@@ -4674,6 +4674,12 @@ const docTemplate = `{
                         "$ref": "#/definitions/dto.AuditBatchAlumni"
                     }
                 },
+                "batch_created_alumni_total": {
+                    "type": "integer"
+                },
+                "batch_created_alumni_truncated": {
+                    "type": "boolean"
+                },
                 "batch_hidden_sensitive_count": {
                     "type": "integer"
                 },
