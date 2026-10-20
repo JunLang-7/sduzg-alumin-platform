@@ -18,8 +18,10 @@ describe('audit history view model', () => {
   });
 
   it('formats API timestamps for the operation history table', () => {
-    expect(formatAuditDateTime('2026-09-05T10:21:45+08:00')).toBe('2026-09-05 10:21');
     const localTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(formatAuditDateTime('2026-09-05T10:21:45+08:00')).toBe(
+      formatDateTime('2026-09-05T10:21:45+08:00', { timeZone: localTimeZone }),
+    );
     expect(formatAuditDateTime('2026-10-20T02:56:30Z')).toBe(
       formatDateTime('2026-10-20T02:56:30Z', { timeZone: localTimeZone }),
     );
