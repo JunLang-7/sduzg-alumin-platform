@@ -411,6 +411,8 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	case errors.Is(err, common.ErrImportNoDataRows):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件里没有可导入的数据行（只有表头或空白行）")
 	case errors.Is(err, common.ErrImportDomainRequired):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "未指定培养类别：请在导入时选择目标培养类别，或使用含“所属领域”列的模板")
 	case errors.Is(err, common.ErrInvalidRequest):

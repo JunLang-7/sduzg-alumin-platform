@@ -813,11 +813,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrPermissionDenied
 	}
 	targetProfile := do.AlumniCreateProfile{DataDomainID: dataDomainID}
+	// autoTargetDomain 表示目标域由「唯一授权域」自动推断而来，而非用户显式选择。
+	// 自动推断时需要校验文件里的所属领域，避免跨域档案被静默改写到本域。
+	autoTargetDomain := false
 	if operator.Role == common.RoleAdmin {
 		if len(operator.DomainIDs) == 0 {
 			return nil, common.ErrPermissionDenied
 		}
 		if len(operator.DomainIDs) == 1 {
+			autoTargetDomain = dataDomainID == nil
 			targetProfile.DataDomainID = &operator.DomainIDs[0]
 		} else if dataDomainID != nil && !operator.CanAccessDomain(*dataDomainID) {
 			return nil, common.ErrPermissionDenied
@@ -854,7 +858,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	domainOptions := ""
 	// 依次按编码、显示名称、数字 ID 查找，避免三类键写进同一个 map 时互相覆盖。
 	var domainLookup func(raw string) *model.DataDomain
-	if targetProfile.DataDomainID == nil && hasDomainColumn {
+	if hasDomainColumn && (targetProfile.DataDomainID == nil || autoTargetDomain) {
 		if s.dataDomains == nil {
 			return nil, common.ErrDatabaseUnavailable
 		}
@@ -912,6 +916,30 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		profile := parseRowToProfile(row)
 		profile = profile.Normalize()
 		if targetProfile.DataDomainID != nil {
+			if autoTargetDomain && hasDomainColumn {
+				rawDomain := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
+				if rawDomain == "" {
+					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域为空"})
+					continue
+				}
+				domain := domainLookup(rawDomain)
+				if domain == nil {
+					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
+					continue
+				}
+				if domain.Status != common.DataDomainStatusActive {
+					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
+					continue
+				}
+				if domain.ID != *targetProfile.DataDomainID {
+					rowErrors = append(rowErrors, dto.AlumniRowError{
+						Row:     rowNum,
+						Name:    profile.Name,
+						Message: fmt.Sprintf("该行所属领域为 %s，与本次导入目标培养类别不一致：请改用多域账号导入，或选择正确的导入目标培养类别", domain.Code),
+					})
+					continue
+				}
+			}
 			profile.DataDomainID = targetProfile.DataDomainID
 		} else {
 			rawDomain := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
@@ -949,6 +977,10 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		}
 
 		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})
+	}
+
+	if dataRowCount == 0 {
+		return nil, common.ErrImportNoDataRows
 	}
 
 	if len(validRows) > 0 {

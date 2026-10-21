@@ -712,22 +712,76 @@ func TestImportTemplateExplainsDomainsAndExampleIsImportable(t *testing.T) {
 	}
 }
 
-func TestImportTemplateBlankRowIsIgnored(t *testing.T) {
+func TestImportTemplateBlankRowIsRejected(t *testing.T) {
 	template, err := buildTemplateXLSX()
 	if err != nil {
 		t.Fatalf("build template: %v", err)
 	}
-	result, err := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
+	_, err = NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
 		context.Background(),
 		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
 		nil,
 		bytes.NewReader(template.Data),
 	)
-	if err != nil {
-		t.Fatalf("importing a blank template should not fail, got %v", err)
+	if !errors.Is(err, common.ErrImportNoDataRows) {
+		t.Fatalf("Import() error = %v, want ErrImportNoDataRows", err)
 	}
-	if result.Total != 0 || result.Success != 0 || len(result.Errors) != 0 {
-		t.Fatalf("blank template should be ignored, got %+v", result)
+}
+
+func TestSingleDomainAdminRejectsCrossDomainRows(t *testing.T) {
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "跨域校友"
+	row[1] = "2020级"
+	row[len(row)-1] = "mpa"
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 2, Role: common.RoleAdmin, DomainIDs: []uint64{1}},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 0 || len(result.Errors) != 1 {
+		t.Fatalf("cross-domain row should be rejected, got %+v", result)
+	}
+	if !strings.Contains(result.Errors[0].Message, "不一致") {
+		t.Fatalf("expected mismatch message, got %q", result.Errors[0].Message)
+	}
+	if len(store.batchProfiles) != 0 {
+		t.Fatalf("cross-domain row must not be created: %+v", store.batchProfiles)
+	}
+}
+
+func TestSingleDomainAdminCanImportMatchingDomainRows(t *testing.T) {
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "MPA校友"
+	row[1] = "2020级"
+	row[len(row)-1] = "mpa"
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 2, Role: common.RoleAdmin, DomainIDs: []uint64{2}},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 1 || len(store.batchProfiles) != 1 {
+		t.Fatalf("matching row should import, got %+v", result)
+	}
+	if domain := store.batchProfiles[0].DataDomainID; domain == nil || *domain != 2 {
+		t.Fatalf("data domain = %v, want 2", domain)
 	}
 }
 
