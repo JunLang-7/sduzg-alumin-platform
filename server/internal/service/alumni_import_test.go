@@ -711,3 +711,52 @@ func TestImportTemplateExplainsDomainsAndExampleIsImportable(t *testing.T) {
 		t.Fatalf("example row should import successfully: %+v", result)
 	}
 }
+
+func TestImportTemplateBlankRowIsIgnored(t *testing.T) {
+	template, err := buildTemplateXLSX()
+	if err != nil {
+		t.Fatalf("build template: %v", err)
+	}
+	result, err := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		bytes.NewReader(template.Data),
+	)
+	if err != nil {
+		t.Fatalf("importing a blank template should not fail, got %v", err)
+	}
+	if result.Total != 0 || result.Success != 0 || len(result.Errors) != 0 {
+		t.Fatalf("blank template should be ignored, got %+v", result)
+	}
+}
+
+func TestImportRejectsDisabledDataDomain(t *testing.T) {
+	domains := &fakeImportDataDomainStore{domains: []*model.DataDomain{
+		{ID: 1, Code: common.DataDomainUndergraduate, Name: "本科生", Status: common.DataDomainStatusActive},
+		{ID: 3, Code: "legacy_program", Name: "历史项目", Status: common.DataDomainStatusDisabled},
+	}}
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "历史校友"
+	row[1] = "2010级"
+	row[len(row)-1] = "legacy_program"
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	result, err := NewAlumniService(&fakeAlumniStore{}, nil, domains).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 0 || len(result.Errors) != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if !strings.Contains(result.Errors[0].Message, "已停用") {
+		t.Fatalf("expected disabled domain message, got %q", result.Errors[0].Message)
+	}
+}

@@ -44,7 +44,7 @@ var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅�
 // alumniImportColumnHeaders 在通用校友字段外增加所属领域，供多域管理员逐行指定目标领域。
 var alumniImportColumnHeaders = append(append([]string{}, alumniColumnHeaders...), "所属领域")
 
-// alumniExportColumnHeaders 与导入模板保持同一套表头，保证导出文件可以直接回灌导入。
+// alumniExportColumnHeaders 必须与 alumniImportColumnHeaders 保持一致，改动需同步，否则导出文件无法回灌。
 var alumniExportColumnHeaders = append([]string{}, alumniImportColumnHeaders...)
 
 func exportRow(item *model.AlumniProfile, dataDomainCode string) []string {
@@ -580,6 +580,15 @@ func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common
 		logger.Error("failed to load data domains for export", zap.Error(err))
 		return nil, err
 	}
+	missingCodeRows := 0
+	for _, item := range items {
+		if item != nil && domainCodes[item.DataDomainID] == "" {
+			missingCodeRows++
+		}
+	}
+	if missingCodeRows > 0 {
+		logger.Warn("export rows missing data domain code", zap.Int("rows", missingCodeRows))
+	}
 	result, err := s.buildExport(maskExportItems(items, operator), format, domainCodes)
 	if err != nil {
 		return nil, err
@@ -839,25 +848,46 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, fmt.Errorf("表头不正确，应使用 %d 列通用模板或 %d 列含所属领域模板", len(alumniColumnHeaders), len(alumniImportColumnHeaders))
 	}
 
-	domainByKey := map[string]*model.DataDomain{}
+	domainByCode := map[string]*model.DataDomain{}
+	domainByName := map[string]*model.DataDomain{}
+	domainByID := map[uint64]*model.DataDomain{}
 	domainOptions := ""
+	// 依次按编码、显示名称、数字 ID 查找，避免三类键写进同一个 map 时互相覆盖。
+	var domainLookup func(raw string) *model.DataDomain
 	if targetProfile.DataDomainID == nil && hasDomainColumn {
 		if s.dataDomains == nil {
 			return nil, common.ErrDatabaseUnavailable
 		}
-		activeDomains, err := s.dataDomains.ListActiveDataDomains(ctx)
+		domains, err := s.dataDomains.ListDataDomains(ctx)
 		if err != nil {
 			return nil, err
 		}
-		for _, domain := range activeDomains {
+		activeDomains := make([]*model.DataDomain, 0, len(domains))
+		for _, domain := range domains {
 			if domain == nil {
 				continue
 			}
-			domainByKey[strings.ToLower(domain.Code)] = domain
-			domainByKey[strings.ToLower(domain.Name)] = domain
-			domainByKey[strconv.FormatUint(domain.ID, 10)] = domain
+			domainByCode[strings.ToLower(domain.Code)] = domain
+			domainByName[strings.ToLower(domain.Name)] = domain
+			domainByID[domain.ID] = domain
+			if domain.Status == common.DataDomainStatusActive {
+				activeDomains = append(activeDomains, domain)
+			}
 		}
 		domainOptions = importDomainOptions(activeDomains)
+		domainLookup = func(raw string) *model.DataDomain {
+			key := strings.ToLower(raw)
+			if domain := domainByCode[key]; domain != nil {
+				return domain
+			}
+			if domain := domainByName[key]; domain != nil {
+				return domain
+			}
+			if id, err := strconv.ParseUint(raw, 10, 64); err == nil {
+				return domainByID[id]
+			}
+			return nil
+		}
 	}
 	if targetProfile.DataDomainID == nil && !hasDomainColumn {
 		return nil, common.ErrImportDomainRequired
@@ -869,10 +899,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 	var validRows []rowProfile
 	rowErrors := make([]dto.AlumniRowError, 0)
+	dataRowCount := 0
 
 	for i := 1; i < len(rows); i++ {
 		row := rows[i]
 		rowNum := i + 1
+		if isBlankImportRow(row) {
+			continue
+		}
+		dataRowCount++
 
 		profile := parseRowToProfile(row)
 		profile = profile.Normalize()
@@ -884,9 +919,13 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域为空"})
 				continue
 			}
-			domain, exists := domainByKey[strings.ToLower(rawDomain)]
-			if !exists {
+			domain := domainLookup(rawDomain)
+			if domain == nil {
 				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
+				continue
+			}
+			if domain.Status != common.DataDomainStatusActive {
+				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
 				continue
 			}
 			if !operator.IsSuperAdmin() && !operator.CanAccessDomain(domain.ID) {
@@ -937,7 +976,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		validProfiles := dedupedProfiles
 
 		result := &dto.AlumniImportResult{
-			Total:  len(rows) - 1,
+			Total:  dataRowCount,
 			Errors: rowErrors,
 		}
 
@@ -969,7 +1008,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 
 	result := &dto.AlumniImportResult{
-		Total:  len(rows) - 1,
+		Total:  dataRowCount,
 		Errors: rowErrors,
 	}
 	s.writeImportAudit(ctx, operator, nil, nil, result)
@@ -1151,6 +1190,16 @@ func (s *AlumniService) importManagementScope(ctx context.Context, domainIDs []u
 		return defaultAuditScope
 	}
 	return strings.Join(names, "、")
+}
+
+// isBlankImportRow 判断整行是否为空，用于跳过模板空行与用户文件末尾的空白行。
+func isBlankImportRow(row []string) bool {
+	for _, cell := range row {
+		if strings.TrimSpace(cell) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 func importDomainOptions(domains []*model.DataDomain) string {

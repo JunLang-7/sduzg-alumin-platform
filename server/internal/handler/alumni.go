@@ -412,7 +412,7 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
 	case errors.Is(err, common.ErrImportDomainRequired):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "未指定培养类别：请在导入时选择目标培养类别，或使用含\"所属领域\"列的模板")
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "未指定培养类别：请在导入时选择目标培养类别，或使用含“所属领域”列的模板")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
 	case errors.Is(err, common.ErrImportRowLimit):

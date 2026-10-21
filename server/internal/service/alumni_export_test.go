@@ -491,3 +491,49 @@ func TestExportedFileDedupesInsteadOfFormatError(t *testing.T) {
 		t.Fatalf("expected duplicate message, got %q", result.Errors[0].Message)
 	}
 }
+
+func TestMaskedExportRoundTripCanCreateDuplicate(t *testing.T) {
+	mobile := "13800000000"
+	domains := testDataDomainStore()
+	exportStore := &fakeAlumniStore{items: []*model.AlumniProfile{
+		{ID: 1, DataDomainID: 2, Name: "MPA校友", Grade: "2020级", Mobile: &mobile},
+	}}
+	access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}
+	exported, err := NewAlumniService(exportStore, nil, domains).Export(
+		context.Background(),
+		dto.AlumniExportRequest{Format: "xlsx"},
+		access,
+	)
+	if err != nil {
+		t.Fatalf("masked export failed: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(exported.Data))
+	if err != nil {
+		t.Fatalf("open masked export: %v", err)
+	}
+	defer f.Close()
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		t.Fatalf("read masked export: %v", err)
+	}
+	if rows[1][13] != "" {
+		t.Fatalf("expected masked mobile to be empty, got %q", rows[1][13])
+	}
+
+	// 模拟库内已有真实记录（手机号非空）。脱敏文件回灌时去重键缺少手机号，
+	// 因此不会命中已有记录，会重复建档；这是文档中明确禁止脱敏文件回灌的原因。
+	realKey := do.AlumniDedupKey{Name: "MPA校友", Grade: "2020级", Mobile: mobile}.Key()
+	importStore := &fakeAlumniStore{existing: map[string]bool{realKey: true}}
+	result, err := NewAlumniService(importStore, nil, domains).Import(
+		context.Background(),
+		access,
+		nil,
+		bytes.NewReader(exported.Data),
+	)
+	if err != nil {
+		t.Fatalf("masked round-trip import failed: %v", err)
+	}
+	if result.Success != 1 || len(result.Errors) != 0 {
+		t.Fatalf("expected the masked row to create a duplicate, got %+v", result)
+	}
+}
