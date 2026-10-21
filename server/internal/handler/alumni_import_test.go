@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -210,5 +211,40 @@ func TestImportHandlerBadFile(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestImportHandlerReportsMissingDataDomain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	svc := service.NewAlumniService(&fakeImportStore{}, nil)
+	h := NewAlumniHandler(svc)
+
+	engine := gin.New()
+	engine.POST("/admin/alumni/import", func(c *gin.Context) {
+		c.Set(middleware.AccessContextKey, &common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin})
+		h.Import(c)
+	})
+
+	buf, filename := buildMultipartXLSX(t, [][]string{{"张三", "2020级"}})
+	body := &bytes.Buffer{}
+	body.WriteString("--boundary\r\n")
+	body.WriteString("Content-Disposition: form-data; name=\"file\"; filename=\"")
+	body.WriteString(filename)
+	body.WriteString("\"\r\n")
+	body.WriteString("Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n")
+	body.Write(buf.Bytes())
+	body.WriteString("\r\n--boundary--\r\n")
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/alumni/import", body)
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=boundary")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d: %s", http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "未指定培养类别") {
+		t.Fatalf("expected actionable message, got %s", rec.Body.String())
 	}
 }

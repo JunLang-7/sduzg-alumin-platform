@@ -27,6 +27,10 @@ func (s *fakeAdminAccessStore) ListActiveDataDomains(context.Context) ([]*model.
 	return s.domains, s.err
 }
 
+func (s *fakeAdminAccessStore) ListDataDomains(context.Context) ([]*model.DataDomain, error) {
+	return s.domains, s.err
+}
+
 func (s *fakeAdminAccessStore) ListAdminDataDomainIDs(_ context.Context, userID uint64) ([]uint64, error) {
 	return append([]uint64(nil), s.domainsByID[userID]...), s.err
 }

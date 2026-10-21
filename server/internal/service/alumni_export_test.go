@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/dto"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/xuri/excelize/v2"
@@ -344,5 +345,149 @@ func TestExportSanitizesFormulaInjection(t *testing.T) {
 	}
 	if rows[1][9] != "'=HYPERLINK(\"http://evil.com\")" {
 		t.Fatalf("expected xlsx work unit to be escaped, got %q", rows[1][9])
+	}
+}
+
+func testDataDomainStore() *fakeImportDataDomainStore {
+	return &fakeImportDataDomainStore{domains: []*model.DataDomain{
+		{ID: 1, Code: common.DataDomainUndergraduate, Name: "本科生", Status: common.DataDomainStatusActive},
+		{ID: 2, Code: common.DataDomainMPA, Name: "MPA专业学位研究生", Status: common.DataDomainStatusActive},
+	}}
+}
+
+func TestExportIncludesDataDomainCode(t *testing.T) {
+	store := &fakeAlumniStore{items: []*model.AlumniProfile{
+		{ID: 1, DataDomainID: 2, Name: "张三", Grade: "2020级"},
+		{ID: 2, DataDomainID: 1, Name: "李四", Grade: "2019级"},
+	}}
+	svc := NewAlumniService(store, nil, testDataDomainStore())
+
+	t.Run("xlsx", func(t *testing.T) {
+		result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "xlsx"})
+		if err != nil {
+			t.Fatalf("expected xlsx export success, got %v", err)
+		}
+		f, err := excelize.OpenReader(bytes.NewReader(result.Data))
+		if err != nil {
+			t.Fatalf("failed to open xlsx: %v", err)
+		}
+		defer f.Close()
+		rows, err := f.GetRows("Sheet1")
+		if err != nil {
+			t.Fatalf("failed to get rows: %v", err)
+		}
+		if len(rows) != 3 || len(rows[0]) != len(alumniImportColumnHeaders) {
+			t.Fatalf("unexpected export shape: %d rows, header %d columns", len(rows), len(rows[0]))
+		}
+		if rows[0][len(rows[0])-1] != "所属领域" {
+			t.Fatalf("expected 所属领域 header, got %q", rows[0][len(rows[0])-1])
+		}
+		if rows[1][len(rows[1])-1] != "mpa" || rows[2][len(rows[2])-1] != "undergraduate" {
+			t.Fatalf("unexpected domain codes: %q, %q", rows[1][len(rows[1])-1], rows[2][len(rows[2])-1])
+		}
+	})
+
+	t.Run("csv", func(t *testing.T) {
+		result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "csv"})
+		if err != nil {
+			t.Fatalf("expected csv export success, got %v", err)
+		}
+		records, err := csv.NewReader(bytes.NewReader(result.Data[3:])).ReadAll()
+		if err != nil {
+			t.Fatalf("failed to read csv: %v", err)
+		}
+		if len(records) != 3 || len(records[0]) != len(alumniImportColumnHeaders) {
+			t.Fatalf("unexpected csv shape: %d rows, header %d columns", len(records), len(records[0]))
+		}
+		if records[0][len(records[0])-1] != "所属领域" || records[1][len(records[1])-1] != "mpa" {
+			t.Fatalf("unexpected csv domain column: %+v", records[0])
+		}
+	})
+}
+
+func TestExportFiltersDataDomainAndExportsCode(t *testing.T) {
+	domainID := uint64(2)
+	store := &fakeAlumniStore{items: []*model.AlumniProfile{
+		{ID: 1, DataDomainID: 2, Name: "张三", Grade: "2020级"},
+	}}
+	svc := NewAlumniService(store, nil, testDataDomainStore())
+
+	result, err := exportAsSuperAdmin(svc, dto.AlumniExportRequest{Format: "csv", DataDomainID: &domainID})
+	if err != nil {
+		t.Fatalf("expected export success, got %v", err)
+	}
+	if len(store.query.DataDomainIDs) != 1 || store.query.DataDomainIDs[0] != domainID {
+		t.Fatalf("unexpected domain filter: %+v", store.query.DataDomainIDs)
+	}
+	records, err := csv.NewReader(bytes.NewReader(result.Data[3:])).ReadAll()
+	if err != nil {
+		t.Fatalf("failed to read csv: %v", err)
+	}
+	if records[1][len(records[1])-1] != "mpa" {
+		t.Fatalf("expected filtered row code mpa, got %q", records[1][len(records[1])-1])
+	}
+}
+
+func TestExportedFileRoundTripsIntoImport(t *testing.T) {
+	domains := testDataDomainStore()
+	exportStore := &fakeAlumniStore{items: []*model.AlumniProfile{
+		{ID: 1, DataDomainID: 2, Name: "MPA校友", Grade: "2020级"},
+		{ID: 2, DataDomainID: 1, Name: "本科校友", Grade: "2019级"},
+	}}
+	exported, err := exportAsSuperAdmin(NewAlumniService(exportStore, nil, domains), dto.AlumniExportRequest{Format: "xlsx"})
+	if err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	importStore := &fakeAlumniStore{}
+	result, err := NewAlumniService(importStore, nil, domains).Import(
+		context.Background(),
+		common.AccessContext{UserID: 9, Role: common.RoleSuperAdmin},
+		nil,
+		bytes.NewReader(exported.Data),
+	)
+	if err != nil {
+		t.Fatalf("importing the exported file should not fail, got %v", err)
+	}
+	if result.Total != 2 || result.Success != 2 || len(result.Errors) != 0 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if len(importStore.batchProfiles) != 2 {
+		t.Fatalf("expected 2 created profiles, got %d", len(importStore.batchProfiles))
+	}
+	for i, want := range []uint64{2, 1} {
+		got := importStore.batchProfiles[i].DataDomainID
+		if got == nil || *got != want {
+			t.Fatalf("row %d data domain = %v, want %d", i+1, got, want)
+		}
+	}
+}
+
+func TestExportedFileDedupesInsteadOfFormatError(t *testing.T) {
+	domains := testDataDomainStore()
+	exportStore := &fakeAlumniStore{items: []*model.AlumniProfile{
+		{ID: 1, DataDomainID: 2, Name: "MPA校友", Grade: "2020级"},
+	}}
+	exported, err := exportAsSuperAdmin(NewAlumniService(exportStore, nil, domains), dto.AlumniExportRequest{Format: "xlsx"})
+	if err != nil {
+		t.Fatalf("export failed: %v", err)
+	}
+
+	key := do.AlumniDedupKey{Name: "MPA校友", Grade: "2020级"}.Key()
+	importStore := &fakeAlumniStore{existing: map[string]bool{key: true}}
+	result, err := NewAlumniService(importStore, nil, domains).Import(
+		context.Background(),
+		common.AccessContext{UserID: 9, Role: common.RoleSuperAdmin},
+		nil,
+		bytes.NewReader(exported.Data),
+	)
+	if err != nil {
+		t.Fatalf("duplicate rows should be reported per row, got error %v", err)
+	}
+	if result.Success != 0 || len(result.Errors) != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if !strings.Contains(result.Errors[0].Message, "已存在") {
+		t.Fatalf("expected duplicate message, got %q", result.Errors[0].Message)
 	}
 }

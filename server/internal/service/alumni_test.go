@@ -42,6 +42,7 @@ type fakeAlumniStore struct {
 	batchProfiles   []do.AlumniCreateProfile
 	batchOperatorID uint64
 	batchErr        error
+	existing        map[string]bool
 }
 
 func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
@@ -160,6 +161,9 @@ func (s *fakeAlumniStore) FindOnly(_ context.Context, query do.AlumniListQuery) 
 }
 
 func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
+	if s.existing != nil {
+		return s.existing, nil
+	}
 	return make(map[string]bool), nil
 }
 

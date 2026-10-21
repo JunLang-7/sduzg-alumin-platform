@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -65,6 +66,10 @@ type fakeImportDataDomainStore struct {
 }
 
 func (s *fakeImportDataDomainStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
+	return s.domains, nil
+}
+
+func (s *fakeImportDataDomainStore) ListDataDomains(context.Context) ([]*model.DataDomain, error) {
 	return s.domains, nil
 }
 
@@ -560,5 +565,149 @@ func TestImportResultErrorsIncludeRowNumbers(t *testing.T) {
 	}
 	if result.Errors[2].Row != 5 {
 		t.Fatalf("expected third error at row 5, got %d", result.Errors[2].Row)
+	}
+}
+
+func TestImportAcceptsDataDomainCodeNameAndID(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+	}{
+		{name: "code", value: "mpa"},
+		{name: "code is case insensitive", value: "MPA"},
+		{name: "display name", value: "MPA专业学位研究生"},
+		{name: "numeric id", value: "2"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := make([]string, len(alumniImportColumnHeaders))
+			row[0] = "张三"
+			row[1] = "2020级"
+			row[len(row)-1] = tc.value
+			reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+			if err != nil {
+				t.Fatalf("build xlsx: %v", err)
+			}
+			store := &fakeAlumniStore{}
+			result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+				context.Background(),
+				common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+				nil,
+				reader,
+			)
+			if err != nil {
+				t.Fatalf("Import() error = %v", err)
+			}
+			if result.Success != 1 || len(store.batchProfiles) != 1 {
+				t.Fatalf("unexpected import result: %+v", result)
+			}
+			domain := store.batchProfiles[0].DataDomainID
+			if domain == nil || *domain != 2 {
+				t.Fatalf("data domain = %v, want 2", domain)
+			}
+		})
+	}
+}
+
+func TestImportInvalidDataDomainListsOptions(t *testing.T) {
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "张三"
+	row[1] = "2020级"
+	row[len(row)-1] = "unknown"
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	result, err := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 0 || len(result.Errors) != 1 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	message := result.Errors[0].Message
+	if !strings.Contains(message, "可选值") || !strings.Contains(message, "undergraduate（本科生）") || !strings.Contains(message, "mpa（MPA专业学位研究生）") {
+		t.Fatalf("expected actionable domain error, got %q", message)
+	}
+}
+
+func TestImportRequiresDomainColumnWithoutTargetDomain(t *testing.T) {
+	reader, err := buildXLSXReader(alumniColumnHeaders, [][]string{{"张三", "2020级"}})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	_, err = NewAlumniService(&fakeAlumniStore{}, nil).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		reader,
+	)
+	if !errors.Is(err, common.ErrImportDomainRequired) {
+		t.Fatalf("Import() error = %v, want ErrImportDomainRequired", err)
+	}
+}
+
+func TestImportTemplateExplainsDomainsAndExampleIsImportable(t *testing.T) {
+	template, err := buildTemplateXLSX()
+	if err != nil {
+		t.Fatalf("build template: %v", err)
+	}
+	f, err := excelize.OpenReader(bytes.NewReader(template.Data))
+	if err != nil {
+		t.Fatalf("open template: %v", err)
+	}
+	defer f.Close()
+
+	rows, err := f.GetRows("Sheet1")
+	if err != nil {
+		t.Fatalf("read data sheet: %v", err)
+	}
+	if len(rows) != 1 || len(rows[0]) != len(alumniImportColumnHeaders) {
+		t.Fatalf("unexpected template data sheet: %d rows", len(rows))
+	}
+	if rows[0][len(rows[0])-1] != "所属领域" {
+		t.Fatalf("expected 所属领域 header, got %q", rows[0][len(rows[0])-1])
+	}
+
+	notes, err := f.GetRows("填写说明")
+	if err != nil {
+		t.Fatalf("read note sheet: %v", err)
+	}
+	var noteText strings.Builder
+	for _, row := range notes {
+		noteText.WriteString(strings.Join(row, " "))
+		noteText.WriteString("\n")
+	}
+	for _, want := range []string{"undergraduate", "academic_graduate", "mpa", "MPA专业学位研究生", "示例校友", "2024级", "数字 ID"} {
+		if !strings.Contains(noteText.String(), want) {
+			t.Fatalf("template guide missing %q: %s", want, noteText.String())
+		}
+	}
+
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "示例校友"
+	row[1] = "2024级"
+	row[len(row)-1] = "mpa"
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build example xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("example row import failed: %v", err)
+	}
+	if result.Success != 1 {
+		t.Fatalf("example row should import successfully: %+v", result)
 	}
 }

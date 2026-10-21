@@ -17,6 +17,9 @@ func TestAccessControlRepositoryReturnsDatabaseUnavailableWithoutDB(t *testing.T
 	if _, err := repo.ListActiveDataDomains(ctx); !errors.Is(err, common.ErrDatabaseUnavailable) {
 		t.Fatalf("ListActiveDataDomains() error = %v, want database unavailable", err)
 	}
+	if _, err := repo.ListDataDomains(ctx); !errors.Is(err, common.ErrDatabaseUnavailable) {
+		t.Fatalf("ListDataDomains() error = %v, want database unavailable", err)
+	}
 	if _, err := repo.ListAdminDataDomainIDs(ctx, 1); !errors.Is(err, common.ErrDatabaseUnavailable) {
 		t.Fatalf("ListAdminDataDomainIDs() error = %v, want database unavailable", err)
 	}

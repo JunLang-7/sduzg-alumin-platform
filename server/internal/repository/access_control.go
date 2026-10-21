@@ -13,6 +13,8 @@ import (
 // 写入能力将在管理员授权管理功能中补充。
 type AccessControlStore interface {
 	ListActiveDataDomains(ctx context.Context) ([]*model.DataDomain, error)
+	// ListDataDomains 返回全部数据域（含已停用），用于导出历史档案时还原所属领域编码。
+	ListDataDomains(ctx context.Context) ([]*model.DataDomain, error)
 	ListAdminDataDomainIDs(ctx context.Context, userID uint64) ([]uint64, error)
 	ListAdminPermissionCodes(ctx context.Context, userID uint64) ([]string, error)
 }
@@ -36,6 +38,24 @@ func (r *AccessControlRepository) ListActiveDataDomains(ctx context.Context) ([]
 	var domains []*model.DataDomain
 	if err := r.db.WithContext(ctx).
 		Where(qs.Status.Eq(common.DataDomainStatusActive)).
+		Order(qs.SortOrder.Asc()).
+		Order(qs.ID.Asc()).
+		Find(&domains).
+		Error; err != nil {
+		return nil, err
+	}
+	return domains, nil
+}
+
+// ListDataDomains 返回全部数据域，包含已停用的数据域，按展示顺序排序。
+func (r *AccessControlRepository) ListDataDomains(ctx context.Context) ([]*model.DataDomain, error) {
+	if r.db == nil {
+		return nil, common.ErrDatabaseUnavailable
+	}
+
+	qs := query.Use(r.db).DataDomain
+	var domains []*model.DataDomain
+	if err := r.db.WithContext(ctx).
 		Order(qs.SortOrder.Asc()).
 		Order(qs.ID.Asc()).
 		Find(&domains).
