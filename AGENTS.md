@@ -8,7 +8,7 @@
 
 技术栈：
 
-- 后端：Go 1.26.9、Gin、GORM、MySQL 8.0、Redis、Viper、zap。
+- 后端：Go 1.26.10、Gin、GORM、MySQL 8.0、Redis、Viper、zap。
 - 前端：React 18、Vite、TypeScript、Ant Design、axios、Zustand、ECharts；构建环境使用 Node.js 22。
 - 本地编排：`docker-compose.yml` 启动 MySQL、Redis、MinIO、API 和 Web。
 

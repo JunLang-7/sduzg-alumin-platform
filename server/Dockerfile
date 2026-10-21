@@ -1,4 +1,4 @@
-FROM golang:1.26.9-alpine AS builder
+FROM golang:1.26.10-alpine AS builder
 
 # 依赖源可用构建参数覆盖，便于国内服务器走镜像站（见 docker-compose.yml 与 .env.example）。
 # APK_MIRROR 留空表示使用 Alpine 官方源；非空时把 dl-cdn.alpinelinux.org 换成该主机名。

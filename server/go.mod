@@ -1,6 +1,6 @@
 module github.com/JunLang-7/sduzg-alumin-platform/server
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/gin-contrib/cors v1.7.9

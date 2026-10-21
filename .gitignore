@@ -14,6 +14,7 @@ coverage.out
 server/.env
 server/tmp/
 server/bin/
+server/api
 
 # Web
 web/node_modules/
