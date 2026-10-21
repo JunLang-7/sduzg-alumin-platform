@@ -335,6 +335,14 @@ jobs:
           test -n "$asset"
           test "$(cache_control "$base$asset")" \
             = "public, max-age=31536000, immutable"
+          # /assets/ 必须独立于 SPA 回退：不存在的产物要 404，不能返回 200 text/html。
+          # 同时防止有人删掉 /assets/ 的 location（那会让带 hash 的资源退回无缓存策略）。
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            "$base/assets/__missing__.js")" = "404"
+          # server_tokens off 后只暴露产品名，不动点版本号用于减少指纹信息。
+          curl --silent --head "$base/" \
+            | tr -d '\r' \
+            | grep -q '^Server: nginx$'
           # no-cache 必须配合 ETag 才能退化为 304；否则每次刷新都会全量下发 HTML。
           etag="$(curl --silent --head "$base/" \
             | tr -d '\r' \
