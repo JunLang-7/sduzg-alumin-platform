@@ -172,6 +172,10 @@ jobs:
   integration:
     name: Integration and migration
     runs-on: ubuntu-26.04
+    # 集成测试会真实连 MySQL/Redis/MinIO；没有硬上限时，外部中断只会表现为
+    # 退出码 143（SIGTERM），无法区分“测试挂了”和“作业被取消”。这里给出明确上限，
+    # 超时会标记为超时而不是静默被杀。
+    timeout-minutes: 30
     services:
       mysql:
         image: mysql:8.0
@@ -240,7 +244,8 @@ jobs:
           profiles_table="$(mysql -N -h 127.0.0.1 -uroot -ptest-password \
             sdu_alumni_db -e "SHOW TABLES LIKE 'alumni_profiles'")"
           test "$profiles_table" = "alumni_profiles"
-      - run: go test -race -count=1 ./...
+      - name: Run Go tests against MySQL, Redis and MinIO
+        run: go test -race -count=1 -timeout 20m ./...
 
   security:
     name: Security
