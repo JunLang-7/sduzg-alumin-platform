@@ -335,3 +335,10 @@ jobs:
           test -n "$asset"
           test "$(cache_control "$base$asset")" \
             = "public, max-age=31536000, immutable"
+          # no-cache 必须配合 ETag 才能退化为 304；否则每次刷新都会全量下发 HTML。
+          etag="$(curl --silent --head "$base/" \
+            | tr -d '\r' \
+            | awk -F': ' 'tolower($1)=="etag" {print $2; exit}')"
+          test -n "$etag"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+            --header "If-None-Match: $etag" "$base/")" = "304"

@@ -66,6 +66,17 @@ services:
 升级时检查并更新已有 `server/.env` 或部署覆盖文件中的 `DB_PARAMS`；旧文件不会随示例自动更新，不能保留 `loc=Local`，也不要通过给 API 设置本地 `TZ` 来修正业务时间。新默认连接参数不依赖 API 进程的 `TZ`。MySQL 启动参数需重建容器才能生效，保留原数据卷。
 
 以上约定基于现有数据已经存储为 UTC，不会改写历史记录。如果自定义部署曾以本地时间写入 `DATETIME`，应先备份并核实数据的真实时区，再制定单独的数据校正方案，不能直接批量加减 8 小时。
+## 静态资源与缓存策略
+
+Web 容器（`web/nginx.conf`）的缓存策略决定发版后用户能否立刻拿到新前端：
+
+- `/index.html`、根路径与 SPA 深层路由回退：`Cache-Control: no-cache`。允许缓存，但每次使用前向服务器校验，配合 ETag 命中时返回 304。
+- `/assets/`：`Cache-Control: public, max-age=31536000, immutable`。Vite 产物文件名带内容 hash，内容变化会生成新文件名，因此可以长期缓存。
+- `/api/`、`/sdu-alumni-files/` 是代理路径，不要给它们加缓存头。
+
+注意 nginx 的 `add_header` **不继承**：某个 location 内出现 `add_header` 后，上层/server 级同类指令会被整体覆盖。不要在 server 级统一加缓存头，否则代理路径也会被误加；新增 location 时应单独声明所需头部。
+
+CI 的 `containers` 任务会启动 Web 镜像，断言上述响应头以及 `If-None-Match` 返回 304（`.github/workflows/ci.yml` 的 `Verify web container serves the built application`）。修改缓存策略时要同步更新断言，不要只删除头部。`server_tokens off;` 用于隐藏 nginx 版本号。
 
 ## 在线接口文档
 
