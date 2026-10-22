@@ -258,7 +258,7 @@ func TestImportForcesAssignedDataDomainAndReportsUnauthorizedSensitiveWrite(t *t
 		UserID:    7,
 		Role:      common.RoleAdmin,
 		DomainIDs: []uint64{assignedDomainID},
-	}, new(uint64), reader)
+	}, nil, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -839,5 +839,22 @@ func TestSingleDomainAdminAllowsBlankDomain(t *testing.T) {
 	}
 	if domain := store.batchProfiles[0].DataDomainID; domain == nil || *domain != 1 {
 		t.Fatalf("data domain = %v, want 1", domain)
+	}
+}
+
+func TestSingleDomainAdminRejectsExplicitUnauthorizedDomain(t *testing.T) {
+	reader, err := buildXLSXReader(alumniColumnHeaders, [][]string{{"张三", "2020级"}})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	otherDomainID := uint64(2)
+	_, err = NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 2, Role: common.RoleAdmin, DomainIDs: []uint64{1}},
+		&otherDomainID,
+		reader,
+	)
+	if !errors.Is(err, common.ErrPermissionDenied) {
+		t.Fatalf("Import() error = %v, want ErrPermissionDenied", err)
 	}
 }

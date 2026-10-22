@@ -706,7 +706,7 @@ func buildTemplateXLSX() (*ExportResult, error) {
 		{"undergraduate", "本科生"},
 		{"academic_graduate", "学术学位研究生"},
 		{"mpa", "MPA专业学位研究生"},
-		{"可填写编码（推荐）、显示名称或数字 ID；若导入时选择了目标培养类别，本列会被忽略。"},
+		{"可填写编码（推荐）、显示名称或数字 ID；单域管理员留空时按唯一培养类别处理，填写其他类别会逐行报错；显式选择导入目标培养类别时本列被忽略。"},
 		{"示例数据：姓名「示例校友」、年级「2024级」、所属领域「mpa」，按此格式从数据表第 2 行开始填写。"},
 	}
 	for i, row := range notes {
@@ -821,8 +821,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 			return nil, common.ErrPermissionDenied
 		}
 		if len(operator.DomainIDs) == 1 {
-			autoTargetDomain = dataDomainID == nil
-			targetProfile.DataDomainID = &operator.DomainIDs[0]
+			if dataDomainID != nil {
+				if !operator.CanAccessDomain(*dataDomainID) {
+					return nil, common.ErrPermissionDenied
+				}
+				targetProfile.DataDomainID = dataDomainID
+			} else {
+				autoTargetDomain = true
+				targetProfile.DataDomainID = &operator.DomainIDs[0]
+			}
 		} else if dataDomainID != nil && !operator.CanAccessDomain(*dataDomainID) {
 			return nil, common.ErrPermissionDenied
 		}
