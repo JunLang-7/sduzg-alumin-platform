@@ -108,8 +108,12 @@ services:
 
 ```sql
 SELECT COUNT(*) FROM alumni_profiles
-WHERE name LIKE '''%''' OR mobile LIKE '''%''' OR work_unit LIKE '''%'''
-   OR position LIKE '''%''' OR mailing_address LIKE '''%''';
+WHERE name LIKE '''%' OR grade LIKE '''%' OR class_name LIKE '''%'
+   OR cohort LIKE '''%' OR counselor LIKE '''%' OR mentor LIKE '''%'
+   OR major LIKE '''%' OR training_mode LIKE '''%' OR industry LIKE '''%'
+   OR work_unit LIKE '''%' OR position LIKE '''%'
+   OR mailing_address LIKE '''%' OR gender LIKE '''%'
+   OR mobile LIKE '''%' OR email LIKE '''%';
 ```
 
 确认命中后逐条人工核对再清理，操作前先备份；不要在未核对时批量 UPDATE。手机号带 `'+86`、工作单位/职务以 `-` / `@` 开头的记录最容易命中。
