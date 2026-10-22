@@ -142,7 +142,10 @@ jobs:
     name: E2E
     if: github.event_name == 'pull_request' || inputs.run_e2e
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    # 这 10 分钟里包含 npm ci、Chromium 与系统依赖下载、整套 Compose E2E。正常约 3.5 分钟，
+    # 但浏览器下载一旦变慢就会把整个 job 拖到超时（v0.5.1 发版时卡在 Install Chromium 整整
+    # 10 分钟后被判定 cancelled）。留出下载抖动的余量，真正的挂起仍由超时拦住。
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web

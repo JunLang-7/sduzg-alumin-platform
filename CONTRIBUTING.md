@@ -85,7 +85,7 @@
 4. `publish` 使用 `release` environment。首次发布前请在仓库 Settings → Environments 为 `release` 配置 required reviewers，这样推送标签不会直接对外发布，需要人工放行；如需限制标签创建权限，再配合 tag protection rules。
 5. 发布说明：若存在 `docs/release-notes/<标签>.md`，用它作为 Release 正文，首行 `# 标题` 作为 Release 标题；否则回退到 GitHub 自动生成的 release notes。文件名与写法见 `docs/release-notes/README.md`。
 
-发布失败时可在 Actions 中重跑同一个 run；`gh release create` 不会覆盖已存在的 Release，需要先删除旧 Release 与标签再重新推送。
+发布失败时可在 Actions 中重跑同一个 run；`gh release create` 不会覆盖已存在的 Release，需要先删除旧 Release 与标签再重新推送。若失败被判定为「runner 被宿主回收」这类基础设施中断（所有失败 job 都只剩 `received a shutdown signal` 与退出码 143），`Release` 会自动整体重跑，最多 3 次尝试；真实失败只报告不重跑。
 
 ### 文档 Wiki
 

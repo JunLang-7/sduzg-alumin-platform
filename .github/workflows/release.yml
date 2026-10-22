@@ -18,6 +18,7 @@ jobs:
   validate:
     name: Validate tag
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     outputs:
       tag: ${{ steps.tag.outputs.tag }}
       prerelease: ${{ steps.tag.outputs.prerelease }}
@@ -62,10 +63,55 @@ jobs:
     name: Migration upgrade path
     uses: ./.github/workflows/migration-upgrade.yml
 
+  # 托管 runner 被宿主回收时，job 只留下 SIGTERM（退出码 143），和真实失败长得一模一样。
+  # 发版最容易被这种拖动卡住，所以复用 Nightly 的判定与自动重跑（见 #217、#223）。
+  diagnose:
+    name: Diagnose failure
+    needs: [quality, migration-upgrade]
+    if: failure()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      kind: ${{ steps.classify.outputs.kind }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Classify the failure
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/classify-run-failure.sh
+
+  rerun-infra-failure:
+    name: Re-run on infrastructure failure
+    needs: [diagnose]
+    # 只在「所有失败 job 都只剩 runner 被回收的痕迹」时自动重跑，最多 2 次；
+    # 真实失败绝不自动重跑，避免把代码问题刷成绿灯。
+    if: needs.diagnose.outputs.kind == 'infra' && github.run_attempt < 3
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Re-run the whole workflow
+        # 整体重跑而不是只重跑失败 job：build 依赖 quality 与 migration-upgrade，
+        # 只重跑失败 job 会留下已成功的产物与最终重跑出来的结果对不上。
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/rerun"
+
   build:
     name: Build release artifacts
     needs: [validate, quality, migration-upgrade]
     runs-on: ubuntu-26.04
+    timeout-minutes: 30
     steps:
       # v5.1.0
       # 不上传凭据到构建产物。
@@ -133,6 +179,7 @@ jobs:
     name: Publish GitHub Release
     needs: [validate, build]
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     # 在仓库 Settings → Environments 为 release 环境配置 required reviewers 后，
     # 打标签不会直接对外发布，需要人工放行。
     environment: release
