@@ -917,27 +917,26 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		profile = profile.Normalize()
 		if targetProfile.DataDomainID != nil {
 			if autoTargetDomain && hasDomainColumn {
+				// 单域管理员留空时直接使用唯一授权域；只有显式填写其他域才逐行报错。
 				rawDomain := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
-				if rawDomain == "" {
-					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域为空"})
-					continue
-				}
-				domain := domainLookup(rawDomain)
-				if domain == nil {
-					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
-					continue
-				}
-				if domain.Status != common.DataDomainStatusActive {
-					rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
-					continue
-				}
-				if domain.ID != *targetProfile.DataDomainID {
-					rowErrors = append(rowErrors, dto.AlumniRowError{
-						Row:     rowNum,
-						Name:    profile.Name,
-						Message: fmt.Sprintf("该行所属领域为 %s，与本次导入目标培养类别不一致：请改用多域账号导入，或选择正确的导入目标培养类别", domain.Code),
-					})
-					continue
+				if rawDomain != "" {
+					domain := domainLookup(rawDomain)
+					if domain == nil {
+						rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
+						continue
+					}
+					if domain.Status != common.DataDomainStatusActive {
+						rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
+						continue
+					}
+					if domain.ID != *targetProfile.DataDomainID {
+						rowErrors = append(rowErrors, dto.AlumniRowError{
+							Row:     rowNum,
+							Name:    profile.Name,
+							Message: fmt.Sprintf("该行所属领域为 %s，与本次导入目标培养类别不一致：请改用多域账号导入，或选择正确的导入目标培养类别", domain.Code),
+						})
+						continue
+					}
 				}
 			}
 			profile.DataDomainID = targetProfile.DataDomainID

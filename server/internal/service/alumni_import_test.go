@@ -814,3 +814,30 @@ func TestImportRejectsDisabledDataDomain(t *testing.T) {
 		t.Fatalf("expected disabled domain message, got %q", result.Errors[0].Message)
 	}
 }
+
+func TestSingleDomainAdminAllowsBlankDomain(t *testing.T) {
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "空白领域校友"
+	row[1] = "2020级"
+	row[len(row)-1] = ""
+	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{row})
+	if err != nil {
+		t.Fatalf("build xlsx: %v", err)
+	}
+	store := &fakeAlumniStore{}
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 2, Role: common.RoleAdmin, DomainIDs: []uint64{1}},
+		nil,
+		reader,
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 1 || len(store.batchProfiles) != 1 {
+		t.Fatalf("blank domain should use the only authorized domain, got %+v", result)
+	}
+	if domain := store.batchProfiles[0].DataDomainID; domain == nil || *domain != 1 {
+		t.Fatalf("data domain = %v, want 1", domain)
+	}
+}
