@@ -902,3 +902,40 @@ func TestImportRestoresFormulaGuardPrefixes(t *testing.T) {
 		}
 	}
 }
+
+func TestImportCSVRowLimit(t *testing.T) {
+	row := make([]string, len(alumniImportColumnHeaders))
+	row[0] = "张三"
+	row[1] = "2020级"
+	row[len(row)-1] = "undergraduate"
+	line := strings.Join(row, ",") + "\n"
+
+	var b strings.Builder
+	b.WriteString(strings.Join(alumniImportColumnHeaders, ","))
+	b.WriteString("\n")
+	for i := 0; i < maxImportDataRows+1; i++ {
+		b.WriteString(line)
+	}
+
+	_, err := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		strings.NewReader(b.String()),
+	)
+	if !errors.Is(err, common.ErrImportRowLimit) {
+		t.Fatalf("Import() error = %v, want ErrImportRowLimit", err)
+	}
+}
+
+func TestImportInvalidHeaderReturnsBadRequestError(t *testing.T) {
+	_, err := NewAlumniService(&fakeAlumniStore{}, nil).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		strings.NewReader("foo,bar\n1,2\n"),
+	)
+	if !errors.Is(err, common.ErrImportInvalidHeader) {
+		t.Fatalf("Import() error = %v, want ErrImportInvalidHeader", err)
+	}
+}

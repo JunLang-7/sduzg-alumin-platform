@@ -100,6 +100,20 @@ services:
 
 接口文档关闭只影响这两个地址，不影响任何业务接口。规范由 handler 注解生成，重新生成与校验方式见[后端开发说明](../server/README.md)。
 
+## 历史公式前缀数据清理
+
+导出时为防止电子表格公式注入，会对以 `= + - @` 开头的值加 `'` 前缀。旧版本在「导出 → 回灌」时可能把这个前缀当成真实内容写回数据库，例如手机号被存成 `'+8613800000000`。本次修复只保证新导入会还原前缀，**不会自动修正历史记录**。
+
+排查（只读）：
+
+```sql
+SELECT COUNT(*) FROM alumni_profiles
+WHERE name LIKE '''%''' OR mobile LIKE '''%''' OR work_unit LIKE '''%'''
+   OR position LIKE '''%''' OR mailing_address LIKE '''%''';
+```
+
+确认命中后逐条人工核对再清理，操作前先备份；不要在未核对时批量 UPDATE。手机号带 `'+86`、工作单位/职务以 `-` / `@` 开头的记录最容易命中。
+
 ## 数据迁移与版本更新
 
 首次创建 MySQL 数据卷时，会执行 [server/migrations](../server/migrations) 下的初始化 SQL。之后由 `migrate` 服务在 API 启动前执行 [migrate.sh](../server/scripts/migrate.sh)，补齐尚未记录的增量迁移。

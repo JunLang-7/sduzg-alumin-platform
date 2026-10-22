@@ -84,6 +84,10 @@ func sanitizeExportValue(v string) string {
 	if v[0] == '=' || v[0] == '+' || v[0] == '-' || v[0] == '@' {
 		return "'" + v
 	}
+	// 值本身以单引号开头时再补一层，配合导入侧只剥一层，保证回灌无损。
+	if v[0] == '\'' {
+		return "'" + v
+	}
 	return v
 }
 
@@ -1068,8 +1072,22 @@ func readImportRows(data []byte) ([][]string, error) {
 	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	reader := csv.NewReader(bytes.NewReader(data))
 	reader.FieldsPerRecord = -1
-	rows, err := reader.ReadAll()
-	if err != nil || len(rows) == 0 {
+	rows := make([][]string, 0, 64)
+	for {
+		record, err := reader.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, common.ErrInvalidRequest
+		}
+		rows = append(rows, record)
+		// 与 xlsx 路径共用同一上限，并在读完整文件前止损，避免大 CSV 被全量物化。
+		if len(rows) > maxImportDataRows+1 {
+			return nil, common.ErrImportRowLimit
+		}
+	}
+	if len(rows) == 0 {
 		return nil, common.ErrInvalidRequest
 	}
 	return rows, nil
@@ -1078,7 +1096,10 @@ func readImportRows(data []byte) ([][]string, error) {
 // stripExportFormulaGuard 还原导出时为防止电子表格公式注入而加的单引号前缀。
 // 只处理「' 后紧跟 = + - @」的组合，普通以单引号开头的文本保持不变。
 func stripExportFormulaGuard(value string) string {
-	if len(value) >= 2 && value[0] == '\'' && strings.ContainsRune("=+-@", rune(value[1])) {
+	if len(value) < 2 || value[0] != '\'' {
+		return value
+	}
+	if strings.ContainsRune("=+-@", rune(value[1])) || value[1] == '\'' {
 		return value[1:]
 	}
 	return value
