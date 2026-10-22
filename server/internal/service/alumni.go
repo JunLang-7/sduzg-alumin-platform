@@ -581,13 +581,23 @@ func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common
 		return nil, err
 	}
 	missingCodeRows := 0
+	nonReimportableRows := 0
 	for _, item := range items {
-		if item != nil && domainCodes[item.DataDomainID] == "" {
+		if item == nil {
+			continue
+		}
+		if domainCodes[item.DataDomainID] == "" {
 			missingCodeRows++
+		}
+		if strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.Grade) == "" {
+			nonReimportableRows++
 		}
 	}
 	if missingCodeRows > 0 {
 		logger.Warn("export rows missing data domain code", zap.Int("rows", missingCodeRows))
+	}
+	if nonReimportableRows > 0 {
+		logger.Warn("export contains rows that cannot be re-imported", zap.Int("rows", nonReimportableRows))
 	}
 	result, err := s.buildExport(maskExportItems(items, operator), format, domainCodes)
 	if err != nil {
@@ -840,11 +850,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, fmt.Errorf("read uploaded file: %w", err)
 	}
 
-	if len(data) < 4 || data[0] != 0x50 || data[1] != 0x4B || data[2] != 0x03 || data[3] != 0x04 {
-		return nil, common.ErrInvalidRequest
-	}
-
-	rows, err := readImportWorkbookRows(data)
+	rows, err := readImportRows(data)
 	if err != nil {
 		return nil, err
 	}
@@ -856,7 +862,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	header := rows[0]
 	hasDomainColumn := matchesImportHeaders(header, alumniImportColumnHeaders)
 	if !hasDomainColumn && !matchesImportHeaders(header, alumniColumnHeaders) {
-		return nil, fmt.Errorf("表头不正确，应使用 %d 列通用模板或 %d 列含所属领域模板", len(alumniColumnHeaders), len(alumniImportColumnHeaders))
+		return nil, common.ErrImportInvalidHeader
 	}
 
 	domainByCode := map[string]*model.DataDomain{}
@@ -1053,11 +1059,36 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	return result, nil
 }
 
+// readImportRows 兼容 xlsx 与 csv：ZIP 魔数走工作簿解析，其余按 UTF-8 CSV 解析。
+func readImportRows(data []byte) ([][]string, error) {
+	if len(data) >= 4 && data[0] == 0x50 && data[1] == 0x4B && data[2] == 0x03 && data[3] == 0x04 {
+		return readImportWorkbookRows(data)
+	}
+	// 导出的 CSV 带 UTF-8 BOM，先剥离再解析。
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	reader := csv.NewReader(bytes.NewReader(data))
+	reader.FieldsPerRecord = -1
+	rows, err := reader.ReadAll()
+	if err != nil || len(rows) == 0 {
+		return nil, common.ErrInvalidRequest
+	}
+	return rows, nil
+}
+
+// stripExportFormulaGuard 还原导出时为防止电子表格公式注入而加的单引号前缀。
+// 只处理「' 后紧跟 = + - @」的组合，普通以单引号开头的文本保持不变。
+func stripExportFormulaGuard(value string) string {
+	if len(value) >= 2 && value[0] == '\'' && strings.ContainsRune("=+-@", rune(value[1])) {
+		return value[1:]
+	}
+	return value
+}
+
 // readImportWorkbookRows isolates spreadsheet parsing from the request path.
 // A malformed workbook must be rejected instead of allowing a parser panic to
 // terminate the API process.
 // maxImportDataRows 是单次导入允许的数据行上限，不含表头。
-const maxImportDataRows = 5000
+const maxImportDataRows = 20000
 
 // maxAuditBatchRecords 限制单条导入审计保存的明细条数，给 detail 体积设上限；
 // 超出部分只保留真实总数，并在详情中标明已截断。
@@ -1285,7 +1316,7 @@ func parseRowToProfile(row []string) do.AlumniCreateProfile {
 
 	get := func(idx int) string {
 		if idx < len(row) {
-			return strings.TrimSpace(row[idx])
+			return stripExportFormulaGuard(strings.TrimSpace(row[idx]))
 		}
 		return ""
 	}

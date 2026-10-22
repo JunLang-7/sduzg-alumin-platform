@@ -217,7 +217,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "使用导出的模板文件（.xlsx）导入。单次最多 5000 条，每行独立校验，导入结果逐行返回错误原因；写入敏感字段需要 alumni.sensitive.read 功能权限。",
+                "description": "使用导出的模板文件（.xlsx）或导出的 CSV 文件导入。单次最多 20000 条，每行独立校验，导入结果逐行返回错误原因；写入敏感字段需要 alumni.sensitive.read 功能权限。",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -231,7 +231,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "file",
-                        "description": "Excel 模板文件（.xlsx），最大 20MB",
+                        "description": "Excel 模板（.xlsx）或 CSV（.csv）文件，最大 20MB",
                         "name": "file",
                         "in": "formData",
                         "required": true
@@ -263,7 +263,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "未选择文件、文件过大、格式不正确、数据域无效，或超过 5000 条限制",
+                        "description": "未选择文件、文件过大、格式不正确、数据域无效，或超过 20000 条限制",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }

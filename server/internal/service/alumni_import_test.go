@@ -858,3 +858,47 @@ func TestSingleDomainAdminRejectsExplicitUnauthorizedDomain(t *testing.T) {
 		t.Fatalf("Import() error = %v, want ErrPermissionDenied", err)
 	}
 }
+
+func TestImportRestoresFormulaGuardPrefixes(t *testing.T) {
+	cases := map[string]string{
+		"'=SUM(A1:A2)":    "=SUM(A1:A2)",
+		"'+8613800000000": "+8613800000000",
+		"'-1":             "-1",
+		"'@user":          "@user",
+		"'normal":         "'normal",
+	}
+	var b strings.Builder
+	b.WriteString(strings.Join(alumniImportColumnHeaders, ","))
+	b.WriteString("\n")
+	for name := range cases {
+		row := make([]string, len(alumniImportColumnHeaders))
+		row[0] = name
+		row[1] = "2020级"
+		row[len(row)-1] = "undergraduate"
+		b.WriteString(strings.Join(row, ","))
+		b.WriteString("\n")
+	}
+
+	store := &fakeAlumniStore{}
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(
+		context.Background(),
+		common.AccessContext{UserID: 1, Role: common.RoleSuperAdmin},
+		nil,
+		strings.NewReader(b.String()),
+	)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != len(cases) || len(store.batchProfiles) != len(cases) {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	got := make(map[string]bool, len(store.batchProfiles))
+	for _, profile := range store.batchProfiles {
+		got[profile.Name] = true
+	}
+	for input, want := range cases {
+		if !got[want] {
+			t.Fatalf("input %q was not restored to %q; got %v", input, want, got)
+		}
+	}
+}

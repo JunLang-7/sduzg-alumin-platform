@@ -23,6 +23,7 @@ var (
 	ErrImportRowLimit        = errors.New("import row limit exceeded")
 	ErrImportDomainRequired  = errors.New("import data domain required")
 	ErrImportNoDataRows      = errors.New("import file has no data rows")
+	ErrImportInvalidHeader   = errors.New("import file header is invalid")
 
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAccountDisabled    = errors.New("account disabled")

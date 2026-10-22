@@ -28,7 +28,7 @@ func TestImportHandlerRowLimitReturnsBadRequest(t *testing.T) {
 		h.Import(c)
 	})
 
-	const rowsOverLimit = 5001 // 数据行上限为 5000
+	const rowsOverLimit = 20001 // 数据行上限为 20000
 	rows := make([][]string, 0, rowsOverLimit)
 	for i := 0; i < rowsOverLimit; i++ {
 		rows = append(rows, []string{"张三", "2020级"})

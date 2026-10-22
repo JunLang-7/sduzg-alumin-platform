@@ -349,14 +349,14 @@ func (h *AlumniHandler) ExportTemplate(c *gin.Context) {
 // Import 解析 Excel 文件批量导入校友档案。
 //
 //	@Summary		批量导入校友档案
-//	@Description	使用导出的模板文件（.xlsx）导入。单次最多 5000 条，每行独立校验，导入结果逐行返回错误原因；写入敏感字段需要 alumni.sensitive.read 功能权限。
+//	@Description	使用导出的模板文件（.xlsx）或导出的 CSV 文件导入。单次最多 20000 条，每行独立校验，导入结果逐行返回错误原因；写入敏感字段需要 alumni.sensitive.read 功能权限。
 //	@Tags			校友导入导出
 //	@Accept			multipart/form-data
 //	@Produce		json
-//	@Param			file			formData	file	true	"Excel 模板文件（.xlsx），最大 20MB"
+//	@Param			file			formData	file	true	"Excel 模板（.xlsx）或 CSV（.csv）文件，最大 20MB"
 //	@Param			data_domain_id	formData	integer	false	"目标数据域 ID；不传则使用调用者可用的数据域"
 //	@Success		200				{object}	response.Body{data=dto.AlumniImportResult}
-//	@Failure		400				{object}	response.Body	"未选择文件、文件过大、格式不正确、数据域无效，或超过 5000 条限制"
+//	@Failure		400				{object}	response.Body	"未选择文件、文件过大、格式不正确、数据域无效，或超过 20000 条限制"
 //	@Failure		403				{object}	response.Body	"权限不足"
 //	@Failure		503				{object}	response.Body	"数据库或数据域不可用"
 //	@Security		BearerAuth
@@ -411,6 +411,8 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
 		response.Fail(c, http.StatusServiceUnavailable, response.CodeServiceUnavailable, "database is unavailable")
+	case errors.Is(err, common.ErrImportInvalidHeader):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "表头不正确，应使用 15 列通用模板或 16 列含所属领域模板")
 	case errors.Is(err, common.ErrImportNoDataRows):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件里没有可导入的数据行（只有表头或空白行）")
 	case errors.Is(err, common.ErrImportDomainRequired):
@@ -418,7 +420,7 @@ func (h *AlumniHandler) Import(c *gin.Context) {
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "文件格式不正确，请使用导出的模板文件")
 	case errors.Is(err, common.ErrImportRowLimit):
-		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "单次最多导入 5000 条数据，请拆分文件后重试")
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "单次最多导入 20000 条数据，请拆分文件后重试")
 	default:
 		response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "服务器内部错误")
 	}
