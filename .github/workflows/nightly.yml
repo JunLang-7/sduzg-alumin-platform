@@ -27,10 +27,55 @@ jobs:
     name: Migration upgrade path
     uses: ./.github/workflows/migration-upgrade.yml
 
+  # 托管 runner 被宿主回收时，job 只留下 SIGTERM（退出码 143），和真实失败长得一模一样。
+  # 这里把两者分开：真实失败只报告不重跑，被回收则自动重跑（见 #217）。
+  diagnose:
+    name: Diagnose failure
+    needs: [quality, migration-upgrade]
+    if: failure()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      kind: ${{ steps.classify.outputs.kind }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: false
+      - name: Classify the failure
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/classify-run-failure.sh
+
+  rerun-infra-failure:
+    name: Re-run on infrastructure failure
+    needs: [diagnose]
+    # 只在「所有失败 job 都只剩 runner 被回收的痕迹」时自动重跑，最多 2 次；
+    # 真实失败绝不自动重跑，避免把代码问题刷成绿灯。
+    if: needs.diagnose.outputs.kind == 'infra' && github.run_attempt < 3
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Re-run the whole workflow
+        # 整体重跑而不是只重跑失败 job：Nightly artifacts 依赖 quality 成功，
+        # 只重跑失败 job 会让这一个成功的产物永远缺失。
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/rerun"
+
   artifacts:
     name: Nightly artifacts
     needs: [quality, migration-upgrade]
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     steps:
       # v5.1.0
       # 不上传凭据到构建产物。

@@ -28,6 +28,7 @@ jobs:
     name: Commit messages
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -59,6 +60,7 @@ jobs:
     name: Linked issue
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Test Issue reference policy
@@ -73,6 +75,7 @@ jobs:
   wiki-sync:
     name: Wiki sync
     runs-on: ubuntu-26.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -83,6 +86,9 @@ jobs:
   backend:
     name: Backend quality
     runs-on: ubuntu-26.04
+    # 必须给硬上限：没有上限时，runner 被宿主回收只会留下 SIGTERM（退出码 143），
+    # 无法和「测试卡住」区分。见 #217。
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: server
@@ -113,6 +119,7 @@ jobs:
   web:
     name: Web quality
     runs-on: ubuntu-26.04
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: web
@@ -250,6 +257,7 @@ jobs:
   security:
     name: Security
     runs-on: ubuntu-26.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -273,10 +281,13 @@ jobs:
   containers:
     name: Containers and health checks
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
       - name: Test the release artifact check
         run: bash .github/scripts/check-release-artifacts.test.sh
+      - name: Test the run failure classifier
+        run: bash .github/scripts/classify-run-failure.test.sh
       - name: Validate Compose configuration
         run: docker compose config -q
       - name: Build images
