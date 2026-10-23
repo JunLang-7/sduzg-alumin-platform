@@ -7,9 +7,11 @@ import (
 	"sync"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/response"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 const AccessContextKey = "access_context"
@@ -41,16 +43,23 @@ func (l *AccessContextLoader) Load(ctx context.Context, userID uint64) (*common.
 	if l == nil || l.users == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
+	if userID == 0 {
+		return nil, common.ErrUserNotFound
+	}
 
 	user, err := l.users.FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if user == nil {
+	if user == nil || user.ID != userID || user.DeletedAt.Valid {
 		return nil, common.ErrUserNotFound
 	}
 	if user.Status != common.UserStatusActive {
 		return nil, common.ErrAccountDisabled
+	}
+	if !common.IsKnownUserRole(user.Role) {
+		logger.Warn("unknown database role", zap.Uint64("user_id", user.ID), zap.String("role", user.Role))
+		return nil, common.ErrPermissionDenied
 	}
 
 	access := &common.AccessContext{
@@ -147,6 +156,8 @@ func LoadAccessContext(loader *AccessContextLoader, whitelist ...string) gin.Han
 				response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 			case errors.Is(err, common.ErrAccountDisabled):
 				response.Fail(c, http.StatusForbidden, response.CodeForbidden, "account is disabled")
+			case errors.Is(err, common.ErrPermissionDenied):
+				response.Fail(c, http.StatusForbidden, response.CodeForbidden, "permission denied")
 			default:
 				response.Fail(c, http.StatusInternalServerError, response.CodeInternalError, "internal server error")
 			}

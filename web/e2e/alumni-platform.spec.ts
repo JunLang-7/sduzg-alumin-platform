@@ -97,6 +97,44 @@ test('校友令牌不能查询通用档案，但本人资料和院史仍可访�
   expect(historyResponse.status()).toBe(200);
 });
 
+test('篡改 localStorage 角色不能获得服务端管理权限', async ({ page }) => {
+  await login(page, '13800001111');
+  const token = await page.evaluate(() => {
+    window.localStorage.setItem('role', 'super_admin');
+    window.localStorage.setItem('user', JSON.stringify({ role: 'super_admin' }));
+    window.localStorage.setItem(
+      'auth-storage',
+      JSON.stringify({ state: { user: { role: 'super_admin' } } }),
+    );
+    return window.localStorage.getItem('sdu_alumni_access_token');
+  });
+  expect(token).toBeTruthy();
+  await page.reload();
+  await page.goto('/admin/alumni');
+  await expect(page).toHaveURL(/\/403$/);
+
+  for (const [method, path] of [
+    ['GET', '/api/v1/admin/dashboard/overview'],
+    ['GET', '/api/v1/admin/dashboard/distribution'],
+    ['GET', '/api/v1/super-admin/admins'],
+    ['POST', '/api/v1/admin/alumni'],
+    ['PUT', '/api/v1/admin/alumni/0'],
+    ['DELETE', '/api/v1/admin/alumni/0'],
+    ['POST', '/api/v1/super-admin/admins'],
+    ['DELETE', '/api/v1/super-admin/admins/0'],
+  ]) {
+    const response = await page.request.fetch(`${path}?role=super_admin`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, 'X-Role': 'super_admin' },
+      ...(['POST', 'PUT'].includes(method) ? { data: { role: 'super_admin' } } : {}),
+    });
+    expect(response.status(), `${method} ${path}`).toBe(403);
+    const body = await response.json();
+    expect(body.code).toBe(40300);
+    expect(body).not.toHaveProperty('data');
+  }
+});
+
 test('管理员可以创建、编辑并清理校友档案', async ({ page }) => {
   const alumniName = `E2E校友${Date.now()}`;
   await login(page, 'admin');

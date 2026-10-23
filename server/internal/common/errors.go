@@ -27,6 +27,7 @@ var (
 
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrAccountDisabled    = errors.New("account disabled")
+	ErrInvalidAccountRole = errors.New("invalid account role")
 	ErrAccountLocked      = errors.New("account temporarily locked")
 
 	ErrCodeExpired    = errors.New("verification code expired")

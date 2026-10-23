@@ -32,7 +32,7 @@ func NewAuthHandler(auth *service.AuthService) *AuthHandler {
 //	@Success		200		{object}	response.Body{data=dto.LoginResult}
 //	@Failure		400		{object}	response.Body	"参数不正确，或验证码错误/已过期/已使用"
 //	@Failure		401		{object}	response.Body	"用户名或密码错误，或未找到匹配的校友信息"
-//	@Failure		403		{object}	response.Body	"账号已被停用"
+//	@Failure		403		{object}	response.Body	"账号已被停用或角色无效"
 //	@Failure		429		{object}	response.Body	"账号临时锁定或操作过于频繁"
 //	@Failure		503		{object}	response.Body	"数据库不可用"
 //	@Router			/auth/login [post]
@@ -54,6 +54,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "用户名或密码错误")
 	case errors.Is(err, common.ErrAccountDisabled):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "account is disabled")
+	case errors.Is(err, common.ErrInvalidAccountRole):
+		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "账号角色无效，请联系管理员")
 	case errors.Is(err, common.ErrAccountLocked):
 		response.Fail(c, http.StatusTooManyRequests, response.CodeTooManyRequests, "账号已临时锁定，请稍后再试")
 	case errors.Is(err, common.ErrCodeInvalid):

@@ -1,5 +1,15 @@
 package common
 
+// IsKnownUserRole 对数据库角色进行大小写敏感的精确匹配。
+func IsKnownUserRole(role string) bool {
+	switch role {
+	case RoleAlumni, RoleAdmin, RoleSuperAdmin:
+		return true
+	default:
+		return false
+	}
+}
+
 const (
 	RoleAlumni     = "alumni"
 	RoleAdmin      = "admin"

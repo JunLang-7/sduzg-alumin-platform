@@ -25,7 +25,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await authApi.login(payload);
       if (response.registration_token) {
-        set({ loading: false });
+        cacheAccessToken(null);
+        set({ user: null, sessionChecked: true, loading: false });
         return { user: null, registrationToken: response.registration_token };
       }
       cacheAccessToken(response.access_token);
@@ -33,7 +34,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       set({ user: currentUser, sessionChecked: true, loading: false });
       return { user: currentUser, registrationToken: null };
     } catch (error) {
-      set({ loading: false });
+      cacheAccessToken(null);
+      set({ user: null, sessionChecked: true, loading: false });
       throw error;
     }
   },

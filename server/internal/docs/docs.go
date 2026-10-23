@@ -1672,7 +1672,7 @@ const docTemplate = `{
                         }
                     },
                     "403": {
-                        "description": "账号已被停用",
+                        "description": "账号已被停用或角色无效",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }

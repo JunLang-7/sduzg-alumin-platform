@@ -488,7 +488,8 @@ func (s *AuthService) findUser(ctx context.Context, typ, identifier string) (*mo
 		user, err = s.users.FindByEmail(ctx, identifier)
 	default:
 		user, err = s.users.FindByAccount(ctx, identifier)
-		if err == nil && user != nil && user.Role != common.RoleAdmin && user.Role != common.RoleSuperAdmin {
+		// 校友必须用手机号或邮箱；无效角色留待凭据校验后的 completeLogin 拒绝。
+		if err == nil && user != nil && user.Role == common.RoleAlumni {
 			return nil, common.ErrUserNotFound
 		}
 	}
@@ -632,6 +633,11 @@ func (s *AuthService) createUserForAlumni(ctx context.Context, mobile, email str
 }
 
 func (s *AuthService) completeLogin(ctx context.Context, user *model.User, identifier string) (*dto.LoginResult, error) {
+	if !common.IsKnownUserRole(user.Role) {
+		logger.Warn("unknown database role", zap.Uint64("user_id", user.ID), zap.String("role", user.Role))
+		return nil, common.ErrInvalidAccountRole
+	}
+
 	issuedAt := s.now()
 	expiresAt := issuedAt.Add(s.accessTTL)
 
