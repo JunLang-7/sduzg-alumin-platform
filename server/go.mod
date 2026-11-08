@@ -3,7 +3,7 @@ module github.com/JunLang-7/sduzg-alumin-platform/server
 go 1.26.10
 
 require (
-	github.com/gin-contrib/cors v1.7.9
+	github.com/gin-contrib/cors v1.7.10
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-redis/redis_rate/v10 v10.0.1
 	github.com/go-sql-driver/mysql v1.10.1
@@ -16,7 +16,7 @@ require (
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.198
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.204
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/sms v1.3.172
 	github.com/wneessen/go-mail v0.8.1
 	github.com/xuri/excelize/v2 v2.11.1-0.20261003002531-6258dcebc4e2
