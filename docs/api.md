@@ -49,6 +49,7 @@
 | 404  | 40400 | 资源不存在或不在可访问范围内        |
 | 404  | 40401 | 档案文件不存在或尚未完成上传        |
 | 409  | 40000 | 当前状态不允许此操作                |
+| 409  | 40900 | 版本冲突、多段校友整人删除或学籍归属冲突 |
 | 413  | 41300 | 档案文件或院史附件超过大小/数量限制 |
 | 415  | 41500 | 附件类型不支持                      |
 | 429  | 42900 | 请求过于频繁                        |
@@ -170,60 +171,130 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 
 - 本人资料更新只处理上表允许的字段；不支持修改姓名、年级、数据域等学籍/归属信息。未提交或传 `null` 的字段不修改，传空字符串可清空。
 - 联系方式接口会校验手机号/邮箱格式和账号占用。验证码发送目标为账号**原有**对应联系方式；原值未设置时验证新值。仍通过 `/auth/verify-code/send`、`purpose=login` 获取验证码。建议手机号和邮箱分次提交，避免同一个 `code` 在两项校验中被重复消费。
+- `GET /alumni/me` 返回个人主档案与本人全部学籍段（只读，不含管理员备注）；本人字段编辑权限不因多段学籍扩大。
 - `/alumni/me/contact` 同时更新账号联系方式并尝试同步绑定档案；`PUT /alumni/me` 中的 `mobile` 只更新档案，不等于变更登录手机号，也不执行验证码校验。需要调整登录联系方式时使用专用接口。
 - 未登录返回 401；非校友返回 403；`GET/PUT /alumni/me` 另在账号未绑定校友档案时返回 403，档案不存在返回 404；`/alumni/me/contact` 不要求绑定档案，目标账号不存在返回 404。联系方式被占用、验证码错误或字段不合法返回 400。
 
 ## 校友档案查询与管理
 
-| 方法   | 路径                | 权限                      | `data` / 说明                                                |
-| ------ | ------------------- | ------------------------- | ------------------------------------------------------------ |
-| GET    | `/alumni`           | 管理员/超级管理员         | 校友分页列表                                                 |
-| GET    | `/alumni/:id`       | 数据域内管理员/超级管理员 | `AlumniDetail`                                               |
-| POST   | `/admin/alumni`     | 管理员/超级管理员         | 新增档案，HTTP 201，返回详情                                 |
-| PUT    | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 修改档案，返回详情                                           |
-| DELETE | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 软删除档案，返回 `{ deleted: true }`，并尽力级联清理档案文件 |
+一人多段学籍上线后，`alumni_profiles` 只保存稳定的个人主档案与账号绑定；
+培养类别、年级、班级、届数、专业、培养方式、辅导员、导师、管理员备注和档案文件
+按 `alumni_enrollments` 学籍段独立保存。列表按人去重，一行一位校友。
+
+| 方法   | 路径                | 权限                      | `data` / 说明                                                                         |
+| ------ | ------------------- | ------------------------- | ------------------------------------------------------------------------------------- |
+| GET    | `/alumni`           | 管理员/超级管理员         | 校友分页列表，每项含可访问学籍摘要                                                    |
+| GET    | `/alumni/:id`       | 数据域内管理员/超级管理员 | `AlumniDetail`，含全部可访问学籍段                                                    |
+| POST   | `/admin/alumni`     | 管理员/超级管理员         | 新增个人档案与至少一段初始学籍，HTTP 201，返回详情                                    |
+| PUT    | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 保存全部修改（个人信息、提交的学籍、文件草稿/移除），返回详情；版本冲突返回 409       |
+| DELETE | `/admin/alumni/:id` | 数据域内管理员/超级管理员 | 仅删除只有一段学籍的校友并级联清理文件；多段校友返回 409，避免误删隐藏学籍或共享身份 |
 
 ### 查询参数与返回字段
 
-| 参数                                 | 类型   | 匹配方式 / 约束                                                            |
-| ------------------------------------ | ------ | -------------------------------------------------------------------------- |
-| `page`、`page_size`                  | int    | 通用分页                                                                   |
-| `keyword`                            | string | 姓名、导师、辅导员模糊匹配；有敏感字段权限时额外匹配工作单位、职务、手机号 |
-| `grade`、`class_name`、`cohort`      | string | 年级、班级、届数，精确匹配                                                 |
-| `counselor`、`mentor`                | string | 辅导员、导师，精确匹配                                                     |
-| `major`、`training_mode`、`industry` | string | 专业、培养方式、行业，精确匹配                                             |
-| `work_unit`、`position`              | string | 工作单位、职务模糊匹配，需 `alumni.sensitive.read`                         |
-| `mobile`                             | string | 手机号精确匹配，需 `alumni.sensitive.read`                                 |
-| `data_domain_id`                     | uint64 | 指定数据域；普通管理员只能选择已授权域，越域返回 403                       |
+| 参数                                 | 类型   | 匹配方式 / 约束                                                                     |
+| ------------------------------------ | ------ | ----------------------------------------------------------------------------------- |
+| `page`、`page_size`                  | int    | 通用分页                                                                            |
+| `keyword`                            | string | 姓名、行业、导师、辅导员模糊匹配；有敏感字段权限时额外匹配工作单位、职务、手机号    |
+| `grade`、`class_name`、`cohort`      | string | 学籍年级、班级、届数，精确匹配                                                      |
+| `counselor`、`mentor`                | string | 学籍辅导员、导师，精确匹配                                                          |
+| `major`、`training_mode`             | string | 学籍专业、培养方式，精确匹配                                                        |
+| `training_level`                     | string | 培养层次：`undergraduate` / `master` / `doctor` / `unverified`，精确匹配             |
+| `industry`                           | string | 个人行业，精确匹配                                                                  |
+| `work_unit`、`position`              | string | 个人工作单位、职务模糊匹配，需 `alumni.sensitive.read`                              |
+| `mobile`                             | string | 个人手机号精确匹配，需 `alumni.sensitive.read`                                      |
+| `data_domain_id`                     | uint64 | 指定学籍数据域；普通管理员只能选择已授权域，越域返回 403                            |
 
-普通管理员不传 `data_domain_id` 时查询其全部授权域，无授权域不能查询；单条详情越域或已删除均返回 404。超级管理员默认全域。列表按 ID 降序排列。
+所有学籍筛选条件必须由**同一段学籍**满足。例如 `grade=2015&training_level=undergraduate`
+不会命中“2015 级硕士”的档案。普通管理员不传 `data_domain_id` 时查询其全部授权域，
+无授权域不能查询；超级管理员默认全域。列表按个人档案 ID 降序排列。
 
-> 这两个通用查询接口均由后端校验管理员角色：未登录返回 401，校友令牌返回 403，且不返回档案数据；校友请求本人 ID 也不会绕过门禁。本人资料入口 `/alumni/me` 不受该管理员门禁影响。
+列表项字段：`id`、`name`、`gender`、`industry`、`work_unit`、`position`、`mobile`、
+`email`、`version`、`updated_at`、`enrollments`。无敏感权限时联系方式和任职字段为 `null`。
+`enrollments` 只包含当前查看者有权访问的学籍摘要：
+`id`、`data_domain_id`、`data_domain_name`、`training_level`、`grade`、`class_name`、
+`cohort`、`counselor`、`mentor`、`major`、`training_mode`。隐藏学籍不会以数量、名称或筛选项泄露。
 
-列表项字段：`id`、`data_domain_id`、`name`、`grade`、`class_name`、`cohort`、`counselor`、`mentor`、`major`、`training_mode`、`industry`、`work_unit`、`position`、`gender`、`mobile`、`email`、`updated_at`。`AlumniDetail` 在此基础上增加 `mailing_address`、`status`、`created_at`。可选字符串可为 `null`；`remark` 虽可写入，但当前详情 DTO 不返回。
-
-### 新增与修改字段
-
-| 字段                                                          | 类型          | 说明                                                                                                              |
-| ------------------------------------------------------------- | ------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `name`、`grade`                                               | string        | 新增和修改均必填，去除首尾空格后不得为空                                                                          |
-| `data_domain_id`                                              | uint64        | 仅新增支持。单域管理员自动使用唯一授权域；多域管理员必须指定授权域；超级管理员省略时兼容默认 MPA 域，建议显式指定 |
-| `class_name`、`cohort`、`counselor`、`mentor`                 | string / null | 班级、届数、辅导员、导师                                                                                          |
-| `major`、`training_mode`、`industry`、`gender`                | string / null | 专业、培养方式、行业、性别                                                                                        |
-| `work_unit`、`position`、`mailing_address`、`mobile`、`email` | string / null | 敏感字段，管理员写入需 `alumni.sensitive.read`；修改时传空字符串清空也需要该权限                                  |
-| `remark`                                                      | string / null | 备注                                                                                                              |
-
-修改时 `name`、`grade` 必须每次携带，其余未提交或为 `null` 的字段保持原值，空字符串表示清空；此接口不能迁移数据域。新增数据域无效返回 400，不可用返回 503。
+`AlumniDetail` 字段：`id`、`name`、`gender`、`mobile`、`email`、`industry`、`work_unit`、
+`position`、`mailing_address`、`status`、`version`、`created_at`、`updated_at`、`enrollments`。
+学籍详情增加 `counselor`、`mentor`、`remark`（仅管理员可见）、`version`、`created_at`、`updated_at`。
+无敏感权限时 `mobile`、`email`、`work_unit`、`position`、`mailing_address` 为 `null`。
 
 ```json
 {
-  "data_domain_id": 1,
+  "id": 42,
   "name": "示例校友",
-  "grade": "2020",
-  "class_name": "一班",
-  "major": "公共管理"
+  "gender": "男",
+  "mobile": "13800000000",
+  "industry": "党政机关",
+  "version": 3,
+  "enrollments": [
+    {
+      "id": 11,
+      "data_domain_id": 1,
+      "data_domain_name": "本科生",
+      "training_level": "undergraduate",
+      "grade": "2015",
+      "major": "行政管理",
+      "version": 2
+    },
+    {
+      "id": 12,
+      "data_domain_id": 2,
+      "data_domain_name": "学术学位研究生",
+      "training_level": "master",
+      "grade": "2019",
+      "major": "行政管理",
+      "version": 1
+    }
+  ]
 }
 ```
+
+### 新增与保存全部修改
+
+```json
+{
+  "version": 3,
+  "name": "示例校友",
+  "gender": "男",
+  "mobile": "13800000000",
+  "email": "alumni@example.com",
+  "industry": "党政机关",
+  "work_unit": "示例单位",
+  "position": "主任",
+  "mailing_address": "济南市",
+  "enrollments": [
+    {
+      "id": 11,
+      "version": 2,
+      "data_domain_id": 1,
+      "training_level": "undergraduate",
+      "grade": "2015",
+      "class_name": "行政管理一班",
+      "major": "行政管理",
+      "activate_file_ids": [301],
+      "remove_file_ids": [205]
+    },
+    {
+      "data_domain_id": 2,
+      "training_level": "master",
+      "grade": "2019",
+      "mentor": "王老师"
+    }
+  ]
+}
+```
+
+- `name` 必填；个人信息为共享字段，修改一次即同步到该校友全部学籍。
+- 学籍数组每项必填 `data_domain_id`、`training_level`、`grade`。新增学籍必须明确选择
+  `undergraduate` / `master` / `doctor`，不能新建 `unverified`；历史待核验记录可以继续维护。
+- `id` 为空表示本次新增；已有学籍必须同时提交当前 `version`。学籍数据域不可通过编辑迁移。
+- 顶层 `version` 为个人档案版本。任一版本不匹配返回 HTTP 409 / `40900`，不会静默覆盖其他管理员刚保存的数据。
+- 只提交本次明确修改的已有学籍；未提交的学籍保持不变，不会被当作删除。前端清空数组不能触发级联删除。
+- 敏感字段写入需 `alumni.sensitive.read`；传空字符串清空同样受该权限限制。
+- `activate_file_ids` 只能引用该学籍下已确认的草稿文件；`remove_file_ids` 可移除正式附件或草稿。
+  文件在保存事务提交后才转为正式或删除对象，事务失败不会留下部分更新。
+- 新增数据域无效返回 400；跨域、隐藏学籍或不属于该学籍的文件返回 404；培养类别变更返回 409。
 
 ## 校友导入导出
 
@@ -231,20 +302,18 @@ curl -X POST http://127.0.0.1:8080/api/v1/auth/login \
 | ---- | ------------------------ | ------------------------------- | ----------------------------------------------------------------------- |
 | GET  | `/admin/alumni/template` | 管理员/超级管理员               | 下载 `alumni_import_template.xlsx`，无请求参数                          |
 | POST | `/admin/alumni/import`   | 管理员/超级管理员，按数据域限制 | `multipart/form-data`：`file` 必填、`data_domain_id` 可选，返回导入结果 |
-| GET  | `/admin/alumni/export`   | 管理员/超级管理员，按数据域限制 | 支持校友列表的筛选参数（不分页）及 `format`，返回匹配的全部记录文件     |
+| GET  | `/admin/alumni/export`   | 管理员/超级管理员，按数据域限制 | 支持校友列表的筛选参数（不分页）及 `format`，返回匹配的全部学籍行       |
 
-### 导入（Excel / CSV）
+### 多段学籍导入（Excel / CSV）
 
-- 支持 `.xlsx` 工作簿与 UTF-8 `.csv`；xlsx 读取第一个工作表，CSV 自动剥离 UTF-8 BOM。上传文件不超过 20 MiB，单次最多 20000 条数据（按物理行数，含空白行），姓名、年级必填；大小或行数超限返回 HTTP 400 / `40000`。
-- 使用接口下载的模板，不要改变列名/顺序。通用 15 列依次为：姓名、年级、班级、届数、辅导员、导师、专业、培养方式、行业、工作单位、职务、通讯地址、性别、手机号、邮箱；16 列模板在末尾增加“所属领域”。导出文件与模板使用同一套 16 列表头，可直接作为导入输入。
-- “所属领域”可填写数据域**编码**（推荐，`undergraduate` / `academic_graduate` / `mpa`）、显示名称或数字 ID；模板「填写说明」工作表列出对应关系。单域管理员自动使用唯一授权域；其他情况下可通过表单 `data_domain_id` 统一指定目标域（优先于逐行领域，此时该列被忽略），否则必须使用含“所属领域”的 16 列文件并逐行填写。15 列文件未指定 `data_domain_id` 时返回 HTTP 400，提示未指定培养类别。非法所属领域会返回包含可选值的逐行错误。普通管理员不能导入未授权域。
-- 单域管理员未显式选择 `data_domain_id` 时，系统自动使用其唯一授权域；16 列文件中的所属领域留空时按唯一授权域处理，填写无效/已停用或其他域时该行返回错误而不是被静默改写。管理员显式传入 `data_domain_id` 时，仍忽略文件中的领域列。
-- 只有表头或全部为空白行的文件返回 HTTP 400（`文件里没有可导入的数据行`），不计为成功。20000 行上限按物理行数计算（含空白行）。
-- 导出时为防止电子表格公式注入会在 `= + - @` 开头的内容前加 `'`；回灌时该前缀会被自动还原。值本身以 `'` 开头时导出会再加一层，导入只剥一层，因此往返无损。
-- 无敏感字段权限的管理员不能导入包含敏感值的行。以“姓名 + 年级 + 班级 + 届数 + 手机号”去重，库内重复和同文件重复均计为行错误，不执行覆盖更新。脱敏导出的文件（敏感列为空）不要用于回灌：去重键缺少手机号，可能无法命中已有记录而重复建档。
-- 已停用数据域的档案可以导出编码，但不能回灌；导入时对应行返回“所属领域已停用，不能导入”。整行空白的行会被忽略，不计入 `total`。
-- 导出是当前数据的快照：历史数据中姓名为空或年级为空的行仍会导出，但回灌时会被逐行拒绝（导出时会记录告警日志）；这类行需要先在数据侧修正。
-- 逐行校验，允许部分成功；HTTP 200 / `code=0` **不代表全部行成功**，必须检查 `success` 和 `errors`。`row` 在 xlsx 中为表格行号（表头是第 1 行）；CSV 中为解析后的记录序号，文件中的空行会被 `encoding/csv` 跳过。
+- 支持 `.xlsx` 工作簿与 UTF-8 `.csv`；xlsx 读取第一个工作表，CSV 自动剥离 UTF-8 BOM。上传文件不超过 20 MiB，单次最多 20000 条数据（按物理行数，含空白行）；大小或行数超限返回 HTTP 400 / `40000`。
+- 当前模板 17 列：姓名、培养层次、年级、班级、届数、辅导员、导师、专业、培养方式、行业、工作单位、职务、通讯地址、性别、手机号、邮箱、所属领域。使用接口下载的模板，不要改变列名/顺序。
+- 一行代表**一段学籍**。同一文件中姓名相同且手机号相同（无手机号时邮箱相同）的多行会合并为同一校友的多段学籍；缺少手机号和邮箱的行各自建档，不凭姓名自动归并。导入不会凭姓名或手机号把新行自动挂接到数据库里已有的校友身份。
+- 培养层次支持中文（本科/硕士/博士）或编码（`undergraduate`/`master`/`doctor`）。历史 15 列（无培养层次/所属领域）与 16 列（含所属领域）模板仍可导入：本科生域自动推断为本科、MPA 域自动推断为硕士；学术学位研究生无法可靠区分硕/博，必须改用当前模板明确填写培养层次，对应行返回逐行错误。
+- “所属领域”可填写数据域编码（推荐）、显示名称或数字 ID；单域管理员自动使用唯一授权域，显式选择 `data_domain_id` 时文件中的领域列被忽略。非法或已停用领域返回逐行错误。普通管理员不能导入未授权域。
+- 去重键为“姓名 + 手机号 + 数据域 + 年级 + 班级 + 届数”，库内重复和同文件重复均计为行错误，不执行覆盖更新。
+- 无敏感字段权限的管理员不能导入包含敏感值的行；脱敏导出文件（手机号为空）回灌时无法命中已有记录，可能重复建档。
+- 只有表头或全部为空白行的文件返回 HTTP 400（`文件里没有可导入的数据行`）。逐行校验允许部分成功；HTTP 200 / `code=0` **不代表全部行成功**，必须检查 `success` 和 `errors`。`row` 为表格行号（表头是第 1 行）。
 
 ```bash
 curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
@@ -253,37 +322,23 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
   -F 'data_domain_id=1'
 ```
 
-示例结果：
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "total": 2,
-    "success": 1,
-    "errors": [{ "row": 3, "name": "示例校友", "message": "年级为空" }]
-  }
-}
-```
-
 ### 导出文件
 
-`format=csv` 返回 CSV，其余取值或省略返回 XLSX。成功响应携带 `Content-Disposition: attachment; filename=...`，类型为 `text/csv; charset=utf-8` 或 `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`。客户端按文件流/blob 处理，不要读取 JSON 的 `data`。导出沿用查询的数据域与敏感字段限制，无权限的敏感列留空；输出会对可能触发电子表格公式的值作转义。
+`format=csv` 返回 CSV，其余取值或省略返回 XLSX。成功响应携带 `Content-Disposition: attachment; filename=...`，客户端按文件流/blob 处理。导出沿用查询的数据域与敏感字段限制，无权限的敏感列留空；输出会对可能触发电表格公式的值作转义。
 
-导出固定输出 16 列，在原有 15 列之后追加“所属领域”，值为数据域编码；列顺序与导入模板一致。导出的 xlsx 与 csv 均可直接回灌导入，回灌只做新增与去重跳过，不会更新已存在记录。导出是当前数据的快照：历史空姓名/空年级行仍会导出但无法回灌（导出时记录告警）；防公式注入加的 `'` 前缀会在导入时自动还原。无敏感字段权限时敏感列为空，这类脱敏文件不要用于回灌（去重键含手机号，可能重复建档）；已停用数据域的档案可以导出，但回灌会被拒绝。
+导出平铺为**一行一段有权限且符合筛选的学籍**，列顺序与当前导入模板一致（17 列，含“培养层次”和“所属领域”）。同一校友有多段学籍时个人信息重复填充，不会丢段或串段；按人去重的总数见数据大屏口径。回灌只做新增与按学籍去重跳过，不会更新已存在记录。防公式注入加的 `'` 前缀会在导入时自动还原。已停用数据域的历史学籍可以导出编码，但回灌会被拒绝。
 
 ## 校友档案文件
 
-以下 5 个路由**仅在对象存储启用且客户端初始化成功时注册**，未注册时返回 404。所有操作（含列表和下载）均要求管理员角色、目标校友处于授权域内、且拥有 `alumni.files.manage`；校友本人也不能调用。
+以下 5 个路由**仅在对象存储启用且客户端初始化成功时注册**，未注册时返回 404。所有操作（含列表和下载）均要求管理员角色、目标学籍处于授权域内、且拥有 `alumni.files.manage`；校友本人也不能调用。
 
-| 方法   | 路径                                       | 请求 / `data`                                                                                                                               |
-| ------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/admin/alumni/:id/files`                  | `{ alumni_id, degree_archive: [], academic_record: [] }`；每项含 `id`、`file_type`、`original_name`、`file_size`、`mime_type`、`created_at` |
-| POST   | `/admin/alumni/:id/files/upload-url`       | JSON 必填 `file_type`、`original_name`、`mime_type`；返回 `{ file_id, upload_url, expires_in: 900 }`                                        |
-| POST   | `/admin/alumni/:id/files/:fileId/confirm`  | 无请求体；返回 `{ id, alumni_id, file_type, original_name, file_size, mime_type }`                                                          |
-| GET    | `/admin/alumni/:id/files/:fileId/download` | 返回 `{ download_url, expires_in: 900, original_name }`，不是文件流或重定向                                                                 |
-| DELETE | `/admin/alumni/:id/files/:fileId`          | 返回 `{ deleted: true }`；软删除记录并尽力清理存储对象                                                                                      |
+| 方法   | 路径                                                                       | 请求 / `data`                                                                                                                      |
+| ------ | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/alumni/:id/files`                                                  | `{ alumni_id, enrollments: [{ enrollment_id, degree_archive: [], academic_record: [] }] }`；`include_draft=true` 时包含未保存草稿 |
+| POST   | `/admin/alumni/:id/enrollments/:enrollmentId/files/upload-url`             | JSON 必填 `file_type`、`original_name`、`mime_type`；返回 `{ file_id, enrollment_id, upload_url, expires_in: 900 }`               |
+| POST   | `/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId/confirm`        | 无请求体；返回 `{ id, alumni_id, enrollment_id, file_type, original_name, file_size, mime_type, status: "draft" }`                |
+| GET    | `/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId/download`       | 返回 `{ download_url, expires_in: 900, original_name }`，仅正式附件可下载                                                          |
+| DELETE | `/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId`                | 仅删除 `pending`/`draft` 草稿并清理对象；正式附件返回 409，需通过保存全部修改移除                                                   |
 
 `file_type` 仅接受 `degree_archive`（学位档案）、`academic_record`（学籍档案）。允许 MIME：
 
@@ -296,12 +351,13 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 
 文件上传流程：
 
-1. 申请上传地址，生成 `pending` 文件记录。
+1. 针对具体学籍段申请上传地址，生成 `pending` 文件记录。
 2. 对完整 `upload_url` 直接发送 HTTP PUT，body 为文件二进制（非 multipart），不要拼接 `/api/v1` 或携带平台 Bearer 令牌。
-3. PUT 成功后调用 `confirm`。服务端检查对象存在、非空、实际大小不超过 50 MiB，再激活文件；未确认文件不进入正常列表。
-4. 同一校友同一档案类型的新文件确认后替换旧文件，不是追加多份；下载前另取临时下载地址。
+3. PUT 成功后调用 `confirm`。服务端检查对象存在、非空、实际大小不超过 50 MiB，将记录标记为 `draft`；草稿不会出现在查看页，也不能下载。
+4. 在“保存全部修改”中把草稿 ID 放入对应学籍的 `activate_file_ids`，保存成功后转为 `active`；取消编辑时调用 DELETE 清理本次草稿，不能影响已有正式附件。
+5. 正式附件通过 `remove_file_ids` 在保存事务中移除，对象存储在事务提交后清理。
 
-上传地址过期需重新申请。地址含临时访问凭据，不应写入日志、公开分享或作为永久链接保存。不支持的类型返回 415 / `41500`，确认时超限返回 413 / `41300`，未上传/记录不存在返回 404 / `40401`。
+上传地址过期需重新申请。不支持的类型返回 415 / `41500`，确认时超限返回 413 / `41300`，未上传/记录不存在返回 404 / `40401`，正式附件走草稿删除接口返回 409。
 
 ## 数据大屏
 
@@ -316,13 +372,13 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 
 | 字段                      | 类型   | 说明                                                                       |
 | ------------------------- | ------ | -------------------------------------------------------------------------- |
-| `total_alumni`            | int64  | 范围内未删除且有效的校友档案数                                             |
-| `total_accounts`          | int64  | 范围内有效校友档案中，已绑定有效校友账号的档案数（按档案去重，不含管理员） |
-| `mobile_complete_rate`    | number | 手机号填写率                                                               |
-| `work_unit_complete_rate` | number | 工作单位填写率                                                             |
-| `mentor_complete_rate`    | number | 导师填写率                                                                 |
+| `total_alumni`            | int64  | 范围内未删除且有效的个人档案数（按人去重，多段学籍不重复计数）             |
+| `total_accounts`          | int64  | 范围内已绑定有效校友账号的个人档案数（按人去重，不含管理员）               |
+| `mobile_complete_rate`    | number | 个人手机号填写率                                                           |
+| `work_unit_complete_rate` | number | 个人工作单位填写率                                                         |
+| `mentor_complete_rate`    | number | 至少有一段可访问学籍填写导师的个人比例                                     |
 
-填写率为 `0`～`1` 的比例，不是百分数；总人数为零时为 `0`。分布维度仅接受 `grade`、`class_name`、`cohort`、`gender`、`major`、`training_mode`、`industry`，无效值返回 400；空值归为“未填”，按人数降序、名称升序排列。例如：`GET /admin/dashboard/distribution?dimension=grade`。
+填写率为 `0`～`1` 的比例，不是百分数；总人数为零时为 `0`。分布维度接受 `grade`、`class_name`、`cohort`、`gender`、`major`、`training_mode`、`training_level`、`industry`，无效值返回 400；空值归为“未填”，按人数降序、名称升序排列。年级、班级、届数、专业、培养方式、培养层次为**学籍维度**，按人去重计数：同一人在不同年级各出现一次，但同一取值内不会重复；性别、行业为**个人维度**。各学籍维度人数相加可能大于校友总人数。例如：`GET /admin/dashboard/distribution?dimension=grade`。
 
 ## 管理员账号与授权
 

@@ -107,13 +107,15 @@ services:
 排查（只读）：
 
 ```sql
-SELECT COUNT(*) FROM alumni_profiles
-WHERE name LIKE '''%' OR grade LIKE '''%' OR class_name LIKE '''%'
-   OR cohort LIKE '''%' OR counselor LIKE '''%' OR mentor LIKE '''%'
-   OR major LIKE '''%' OR training_mode LIKE '''%' OR industry LIKE '''%'
-   OR work_unit LIKE '''%' OR position LIKE '''%'
-   OR mailing_address LIKE '''%' OR gender LIKE '''%'
-   OR mobile LIKE '''%' OR email LIKE '''%';
+SELECT COUNT(*)
+FROM alumni_profiles AS p
+LEFT JOIN alumni_enrollments AS e ON e.alumni_id = p.id AND e.deleted_at IS NULL
+WHERE p.name LIKE '''%' OR e.grade LIKE '''%' OR e.class_name LIKE '''%'
+   OR e.cohort LIKE '''%' OR e.counselor LIKE '''%' OR e.mentor LIKE '''%'
+   OR e.major LIKE '''%' OR e.training_mode LIKE '''%' OR p.industry LIKE '''%'
+   OR p.work_unit LIKE '''%' OR p.position LIKE '''%'
+   OR p.mailing_address LIKE '''%' OR p.gender LIKE '''%'
+   OR p.mobile LIKE '''%' OR p.email LIKE '''%';
 ```
 
 确认命中后逐条人工核对再清理，操作前先备份；不要在未核对时批量 UPDATE。手机号带 `'+86`、工作单位/职务以 `-` / `@` 开头的记录最容易命中。
@@ -125,6 +127,32 @@ WHERE name LIKE '''%' OR grade LIKE '''%' OR class_name LIKE '''%'
 已有数据卷无需删除，更新代码后重新执行 `docker compose up --build` 即可应用新迁移；不要为升级而执行 `docker compose down -v`，它会删除项目数据卷。当前迁移脚本固定初始化 `sdu_alumni_db`，数据库名需与迁移保持一致。
 
 生产更新应选择明确的版本标签，先备份数据库与对象存储数据，再更新对应版本并验证服务；不要直接跟随 `main` 每次合并自动更新。标签、发布产物和升级路径验证见[贡献指南](../CONTRIBUTING.md#构建产物与发布)。
+
+### 多段学籍升级（012_add_alumni_enrollments.sql）
+
+一人多段学籍把原 `alumni_profiles` 上按学籍归属的字段迁移到 `alumni_enrollments`，并给个人档案与学籍增加乐观锁版本、给文件增加 `enrollment_id`。该迁移会**删除** `alumni_profiles.data_domain_id/grade/class_name/cohort/counselor/mentor/major/training_mode/remark` 旧列，属于不可逆结构变更，必须按以下顺序升级：
+
+1. 停止写入并备份数据库（至少 `mysqldump --single-transaction --routines --triggers sdu_alumni_db`），同时备份对象存储桶；记录备份文件名与校验和。
+2. 在备份或预发布库预跑迁移，确认应用从空库和旧库升级均可启动。迁移先为每份旧档案建立一段学籍，再回填文件与历史日志，最后清理旧列。
+3. 培养层次回填规则：`undergraduate` 数据域 → 本科，`mpa` 数据域 → 硕士，其余（含 `academic_graduate`）→ `unverified`（待核验）。不得从数据域名称猜测硕士/博士；待核验记录可读取和维护，新建学籍必须明确层次。
+4. 生产执行 `docker compose up --build`（或单独运行 `migrate`）应用增量迁移，确认 `schema_migrations` 已记录 `012_add_alumni_enrollments.sql` 后再启动 API。
+5. 升级后对账：
+   ```sql
+   -- 每个旧档案恰好一段学籍，且账号绑定仍指向同一个人 ID
+   SELECT COUNT(*) FROM alumni_profiles p
+   LEFT JOIN alumni_enrollments e ON e.alumni_id = p.id
+   WHERE e.id IS NULL;
+
+   -- 文件均已绑定学籍
+   SELECT COUNT(*) FROM alumni_files WHERE enrollment_id IS NULL AND status <> 'deleted';
+
+   -- 待核验数量（学术学位研究生历史数据）
+   SELECT training_level, COUNT(*) FROM alumni_enrollments GROUP BY training_level;
+   ```
+   再抽查若干校友的详情、两类档案下载、操作历史与列表筛选，确认账号登录、本人资料与院史投稿不受影响。
+6. 回退：停止 API，恢复升级前的 MySQL 备份，保持对象存储桶不变（对象键未改动），退回上一版本镜像。升级后被移除的正式附件对象无法通过旧版本恢复记录，因此回退前应先核对。升级后产生的草稿文件（`status=draft`）不会被旧版本识别，可在确认无保留价值后清理。
+
+迁移可重复执行，但一旦旧列被删除，再次执行只会跳过旧列回填；因此不要依赖“重跑迁移”代替备份恢复。
 
 ## 构建源与网络排障
 
