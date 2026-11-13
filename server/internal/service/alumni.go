@@ -1,15 +1,9 @@
 package service
 
 import (
-	"bytes"
 	"context"
-	"encoding/csv"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/cache"
@@ -19,13 +13,13 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
-	"github.com/xuri/excelize/v2"
 	"go.uber.org/zap"
 )
 
-// AlumniFileCleaner 校友删除时级联清理文件的接口。
+// AlumniFileCleaner 校友删除、文件移除时级联清理对象存储的接口。
 type AlumniFileCleaner interface {
 	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
+	RemoveObjects(ctx context.Context, objectKeys []string)
 }
 
 // OperationLogWriter 记录不含敏感原值的业务审计日志。
@@ -37,58 +31,6 @@ type ExportResult struct {
 	Data        []byte
 	ContentType string
 	Filename    string
-}
-
-var alumniColumnHeaders = []string{"姓名", "年级", "班级", "届数", "辅导员", "导师", "专业", "培养方式", "行业", "工作单位", "职务", "通讯地址", "性别", "手机号", "邮箱"}
-
-// alumniImportColumnHeaders 在通用校友字段外增加所属领域，供多域管理员逐行指定目标领域。
-var alumniImportColumnHeaders = append(append([]string{}, alumniColumnHeaders...), "所属领域")
-
-// alumniExportColumnHeaders 必须与 alumniImportColumnHeaders 保持一致，改动需同步，否则导出文件无法回灌。
-var alumniExportColumnHeaders = append([]string{}, alumniImportColumnHeaders...)
-
-func exportRow(item *model.AlumniProfile, dataDomainCode string) []string {
-	return []string{
-		sanitizeExportValue(item.Name),
-		sanitizeExportValue(item.Grade),
-		sanitizeExportValue(stringOrEmpty(item.ClassName)),
-		sanitizeExportValue(stringOrEmpty(item.Cohort)),
-		sanitizeExportValue(stringOrEmpty(item.Counselor)),
-		sanitizeExportValue(stringOrEmpty(item.Mentor)),
-		sanitizeExportValue(stringOrEmpty(item.Major)),
-		sanitizeExportValue(stringOrEmpty(item.TrainingMode)),
-		sanitizeExportValue(stringOrEmpty(item.Industry)),
-		sanitizeExportValue(stringOrEmpty(item.WorkUnit)),
-		sanitizeExportValue(stringOrEmpty(item.Position)),
-		sanitizeExportValue(stringOrEmpty(item.MailingAddress)),
-		sanitizeExportValue(stringOrEmpty(item.Gender)),
-		sanitizeExportValue(stringOrEmpty(item.Mobile)),
-		sanitizeExportValue(stringOrEmpty(item.Email)),
-		sanitizeExportValue(dataDomainCode),
-	}
-}
-
-func stringOrEmpty(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-// sanitizeExportValue 防止电子表格公式注入。
-// 当值以 =、+、-、@ 开头时，前加单引号使其被解释为纯文本。
-func sanitizeExportValue(v string) string {
-	if v == "" {
-		return v
-	}
-	if v[0] == '=' || v[0] == '+' || v[0] == '-' || v[0] == '@' {
-		return "'" + v
-	}
-	// 值本身以单引号开头时再补一层，配合导入侧只剥一层，保证回灌无损。
-	if v[0] == '\'' {
-		return "'" + v
-	}
-	return v
 }
 
 type AlumniService struct {
@@ -143,30 +85,93 @@ func (s *AlumniService) WithAuditUserStore(users repository.UserStore) *AlumniSe
 	return s
 }
 
-// List 根据查询条件分页获取校友列表。
-func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, viewer common.AccessContext) (common.Pager[dto.AlumniListItem], error) {
-	query := req.ToQuery().Normalize()
-	if s.alumni == nil {
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
+func scopedDataDomainIDs(access common.AccessContext) ([]uint64, bool) {
+	if access.Role == common.RoleAdmin {
+		return access.DomainIDs, true
 	}
-	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+	return nil, false
+}
+
+func personalContainsSensitiveFields(profile do.AlumniPersonalInput) bool {
+	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil ||
+		profile.Mobile != nil || profile.Email != nil
+}
+
+func validExplicitTrainingLevel(level string) bool {
+	switch level {
+	case common.TrainingLevelUndergraduate, common.TrainingLevelMaster, common.TrainingLevelDoctor:
+		return true
+	default:
+		return false
 	}
+}
+
+func validStoredTrainingLevel(level string) bool {
+	return validExplicitTrainingLevel(level) || level == common.TrainingLevelUnverified
+}
+
+// assignEnrollmentDomain 在新增学籍时确定目标数据域。
+// 单域普通管理员自动落到唯一授权域；多域管理员与超级管理员必须显式提交可访问的数据域。
+func assignEnrollmentDomain(item *do.AlumniEnrollmentInput, operator common.AccessContext) error {
+	if operator.IsSuperAdmin() {
+		if item.DataDomainID == 0 {
+			return common.ErrInvalidDataDomain
+		}
+		return nil
+	}
+	if operator.Role != common.RoleAdmin || len(operator.DomainIDs) == 0 {
+		return common.ErrPermissionDenied
+	}
+	if len(operator.DomainIDs) == 1 {
+		// 单域管理员的表单只有一个可写数据域，提交值一律归一到唯一授权域。
+		item.DataDomainID = operator.DomainIDs[0]
+		return nil
+	}
+	if item.DataDomainID == 0 || !operator.CanAccessDomain(item.DataDomainID) {
+		return common.ErrPermissionDenied
+	}
+	return nil
+}
+
+// scopeListQuery 把调用者可访问的数据域写入查询条件。
+func (s *AlumniService) scopeListQuery(query do.AlumniListQuery, viewer common.AccessContext) (do.AlumniListQuery, error) {
 	if query.DataDomainID != nil {
 		if !viewer.IsSuperAdmin() && !viewer.CanAccessDomain(*query.DataDomainID) {
-			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+			return query, common.ErrPermissionDenied
 		}
 		query.DataDomainIDs = []uint64{*query.DataDomainID}
 	} else if domainIDs, restricted := scopedDataDomainIDs(viewer); restricted {
 		if len(domainIDs) == 0 {
-			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrPermissionDenied
+			return query, common.ErrPermissionDenied
 		}
-		query.DataDomainIDs = domainIDs
+		query.DataDomainIDs = append([]uint64(nil), domainIDs...)
+	}
+	return query.Normalize(), nil
+}
+
+// List 根据查询条件分页获取校友列表，一人一行。
+func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, viewer common.AccessContext) (common.Pager[dto.AlumniListItem], error) {
+	query := req.ToQuery().Normalize()
+	empty := common.NewPager[dto.AlumniListItem](nil, query.Page, 0)
+	if s.alumni == nil {
+		return empty, common.ErrDatabaseUnavailable
+	}
+	if !viewer.HasPermission(common.PermissionAlumniSensitiveRead) &&
+		(query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
+		return empty, common.ErrPermissionDenied
+	}
+	query, err := s.scopeListQuery(query, viewer)
+	if err != nil {
+		return empty, err
 	}
 	query.CanReadSensitive = viewer.HasPermission(common.PermissionAlumniSensitiveRead)
-	query = query.Normalize()
 
-	// 无过滤条件时优先用缓存计数，跳过 DB COUNT(*)
+	domainNames, err := s.domainNameMap(ctx)
+	if err != nil {
+		return empty, err
+	}
+
+	// 无过滤条件且无数据域范围时优先用缓存计数，跳过 DB COUNT(*)
 	if query.IsUnfiltered() && len(query.DataDomainIDs) == 0 && s.countCache != nil {
 		total, hit, _ := s.countCache.Get(ctx)
 		if !hit {
@@ -175,81 +180,44 @@ func (s *AlumniService) List(ctx context.Context, req dto.AlumniListRequest, vie
 				_ = s.countCache.Set(ctx, n)
 			}
 		}
-		items, err := s.alumni.FindOnly(ctx, query)
+		records, err := s.alumni.FindOnly(ctx, query)
 		if err != nil {
-			return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), err
+			return empty, err
 		}
-		mapped := mapAlumniListItems(items)
+		mapped := mapAlumniListItems(records, domainNames)
 		s.maskListItems(mapped, viewer)
 		return common.NewPager(mapped, query.Page, total), nil
 	}
 
-	items, total, err := s.alumni.List(ctx, query)
+	records, total, err := s.alumni.List(ctx, query)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Error(err))
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), common.ErrDatabaseUnavailable
+		return empty, common.ErrDatabaseUnavailable
 	}
 	if err != nil {
 		logger.Error("failed to list alumni", zap.Error(err))
-		return common.NewPager[dto.AlumniListItem](nil, query.Page, 0), err
+		return empty, err
 	}
 
-	mapped := mapAlumniListItems(items)
+	mapped := mapAlumniListItems(records, domainNames)
 	s.maskListItems(mapped, viewer)
 	return common.NewPager(mapped, query.Page, total), nil
 }
 
 // maskListItems 默认屏蔽列表中的敏感字段，仅当授权上下文包含敏感字段查看权限时才放行。
 func (s *AlumniService) maskListItems(items []dto.AlumniListItem, viewer common.AccessContext) {
-	mask := func() {
-		for i := range items {
-			items[i].Mobile = nil
-			items[i].Email = nil
-			items[i].WorkUnit = nil
-			items[i].Position = nil
-		}
-	}
-
 	if viewer.HasPermission(common.PermissionAlumniSensitiveRead) {
 		return
 	}
-
-	mask()
+	for i := range items {
+		items[i].Mobile = nil
+		items[i].Email = nil
+		items[i].WorkUnit = nil
+		items[i].Position = nil
+	}
 }
 
-func scopedDataDomainIDs(access common.AccessContext) ([]uint64, bool) {
-	if access.Role == common.RoleAdmin {
-		return access.DomainIDs, true
-	}
-	return nil, false
-}
-
-func profileContainsSensitiveFields(profile do.AlumniCreateProfile) bool {
-	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
-}
-
-func updateContainsSensitiveFields(profile do.AlumniUpdateProfile) bool {
-	return profile.WorkUnit != nil || profile.Position != nil || profile.MailingAddress != nil || profile.Mobile != nil || profile.Email != nil
-}
-
-func assignCreateDataDomain(profile *do.AlumniCreateProfile, operator common.AccessContext) error {
-	if operator.IsSuperAdmin() {
-		return nil
-	}
-	if operator.Role != common.RoleAdmin || len(operator.DomainIDs) == 0 {
-		return common.ErrPermissionDenied
-	}
-	if len(operator.DomainIDs) == 1 {
-		profile.DataDomainID = &operator.DomainIDs[0]
-		return nil
-	}
-	if profile.DataDomainID == nil || !operator.CanAccessDomain(*profile.DataDomainID) {
-		return common.ErrPermissionDenied
-	}
-	return nil
-}
-
-// GetByID 根据 ID 获取校友详情，并根据请求授权上下文屏蔽字段。
+// GetByID 根据 ID 获取校友详情，并根据请求授权上下文裁剪字段和学籍。
 func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewer common.AccessContext) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
@@ -260,7 +228,7 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewer common.Ac
 	if restricted && len(domainIDs) == 0 {
 		return nil, common.ErrAlumniNotFound
 	}
-	item, err := s.alumni.GetByID(ctx, id, domainIDs)
+	record, err := s.alumni.GetDetail(ctx, id, domainIDs)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Uint64("alumni_id", id), zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
@@ -274,39 +242,34 @@ func (s *AlumniService) GetByID(ctx context.Context, id uint64, viewer common.Ac
 		return nil, err
 	}
 
-	detail := mapAlumniDetail(item)
+	domainNames, err := s.domainNameMap(ctx)
+	if err != nil {
+		return nil, err
+	}
+	detail := mapAlumniDetail(record, domainNames, viewer)
 	s.maskSensitiveFields(detail, id, viewer)
 	return detail, nil
 }
 
-// maskSensitiveFields 当查看者为普通校友且查看的不是本人资料时，屏蔽敏感字段。
 // maskSensitiveFields 默认屏蔽详情中的敏感字段，仅当授权上下文确认查看者为管理员或本人时才放行。
 func (s *AlumniService) maskSensitiveFields(detail *dto.AlumniDetail, alumniID uint64, viewer common.AccessContext) {
 	if detail == nil {
 		return
 	}
-
-	mask := func() {
-		detail.Mobile = nil
-		detail.Email = nil
-		detail.WorkUnit = nil
-		detail.Position = nil
-		detail.MailingAddress = nil
-	}
-
 	if viewer.HasPermission(common.PermissionAlumniSensitiveRead) {
 		return
 	}
-
-	// 校友查看本人资料时不屏蔽
 	if viewer.AlumniID != nil && *viewer.AlumniID == alumniID {
 		return
 	}
-
-	mask()
+	detail.Mobile = nil
+	detail.Email = nil
+	detail.WorkUnit = nil
+	detail.Position = nil
+	detail.MailingAddress = nil
 }
 
-// Create 由管理员新增校友档案。
+// Create 由管理员新增校友档案，同时创建个人信息和至少一段初始学籍。
 func (s *AlumniService) Create(ctx context.Context, operator common.AccessContext, req dto.AdminAlumniCreateRequest) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
@@ -316,45 +279,47 @@ func (s *AlumniService) Create(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrPermissionDenied
 	}
 
-	profile := req.ToProfile().Normalize()
-	if profile.Name == "" || profile.Grade == "" {
+	input := req.ToInput().Normalize()
+	if input.Personal.Name == "" || len(input.Enrollments) == 0 {
 		return nil, common.ErrInvalidRequest
 	}
-	if profile.Status != common.AlumniStatusActive {
+	if input.Status != common.AlumniStatusActive {
 		return nil, common.ErrInvalidRequest
 	}
-	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && personalContainsSensitiveFields(input.Personal) {
 		return nil, common.ErrPermissionDenied
 	}
-	if err := assignCreateDataDomain(&profile, operator); err != nil {
-		return nil, err
+	for i := range input.Enrollments {
+		item := &input.Enrollments[i]
+		if item.ID != 0 || len(item.ActivateFileIDs) > 0 || len(item.RemoveFileIDs) > 0 {
+			return nil, common.ErrInvalidRequest
+		}
+		if item.Grade == "" {
+			return nil, common.ErrInvalidRequest
+		}
+		if !validExplicitTrainingLevel(item.TrainingLevel) {
+			return nil, common.ErrInvalidTrainingLevel
+		}
+		if err := assignEnrollmentDomain(item, operator); err != nil {
+			return nil, err
+		}
 	}
 
-	created, err := s.alumni.Create(ctx, &profile, operator.UserID)
+	record, err := s.alumni.Create(ctx, input, operator.UserID)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
 		logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 		return nil, common.ErrDatabaseUnavailable
 	}
-	if errors.Is(err, common.ErrInvalidRequest) {
-		return nil, common.ErrInvalidRequest
+	if errors.Is(err, common.ErrInvalidRequest) || errors.Is(err, common.ErrInvalidDataDomain) {
+		return nil, err
 	}
 	if err != nil {
 		logger.Error("failed to create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 		return nil, err
 	}
 
-	writeProfileAudit(
-		ctx,
-		s.auditWriter,
-		s.users,
-		operator.UserID,
-		"create",
-		"admin",
-		"管理员新增校友档案",
-		defaultAuditScope,
-		nil,
-		created,
-	)
+	domainNames, _ := s.domainNameMap(ctx)
+	s.writeCreateAudits(ctx, operator, record, domainNames)
 
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, 1)
@@ -362,10 +327,25 @@ func (s *AlumniService) Create(ctx context.Context, operator common.AccessContex
 	if s.exportCache != nil {
 		_ = s.exportCache.Invalidate(ctx)
 	}
-	return mapAlumniDetail(created), nil
+	detail := mapAlumniDetail(record, domainNames, operator)
+	return detail, nil
 }
 
-// Update 由管理员编辑校友档案。
+func (s *AlumniService) writeCreateAudits(ctx context.Context, operator common.AccessContext, record *do.AlumniRecord, domainNames map[uint64]string) {
+	if record == nil || s.auditWriter == nil || s.users == nil {
+		return
+	}
+	domainIDs := enrollmentDomainIDs(record.Enrollments)
+	writeProfileAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionCreate, "admin",
+		"管理员新增校友档案", defaultAuditScope, domainIDs, nil, record.Profile)
+	for _, enrollment := range record.Enrollments {
+		writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionCreate, "admin",
+			"管理员新增学籍", domainNames[enrollment.DataDomainID], record.Profile.ID, record.Profile.Name,
+			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, nil, enrollment)
+	}
+}
+
+// Update 保存个人信息、提交的学籍段和文件变更。任一失败整体回滚。
 func (s *AlumniService) Update(ctx context.Context, operator common.AccessContext, id uint64, req dto.AdminAlumniUpdateRequest) (*dto.AlumniDetail, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
@@ -375,11 +355,11 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrPermissionDenied
 	}
 
-	profile := req.ToProfile().Normalize()
-	if profile.Name == "" || profile.Grade == "" {
+	input := req.ToInput().Normalize()
+	if input.Personal.Name == "" {
 		return nil, common.ErrInvalidRequest
 	}
-	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && updateContainsSensitiveFields(profile) {
+	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && personalContainsSensitiveFields(input.Personal) {
 		return nil, common.ErrPermissionDenied
 	}
 	domainIDs, restricted := scopedDataDomainIDs(operator)
@@ -387,48 +367,134 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrAlumniNotFound
 	}
 
-	var before *model.AlumniProfile
-	if s.auditWriter != nil && s.users != nil {
-		before, _ = s.alumni.GetByID(ctx, id, domainIDs)
+	before, err := s.alumni.GetDetail(ctx, id, domainIDs)
+	if errors.Is(err, common.ErrAlumniNotFound) {
+		return nil, common.ErrAlumniNotFound
 	}
-	if err := s.alumni.Update(ctx, id, operator.UserID, profile, domainIDs); err != nil {
-		if errors.Is(err, common.ErrDatabaseUnavailable) {
-			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
-			return nil, common.ErrDatabaseUnavailable
-		}
-		if errors.Is(err, common.ErrAlumniNotFound) {
-			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operator.UserID))
-			return nil, common.ErrAlumniNotFound
-		}
-		logger.Error("failed to update alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
-		return nil, err
-	}
-
-	if before != nil {
-		after, _ := s.alumni.GetByID(ctx, id, domainIDs)
-		writeProfileAudit(
-			ctx,
-			s.auditWriter,
-			s.users,
-			operator.UserID,
-			"update",
-			"admin",
-			"管理员修改校友档案",
-			defaultAuditScope,
-			before,
-			after,
-		)
-	}
-
-	updated, err := s.GetByID(ctx, id, operator)
 	if err != nil {
 		return nil, err
 	}
+	accessible := make(map[uint64]*model.AlumniEnrollment, len(before.Enrollments))
+	for _, enrollment := range before.Enrollments {
+		accessible[enrollment.ID] = enrollment
+	}
 
-	return updated, nil
+	seen := make(map[uint64]struct{}, len(input.Enrollments))
+	for i := range input.Enrollments {
+		item := &input.Enrollments[i]
+		if item.Grade == "" {
+			return nil, common.ErrInvalidRequest
+		}
+		if item.ID == 0 {
+			if len(item.ActivateFileIDs) > 0 || len(item.RemoveFileIDs) > 0 {
+				// 新增学籍尚未落库，不能提前绑定文件草稿。
+				return nil, common.ErrInvalidRequest
+			}
+			if !validExplicitTrainingLevel(item.TrainingLevel) {
+				return nil, common.ErrInvalidTrainingLevel
+			}
+			if err := assignEnrollmentDomain(item, operator); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if _, ok := seen[item.ID]; ok {
+			return nil, common.ErrInvalidRequest
+		}
+		seen[item.ID] = struct{}{}
+		existing := accessible[item.ID]
+		if existing == nil {
+			return nil, common.ErrEnrollmentNotFound
+		}
+		if !validStoredTrainingLevel(item.TrainingLevel) {
+			return nil, common.ErrInvalidTrainingLevel
+		}
+		if item.Version == 0 {
+			return nil, common.ErrVersionConflict
+		}
+	}
+
+	result, err := s.alumni.Save(ctx, id, input, operator.UserID, domainIDs)
+	switch {
+	case errors.Is(err, common.ErrDatabaseUnavailable):
+		logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
+		return nil, common.ErrDatabaseUnavailable
+	case errors.Is(err, common.ErrAlumniNotFound):
+		return nil, common.ErrAlumniNotFound
+	case errors.Is(err, common.ErrVersionConflict):
+		return nil, common.ErrVersionConflict
+	case errors.Is(err, common.ErrEnrollmentNotFound):
+		return nil, common.ErrEnrollmentNotFound
+	case errors.Is(err, common.ErrEnrollmentDomainFixed):
+		return nil, common.ErrEnrollmentDomainFixed
+	case errors.Is(err, common.ErrFileNotFound):
+		return nil, common.ErrFileNotFound
+	case errors.Is(err, common.ErrInvalidRequest), errors.Is(err, common.ErrInvalidTrainingLevel):
+		return nil, err
+	case err != nil:
+		logger.Error("failed to save alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
+		return nil, err
+	}
+
+	// 数据库事务提交后再清理被移除文件的 MinIO 对象；回滚时不会误删。
+	if len(result.RemovedObjectKeys) > 0 && s.files != nil {
+		s.files.RemoveObjects(ctx, result.RemovedObjectKeys)
+	}
+
+	domainNames, _ := s.domainNameMap(ctx)
+	s.writeUpdateAudits(ctx, operator, id, before, &result.Record, accessible, domainNames)
+
+	if s.exportCache != nil {
+		_ = s.exportCache.Invalidate(ctx)
+	}
+	detail := mapAlumniDetail(&result.Record, domainNames, operator)
+	s.maskSensitiveFields(detail, id, operator)
+	return detail, nil
 }
 
-// Delete 由管理员软删除校友档案。
+func (s *AlumniService) writeUpdateAudits(
+	ctx context.Context,
+	operator common.AccessContext,
+	alumniID uint64,
+	before *do.AlumniRecord,
+	after *do.AlumniRecord,
+	accessible map[uint64]*model.AlumniEnrollment,
+	domainNames map[uint64]string,
+) {
+	if s.auditWriter == nil || s.users == nil || before == nil || after == nil {
+		return
+	}
+	writeProfileAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionUpdate, "admin",
+		"管理员修改个人信息", defaultAuditScope, enrollmentDomainIDs(after.Enrollments),
+		before.Profile, after.Profile)
+
+	afterByID := make(map[uint64]*model.AlumniEnrollment, len(after.Enrollments))
+	for _, enrollment := range after.Enrollments {
+		afterByID[enrollment.ID] = enrollment
+	}
+	for _, enrollment := range after.Enrollments {
+		previous := accessible[enrollment.ID]
+		if previous == nil {
+			writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionCreate, "admin",
+				"管理员新增学籍", domainNames[enrollment.DataDomainID], alumniID, after.Profile.Name,
+				enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, nil, enrollment)
+			continue
+		}
+		writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionUpdate, "admin",
+			"管理员修改学籍", domainNames[enrollment.DataDomainID], alumniID, after.Profile.Name,
+			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, previous, enrollment)
+	}
+	for id, previous := range accessible {
+		if _, ok := afterByID[id]; ok {
+			continue
+		}
+		// 未提交的已有学籍保持不变，不应被当作删除；这里不写删除日志。
+		_ = previous
+	}
+}
+
+// Delete 由管理员软删除只有一段学籍的校友档案。
+// 多段校友的整人删除语义尚未定义，统一拒绝，避免误删隐藏学籍或共享身份。
 func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContext, id uint64) error {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
@@ -442,35 +508,32 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 	if restricted && len(domainIDs) == 0 {
 		return common.ErrAlumniNotFound
 	}
-	var before *model.AlumniProfile
+	var before *do.AlumniRecord
 	if s.auditWriter != nil && s.users != nil {
-		before, _ = s.alumni.GetByID(ctx, id, domainIDs)
+		before, _ = s.alumni.GetDetail(ctx, id, domainIDs)
 	}
 	if err := s.alumni.Delete(ctx, id, operator.UserID, domainIDs); err != nil {
-		if errors.Is(err, common.ErrDatabaseUnavailable) {
+		switch {
+		case errors.Is(err, common.ErrDatabaseUnavailable):
 			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return common.ErrDatabaseUnavailable
-		}
-		if errors.Is(err, common.ErrAlumniNotFound) {
+		case errors.Is(err, common.ErrAlumniNotFound):
 			logger.Warn("alumni not found", zap.Uint64("alumni_id", id), zap.Uint64("operator_id", operator.UserID))
 			return common.ErrAlumniNotFound
+		case errors.Is(err, common.ErrAlumniMultiEnrollment):
+			return common.ErrAlumniMultiEnrollment
+		default:
+			logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
+			return err
 		}
-		logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
-		return err
 	}
 
-	writeProfileAudit(
-		ctx,
-		s.auditWriter,
-		s.users,
-		operator.UserID,
-		"delete",
-		"admin",
-		"管理员删除校友档案",
-		defaultAuditScope,
-		before,
-		nil,
-	)
+	if before != nil {
+		domainNames, _ := s.domainNameMap(ctx)
+		_ = domainNames
+		writeProfileAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionDelete, "admin",
+			"管理员删除校友档案", defaultAuditScope, enrollmentDomainIDs(before.Enrollments), before.Profile, nil)
+	}
 
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, -1)
@@ -479,893 +542,12 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 		_ = s.exportCache.Invalidate(ctx)
 	}
 
-	// 级联清理关联的档案文件（best-effort）
 	if s.files != nil {
 		if err := s.files.CascadeSoftDelete(ctx, id); err != nil {
-			logger.Warn("failed to cascade delete alumni files",
-				zap.Uint64("alumni_id", id),
-				zap.Error(err),
-			)
+			logger.Warn("failed to cascade delete alumni files", zap.Uint64("alumni_id", id), zap.Error(err))
 		}
 	}
-
 	return nil
-}
-
-// Export 导出校友数据为 xlsx 或 csv 格式。
-func (s *AlumniService) Export(ctx context.Context, req dto.AlumniExportRequest, operator common.AccessContext) (*ExportResult, error) {
-	if s.alumni == nil {
-		logger.Error("alumni repository is not initialized")
-		return nil, common.ErrDatabaseUnavailable
-	}
-	if !operator.IsAdministrator() {
-		return nil, common.ErrPermissionDenied
-	}
-
-	query := req.ToQuery().Normalize()
-	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && (query.WorkUnit != "" || query.Position != "" || query.Mobile != "") {
-		return nil, common.ErrPermissionDenied
-	}
-	if query.DataDomainID != nil {
-		if !operator.IsSuperAdmin() && !operator.CanAccessDomain(*query.DataDomainID) {
-			return nil, common.ErrPermissionDenied
-		}
-		query.DataDomainIDs = []uint64{*query.DataDomainID}
-	} else if domainIDs, restricted := scopedDataDomainIDs(operator); restricted {
-		if len(domainIDs) == 0 {
-			return nil, common.ErrPermissionDenied
-		}
-		query.DataDomainIDs = domainIDs
-	}
-	query.CanReadSensitive = operator.HasPermission(common.PermissionAlumniSensitiveRead)
-	query = query.Normalize()
-	format := req.FormatOrDefault()
-
-	// 优先读缓存，避免全表扫描
-	if s.exportCache != nil {
-		if cached, err := s.exportCache.Get(ctx, query); err == nil {
-			var items []*model.AlumniProfile
-			if json.Unmarshal(cached, &items) == nil {
-				return s.buildAndAuditExport(ctx, operator, query, items, format)
-			}
-		}
-	}
-
-	items, err := s.alumni.ListAll(ctx, query)
-	if err != nil {
-		if errors.Is(err, common.ErrDatabaseUnavailable) {
-			logger.Error("database is unavailable", zap.Error(err))
-			return nil, common.ErrDatabaseUnavailable
-		}
-		logger.Error("failed to list alumni for export", zap.Error(err))
-		return nil, err
-	}
-
-	// 缓存查询结果（best-effort）
-	if s.exportCache != nil {
-		if data, err := json.Marshal(items); err == nil {
-			_ = s.exportCache.Set(ctx, query, data)
-		}
-	}
-
-	return s.buildAndAuditExport(ctx, operator, query, items, format)
-}
-
-type exportAuditDetail struct {
-	Format                  string   `json:"format"`
-	DataDomainIDs           []uint64 `json:"data_domain_ids,omitempty"`
-	RecordCount             int      `json:"record_count"`
-	SensitiveFieldsIncluded bool     `json:"sensitive_fields_included"`
-}
-
-type importAuditDetail struct {
-	SchemaVersion               int                `json:"schema_version"`
-	TargetName                  string             `json:"target_name,omitempty"`
-	TargetMeta                  string             `json:"target_meta,omitempty"`
-	ManagementScope             string             `json:"management_scope,omitempty"`
-	Source                      string             `json:"source,omitempty"`
-	Reason                      string             `json:"reason,omitempty"`
-	Status                      string             `json:"status,omitempty"`
-	DataDomainIDs               []uint64           `json:"data_domain_ids,omitempty"`
-	Total                       int                `json:"total"`
-	Success                     int                `json:"success"`
-	Failed                      int                `json:"failed"`
-	SensitiveFieldsIncluded     bool               `json:"sensitive_fields_included"`
-	BatchImportFields           []auditBatchField  `json:"batch_import_fields,omitempty"`
-	BatchCreatedAlumni          []auditBatchRecord `json:"batch_created_alumni,omitempty"`
-	BatchCreatedAlumniTotal     int                `json:"batch_created_alumni_total,omitempty"`
-	BatchCreatedAlumniTruncated bool               `json:"batch_created_alumni_truncated,omitempty"`
-	BatchHiddenSensitiveCount   int                `json:"batch_hidden_sensitive_count,omitempty"`
-}
-
-func (s *AlumniService) buildAndAuditExport(ctx context.Context, operator common.AccessContext, query do.AlumniListQuery, items []*model.AlumniProfile, format string) (*ExportResult, error) {
-	domainCodes, err := s.dataDomainCodeMap(ctx)
-	if err != nil {
-		logger.Error("failed to load data domains for export", zap.Error(err))
-		return nil, err
-	}
-	missingCodeRows := 0
-	nonReimportableRows := 0
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		if domainCodes[item.DataDomainID] == "" {
-			missingCodeRows++
-		}
-		if strings.TrimSpace(item.Name) == "" || strings.TrimSpace(item.Grade) == "" {
-			nonReimportableRows++
-		}
-	}
-	if missingCodeRows > 0 {
-		logger.Warn("export rows missing data domain code", zap.Int("rows", missingCodeRows))
-	}
-	if nonReimportableRows > 0 {
-		logger.Warn("export contains rows that cannot be re-imported", zap.Int("rows", nonReimportableRows))
-	}
-	result, err := s.buildExport(maskExportItems(items, operator), format, domainCodes)
-	if err != nil {
-		return nil, err
-	}
-	if s.opLogger != nil {
-		detail, err := json.Marshal(exportAuditDetail{
-			Format:                  format,
-			DataDomainIDs:           query.DataDomainIDs,
-			RecordCount:             len(items),
-			SensitiveFieldsIncluded: operator.HasPermission(common.PermissionAlumniSensitiveRead),
-		})
-		if err == nil {
-			detailText := string(detail)
-			_ = s.opLogger.Write(ctx, &model.OperationLog{
-				OperatorID:   operator.UserID,
-				OperatorRole: operator.Role,
-				Action:       "export_alumni",
-				TargetType:   "alumni_export",
-				Detail:       &detailText,
-			})
-		}
-	}
-	return result, nil
-}
-
-func (s *AlumniService) buildExport(items []*model.AlumniProfile, format string, domainCodes map[uint64]string) (*ExportResult, error) {
-	switch format {
-	case "csv":
-		return buildCSV(items, domainCodes)
-	default:
-		return buildXLSX(items, domainCodes)
-	}
-}
-
-// dataDomainCodeMap 返回数据域 ID 到编码的映射；包含已停用数据域，保证历史档案也能导出编码。
-func (s *AlumniService) dataDomainCodeMap(ctx context.Context) (map[uint64]string, error) {
-	codes := make(map[uint64]string)
-	if s.dataDomains == nil {
-		return codes, nil
-	}
-	domains, err := s.dataDomains.ListDataDomains(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, domain := range domains {
-		if domain != nil {
-			codes[domain.ID] = domain.Code
-		}
-	}
-	return codes, nil
-}
-
-// maskExportItems 为无敏感字段权限的导出请求清空受保护字段，且不修改缓存或仓储返回对象。
-func maskExportItems(items []*model.AlumniProfile, operator common.AccessContext) []*model.AlumniProfile {
-	if operator.HasPermission(common.PermissionAlumniSensitiveRead) {
-		return items
-	}
-	masked := make([]*model.AlumniProfile, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		copyItem := *item
-		copyItem.Mobile = nil
-		copyItem.Email = nil
-		copyItem.WorkUnit = nil
-		copyItem.Position = nil
-		copyItem.MailingAddress = nil
-		masked = append(masked, &copyItem)
-	}
-	return masked
-}
-
-// ExportTemplate 生成导入模板 Excel 文件，包含表头行和一条示例空行。
-func (s *AlumniService) ExportTemplate(ctx context.Context) (*ExportResult, error) {
-	result, err := buildTemplateXLSX()
-	if err != nil {
-		logger.Error("failed to build template xlsx", zap.Error(err))
-		return nil, fmt.Errorf("build template: %w", err)
-	}
-	return result, nil
-}
-
-func buildTemplateXLSX() (*ExportResult, error) {
-	f := excelize.NewFile()
-	defer f.Close()
-
-	headerRow := make([]any, len(alumniImportColumnHeaders))
-	for i, h := range alumniImportColumnHeaders {
-		headerRow[i] = h
-	}
-	if err := f.SetSheetRow("Sheet1", "A1", &headerRow); err != nil {
-		logger.Error("build template: write header", zap.Error(err))
-		return nil, fmt.Errorf("write header: %w", err)
-	}
-
-	// 数据表只写表头 + 一条空白行；示例与填写规则放到「填写说明」，避免示例数据被误导入。
-	emptyRow := make([]any, len(alumniImportColumnHeaders))
-	for i := range emptyRow {
-		emptyRow[i] = ""
-	}
-	if err := f.SetSheetRow("Sheet1", "A2", &emptyRow); err != nil {
-		logger.Error("build template: write empty row", zap.Error(err))
-		return nil, fmt.Errorf("write empty row: %w", err)
-	}
-
-	const noteSheet = "填写说明"
-	if _, err := f.NewSheet(noteSheet); err != nil {
-		logger.Error("build template: create note sheet", zap.Error(err))
-		return nil, fmt.Errorf("create note sheet: %w", err)
-	}
-	notes := [][]any{
-		{"所属领域填写规则"},
-		{"编码", "显示名称"},
-		{"undergraduate", "本科生"},
-		{"academic_graduate", "学术学位研究生"},
-		{"mpa", "MPA专业学位研究生"},
-		{"可填写编码（推荐）、显示名称或数字 ID；单域管理员留空时按唯一培养类别处理，填写其他类别会逐行报错；显式选择导入目标培养类别时本列被忽略。"},
-		{"示例数据：姓名「示例校友」、年级「2024级」、所属领域「mpa」，按此格式从数据表第 2 行开始填写。"},
-	}
-	for i, row := range notes {
-		cell, _ := excelize.CoordinatesToCellName(1, i+1)
-		if err := f.SetSheetRow(noteSheet, cell, &row); err != nil {
-			logger.Error("build template: write note row", zap.Error(err))
-			return nil, fmt.Errorf("write note row: %w", err)
-		}
-	}
-	f.SetActiveSheet(0)
-
-	var buf bytes.Buffer
-	if err := f.Write(&buf); err != nil {
-		logger.Error("build template: write xlsx to buffer", zap.Error(err))
-		return nil, fmt.Errorf("write xlsx: %w", err)
-	}
-
-	return &ExportResult{
-		Data:        buf.Bytes(),
-		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		Filename:    "alumni_import_template.xlsx",
-	}, nil
-}
-
-func buildXLSX(items []*model.AlumniProfile, domainCodes map[uint64]string) (*ExportResult, error) {
-	f := excelize.NewFile()
-	defer f.Close()
-
-	sw, err := f.NewStreamWriter("Sheet1")
-	if err != nil {
-		return nil, fmt.Errorf("create stream writer: %w", err)
-	}
-
-	headerRow := make([]any, len(alumniExportColumnHeaders))
-	for i, h := range alumniExportColumnHeaders {
-		headerRow[i] = h
-	}
-	if err := sw.SetRow("A1", headerRow); err != nil {
-		return nil, fmt.Errorf("write header: %w", err)
-	}
-
-	for i, item := range items {
-		row := exportRow(item, domainCodes[item.DataDomainID])
-		vals := make([]any, len(row))
-		for j, v := range row {
-			vals[j] = v
-		}
-		cell, _ := excelize.CoordinatesToCellName(1, i+2)
-		if err := sw.SetRow(cell, vals); err != nil {
-			return nil, fmt.Errorf("write row %d: %w", i+2, err)
-		}
-	}
-
-	if err := sw.Flush(); err != nil {
-		return nil, fmt.Errorf("flush stream: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if err := f.Write(&buf); err != nil {
-		return nil, fmt.Errorf("write xlsx: %w", err)
-	}
-
-	return &ExportResult{
-		Data:        buf.Bytes(),
-		ContentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		Filename:    "alumni_export.xlsx",
-	}, nil
-}
-
-func buildCSV(items []*model.AlumniProfile, domainCodes map[uint64]string) (*ExportResult, error) {
-	var buf bytes.Buffer
-
-	// UTF-8 BOM
-	buf.Write([]byte{0xEF, 0xBB, 0xBF})
-
-	w := csv.NewWriter(&buf)
-	if err := w.Write(alumniExportColumnHeaders); err != nil {
-		return nil, fmt.Errorf("write csv header: %w", err)
-	}
-	for _, item := range items {
-		if err := w.Write(exportRow(item, domainCodes[item.DataDomainID])); err != nil {
-			return nil, fmt.Errorf("write csv row: %w", err)
-		}
-	}
-	w.Flush()
-	if err := w.Error(); err != nil {
-		return nil, fmt.Errorf("flush csv: %w", err)
-	}
-
-	return &ExportResult{
-		Data:        buf.Bytes(),
-		ContentType: "text/csv; charset=utf-8",
-		Filename:    "alumni_export.csv",
-	}, nil
-}
-
-// Import 从上传的 xlsx 文件批量导入校友档案。逐行校验，姓名和年级为必填。
-func (s *AlumniService) Import(ctx context.Context, operator common.AccessContext, dataDomainID *uint64, file io.Reader) (*dto.AlumniImportResult, error) {
-	if s.alumni == nil {
-		logger.Error("alumni repository is not initialized")
-		return nil, common.ErrDatabaseUnavailable
-	}
-	if !operator.IsAdministrator() {
-		return nil, common.ErrPermissionDenied
-	}
-	targetProfile := do.AlumniCreateProfile{DataDomainID: dataDomainID}
-	// autoTargetDomain 表示目标域由「唯一授权域」自动推断而来，而非用户显式选择。
-	// 自动推断时需要校验文件里的所属领域，避免跨域档案被静默改写到本域。
-	autoTargetDomain := false
-	if operator.Role == common.RoleAdmin {
-		if len(operator.DomainIDs) == 0 {
-			return nil, common.ErrPermissionDenied
-		}
-		if len(operator.DomainIDs) == 1 {
-			if dataDomainID != nil {
-				if !operator.CanAccessDomain(*dataDomainID) {
-					return nil, common.ErrPermissionDenied
-				}
-				targetProfile.DataDomainID = dataDomainID
-			} else {
-				autoTargetDomain = true
-				targetProfile.DataDomainID = &operator.DomainIDs[0]
-			}
-		} else if dataDomainID != nil && !operator.CanAccessDomain(*dataDomainID) {
-			return nil, common.ErrPermissionDenied
-		}
-	}
-
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, fmt.Errorf("read uploaded file: %w", err)
-	}
-
-	rows, err := readImportRows(data)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(rows) < 2 {
-		return nil, common.ErrInvalidRequest
-	}
-
-	header := rows[0]
-	hasDomainColumn := matchesImportHeaders(header, alumniImportColumnHeaders)
-	if !hasDomainColumn && !matchesImportHeaders(header, alumniColumnHeaders) {
-		return nil, common.ErrImportInvalidHeader
-	}
-
-	domainByCode := map[string]*model.DataDomain{}
-	domainByName := map[string]*model.DataDomain{}
-	domainByID := map[uint64]*model.DataDomain{}
-	domainOptions := ""
-	// 依次按编码、显示名称、数字 ID 查找，避免三类键写进同一个 map 时互相覆盖。
-	var domainLookup func(raw string) *model.DataDomain
-	if hasDomainColumn && (targetProfile.DataDomainID == nil || autoTargetDomain) {
-		if s.dataDomains == nil {
-			return nil, common.ErrDatabaseUnavailable
-		}
-		domains, err := s.dataDomains.ListDataDomains(ctx)
-		if err != nil {
-			return nil, err
-		}
-		activeDomains := make([]*model.DataDomain, 0, len(domains))
-		for _, domain := range domains {
-			if domain == nil {
-				continue
-			}
-			domainByCode[strings.ToLower(domain.Code)] = domain
-			domainByName[strings.ToLower(domain.Name)] = domain
-			domainByID[domain.ID] = domain
-			if domain.Status == common.DataDomainStatusActive {
-				activeDomains = append(activeDomains, domain)
-			}
-		}
-		domainOptions = importDomainOptions(activeDomains)
-		domainLookup = func(raw string) *model.DataDomain {
-			key := strings.ToLower(raw)
-			if domain := domainByCode[key]; domain != nil {
-				return domain
-			}
-			if domain := domainByName[key]; domain != nil {
-				return domain
-			}
-			if id, err := strconv.ParseUint(raw, 10, 64); err == nil {
-				return domainByID[id]
-			}
-			return nil
-		}
-	}
-	if targetProfile.DataDomainID == nil && !hasDomainColumn {
-		return nil, common.ErrImportDomainRequired
-	}
-
-	type rowProfile struct {
-		rowNum  int
-		profile do.AlumniCreateProfile
-	}
-	var validRows []rowProfile
-	rowErrors := make([]dto.AlumniRowError, 0)
-	dataRowCount := 0
-
-	for i := 1; i < len(rows); i++ {
-		row := rows[i]
-		rowNum := i + 1
-		if isBlankImportRow(row) {
-			continue
-		}
-		dataRowCount++
-
-		profile := parseRowToProfile(row)
-		profile = profile.Normalize()
-		if targetProfile.DataDomainID != nil {
-			if autoTargetDomain && hasDomainColumn {
-				// 单域管理员留空时直接使用唯一授权域；只有显式填写其他域才逐行报错。
-				rawDomain := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
-				if rawDomain != "" {
-					domain := domainLookup(rawDomain)
-					if domain == nil {
-						rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
-						continue
-					}
-					if domain.Status != common.DataDomainStatusActive {
-						rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
-						continue
-					}
-					if domain.ID != *targetProfile.DataDomainID {
-						rowErrors = append(rowErrors, dto.AlumniRowError{
-							Row:     rowNum,
-							Name:    profile.Name,
-							Message: fmt.Sprintf("该行所属领域为 %s，与本次导入目标培养类别不一致：请改用多域账号导入，或选择正确的导入目标培养类别", domain.Code),
-						})
-						continue
-					}
-				}
-			}
-			profile.DataDomainID = targetProfile.DataDomainID
-		} else {
-			rawDomain := strings.TrimSpace(cellValue(row, len(alumniImportColumnHeaders)-1))
-			if rawDomain == "" {
-				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域为空"})
-				continue
-			}
-			domain := domainLookup(rawDomain)
-			if domain == nil {
-				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域无效，可选值：" + domainOptions})
-				continue
-			}
-			if domain.Status != common.DataDomainStatusActive {
-				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "所属领域已停用，不能导入"})
-				continue
-			}
-			if !operator.IsSuperAdmin() && !operator.CanAccessDomain(domain.ID) {
-				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "无权导入该所属领域"})
-				continue
-			}
-			profile.DataDomainID = &domain.ID
-		}
-
-		if profile.Name == "" {
-			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "姓名为空"})
-			continue
-		}
-		if profile.Grade == "" {
-			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "年级为空"})
-			continue
-		}
-		if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && profileContainsSensitiveFields(profile) {
-			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: profile.Name, Message: "无权导入敏感字段"})
-			continue
-		}
-
-		validRows = append(validRows, rowProfile{rowNum: rowNum, profile: profile})
-	}
-
-	if dataRowCount == 0 {
-		return nil, common.ErrImportNoDataRows
-	}
-
-	if len(validRows) > 0 {
-		dedupKeys := make([]do.AlumniDedupKey, 0, len(validRows))
-		for _, rp := range validRows {
-			dedupKeys = append(dedupKeys, alumniImportDedupKey(rp.profile))
-		}
-
-		existing, err := s.alumni.FindExistingByDedupKey(ctx, dedupKeys)
-		if err != nil {
-			logger.Error("failed to check duplicates", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
-			return nil, err
-		}
-
-		var dedupedProfiles []do.AlumniCreateProfile
-		for _, rp := range validRows {
-			key := alumniImportDedupKey(rp.profile).Key()
-			if existing[key] {
-				rowErrors = append(rowErrors, dto.AlumniRowError{Row: rp.rowNum, Name: rp.profile.Name, Message: "已存在相同姓名、年级、班级、届数和手机号的记录"})
-			} else {
-				dedupedProfiles = append(dedupedProfiles, rp.profile)
-				existing[key] = true
-			}
-		}
-		validProfiles := dedupedProfiles
-
-		result := &dto.AlumniImportResult{
-			Total:  dataRowCount,
-			Errors: rowErrors,
-		}
-
-		if len(validProfiles) > 0 {
-			var createdProfiles []*model.AlumniProfile
-			var err error
-			if creator, ok := s.alumni.(repository.AlumniBatchCreator); ok {
-				createdProfiles, err = creator.BatchCreateAndReturnProfiles(ctx, validProfiles, operator.UserID)
-			} else {
-				err = s.alumni.BatchCreate(ctx, validProfiles, operator.UserID)
-			}
-			if err != nil {
-				logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
-				return nil, err
-			}
-			result.Success = len(validProfiles)
-			if s.countCache != nil {
-				_ = s.countCache.IncrBy(ctx, int64(len(validProfiles)))
-			}
-			if s.exportCache != nil {
-				_ = s.exportCache.Invalidate(ctx)
-			}
-			s.writeImportAudit(ctx, operator, validProfiles, createdProfiles, result)
-			return result, nil
-		}
-		s.writeImportAudit(ctx, operator, validProfiles, nil, result)
-
-		return result, nil
-	}
-
-	result := &dto.AlumniImportResult{
-		Total:  dataRowCount,
-		Errors: rowErrors,
-	}
-	s.writeImportAudit(ctx, operator, nil, nil, result)
-	return result, nil
-}
-
-// readImportRows 兼容 xlsx 与 csv：ZIP 魔数走工作簿解析，其余按 UTF-8 CSV 解析。
-func readImportRows(data []byte) ([][]string, error) {
-	if len(data) >= 4 && data[0] == 0x50 && data[1] == 0x4B && data[2] == 0x03 && data[3] == 0x04 {
-		return readImportWorkbookRows(data)
-	}
-	// 导出的 CSV 带 UTF-8 BOM，先剥离再解析。
-	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
-	reader := csv.NewReader(bytes.NewReader(data))
-	reader.FieldsPerRecord = -1
-	rows := make([][]string, 0, 64)
-	for {
-		record, err := reader.Read()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, common.ErrInvalidRequest
-		}
-		rows = append(rows, record)
-		// 与 xlsx 路径共用同一上限，并在读完整文件前止损，避免大 CSV 被全量物化。
-		if len(rows) > maxImportDataRows+1 {
-			return nil, common.ErrImportRowLimit
-		}
-	}
-	if len(rows) == 0 {
-		return nil, common.ErrInvalidRequest
-	}
-	return rows, nil
-}
-
-// stripExportFormulaGuard 还原导出时为防止电子表格公式注入而加的单引号前缀。
-// 只处理「' 后紧跟 = + - @」的组合，普通以单引号开头的文本保持不变。
-func stripExportFormulaGuard(value string) string {
-	if len(value) < 2 || value[0] != '\'' {
-		return value
-	}
-	if strings.ContainsRune("=+-@", rune(value[1])) || value[1] == '\'' {
-		return value[1:]
-	}
-	return value
-}
-
-// readImportWorkbookRows isolates spreadsheet parsing from the request path.
-// A malformed workbook must be rejected instead of allowing a parser panic to
-// terminate the API process.
-// maxImportDataRows 是单次导入允许的数据行上限，不含表头。
-const maxImportDataRows = 20000
-
-// maxAuditBatchRecords 限制单条导入审计保存的明细条数，给 detail 体积设上限；
-// 超出部分只保留真实总数，并在详情中标明已截断。
-const maxAuditBatchRecords = 200
-
-// readImportWorkbookRows 读取工作簿，并在累计行数超过上限时立即停止。
-//
-// 不能先读完再判断行数：畸形工作簿可以把有效数据放在末尾行号（Excel 最大
-// 1048576 行），一个几百字节的文件就会让读取端物化上百万空行；提前止损把内存
-// 占用与文件声明的行号解耦。上游 excelize 相关公告（无界行号/无界列）的另一半
-// 由 go.mod 固定的安全版本负责。
-func readImportWorkbookRows(data []byte) (rows [][]string, err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = common.ErrInvalidRequest
-		}
-	}()
-
-	f, err := excelize.OpenReader(bytes.NewReader(data))
-	if err != nil {
-		return nil, common.ErrInvalidRequest
-	}
-	defer f.Close()
-
-	sheetName := f.GetSheetName(0)
-	if sheetName == "" {
-		return nil, common.ErrInvalidRequest
-	}
-
-	iterator, err := f.Rows(sheetName)
-	if err != nil {
-		return nil, common.ErrInvalidRequest
-	}
-	defer iterator.Close()
-
-	for iterator.Next() {
-		row, columnErr := iterator.Columns()
-		if columnErr != nil {
-			return nil, common.ErrInvalidRequest
-		}
-		rows = append(rows, row)
-		// 累计超过「表头 + 上限」立即停止，不再读取后面的空行。
-		if len(rows) > maxImportDataRows+1 {
-			return nil, common.ErrImportRowLimit
-		}
-	}
-	if err := iterator.Error(); err != nil {
-		return nil, common.ErrInvalidRequest
-	}
-	return rows, nil
-}
-
-// writeImportAudit 记录导入结果和可跳转的公开字段，不写入任何校友敏感字段原值。
-func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.AccessContext, profiles []do.AlumniCreateProfile, createdProfiles []*model.AlumniProfile, result *dto.AlumniImportResult) {
-	if s.opLogger == nil || result == nil {
-		return
-	}
-	domainSet := make(map[uint64]struct{})
-	sensitiveFieldsIncluded := false
-	for _, profile := range profiles {
-		if profile.DataDomainID != nil {
-			domainSet[*profile.DataDomainID] = struct{}{}
-		}
-		if profileContainsSensitiveFields(profile) {
-			sensitiveFieldsIncluded = true
-		}
-	}
-	domainIDs := make([]uint64, 0, len(domainSet))
-	for domainID := range domainSet {
-		domainIDs = append(domainIDs, domainID)
-	}
-	sort.Slice(domainIDs, func(i, j int) bool { return domainIDs[i] < domainIDs[j] })
-	managementScope := s.importManagementScope(ctx, domainIDs)
-	batchRecords := make([]auditBatchRecord, 0, len(createdProfiles))
-	totalCreated := 0
-	for _, profile := range createdProfiles {
-		if profile == nil || profile.ID == 0 {
-			continue
-		}
-		totalCreated++
-		if len(batchRecords) >= maxAuditBatchRecords {
-			continue
-		}
-		batchRecords = append(batchRecords, batchAuditRecord(profile))
-	}
-	truncated := totalCreated > len(batchRecords)
-
-	detail, err := json.Marshal(importAuditDetail{
-		SchemaVersion:               1,
-		DataDomainIDs:               domainIDs,
-		Total:                       result.Total,
-		Success:                     result.Success,
-		Failed:                      result.Total - result.Success,
-		SensitiveFieldsIncluded:     sensitiveFieldsIncluded,
-		TargetName:                  "校友档案批量导入",
-		TargetMeta:                  fmt.Sprintf("%d 条校友档案", result.Success),
-		ManagementScope:             managementScope,
-		Source:                      "admin_import",
-		Reason:                      "导入校友档案",
-		Status:                      "applied",
-		BatchImportFields:           auditBatchFields(),
-		BatchCreatedAlumni:          batchRecords,
-		BatchCreatedAlumniTotal:     totalCreated,
-		BatchCreatedAlumniTruncated: truncated,
-		BatchHiddenSensitiveCount:   len(auditBatchSensitiveFields),
-	})
-	if err != nil {
-		return
-	}
-	detailText := string(detail)
-	_ = s.opLogger.Write(ctx, &model.OperationLog{
-		OperatorID:   operator.UserID,
-		OperatorRole: operator.Role,
-		Action:       AuditActionImport,
-		TargetType:   auditTargetBatch,
-		Detail:       &detailText,
-	})
-}
-
-func batchAuditRecord(profile *model.AlumniProfile) auditBatchRecord {
-	return auditBatchRecord{
-		ID:         profile.ID,
-		Name:       profile.Name,
-		TargetMeta: batchAuditMeta(profile),
-		FieldValues: map[string]string{
-			"name":          profile.Name,
-			"grade":         profile.Grade,
-			"class_name":    stringOrEmpty(profile.ClassName),
-			"major":         stringOrEmpty(profile.Major),
-			"training_mode": stringOrEmpty(profile.TrainingMode),
-		},
-	}
-}
-
-func batchAuditMeta(profile *model.AlumniProfile) string {
-	parts := make([]string, 0, 2)
-	if profile != nil && profile.Grade != "" {
-		parts = append(parts, profile.Grade)
-	}
-	if profile != nil && profile.Major != nil && *profile.Major != "" {
-		parts = append(parts, *profile.Major)
-	}
-	return strings.Join(parts, " · ")
-}
-
-func (s *AlumniService) importManagementScope(ctx context.Context, domainIDs []uint64) string {
-	if len(domainIDs) == 0 || s.dataDomains == nil {
-		return defaultAuditScope
-	}
-	domains, err := s.dataDomains.ListActiveDataDomains(ctx)
-	if err != nil {
-		return defaultAuditScope
-	}
-	wanted := make(map[uint64]struct{}, len(domainIDs))
-	for _, id := range domainIDs {
-		wanted[id] = struct{}{}
-	}
-	names := make([]string, 0, len(domainIDs))
-	for _, domain := range domains {
-		if domain == nil {
-			continue
-		}
-		if _, ok := wanted[domain.ID]; ok {
-			names = append(names, domain.Name)
-		}
-	}
-	if len(names) == 0 {
-		return defaultAuditScope
-	}
-	return strings.Join(names, "、")
-}
-
-// isBlankImportRow 判断整行是否为空，用于跳过模板空行与用户文件末尾的空白行。
-func isBlankImportRow(row []string) bool {
-	for _, cell := range row {
-		if strings.TrimSpace(cell) != "" {
-			return false
-		}
-	}
-	return true
-}
-
-func importDomainOptions(domains []*model.DataDomain) string {
-	parts := make([]string, 0, len(domains))
-	for _, domain := range domains {
-		if domain == nil {
-			continue
-		}
-		parts = append(parts, fmt.Sprintf("%s（%s）", domain.Code, domain.Name))
-	}
-	return strings.Join(parts, "、")
-}
-
-func matchesImportHeaders(actual, expected []string) bool {
-	if len(actual) != len(expected) {
-		return false
-	}
-	for i, value := range actual {
-		if strings.TrimSpace(value) != expected[i] {
-			return false
-		}
-	}
-	return true
-}
-
-func cellValue(row []string, index int) string {
-	if index < 0 || index >= len(row) {
-		return ""
-	}
-	return row[index]
-}
-
-func alumniImportDedupKey(profile do.AlumniCreateProfile) do.AlumniDedupKey {
-	return do.AlumniDedupKey{
-		Name:      profile.Name,
-		Grade:     profile.Grade,
-		ClassName: stringOrEmpty(profile.ClassName),
-		Cohort:    stringOrEmpty(profile.Cohort),
-		Mobile:    strings.TrimSpace(stringOrEmpty(profile.Mobile)),
-	}
-}
-
-func parseRowToProfile(row []string) do.AlumniCreateProfile {
-	p := do.AlumniCreateProfile{Status: common.AlumniStatusActive}
-
-	get := func(idx int) string {
-		if idx < len(row) {
-			return stripExportFormulaGuard(strings.TrimSpace(row[idx]))
-		}
-		return ""
-	}
-	optionalStr := func(idx int) *string {
-		v := get(idx)
-		if v == "" {
-			return nil
-		}
-		return &v
-	}
-
-	p.Name = get(0)
-	p.Grade = get(1)
-	p.ClassName = optionalStr(2)
-	p.Cohort = optionalStr(3)
-	p.Counselor = optionalStr(4)
-	p.Mentor = optionalStr(5)
-	p.Major = optionalStr(6)
-	p.TrainingMode = optionalStr(7)
-	p.Industry = optionalStr(8)
-	p.WorkUnit = optionalStr(9)
-	p.Position = optionalStr(10)
-	p.MailingAddress = optionalStr(11)
-	p.Gender = optionalStr(12)
-	p.Mobile = optionalStr(13)
-	p.Email = optionalStr(14)
-
-	return p
 }
 
 // GetMe 获取当前登录校友绑定的本人资料。
@@ -1374,7 +556,6 @@ func (s *AlumniService) GetMe(ctx context.Context, access common.AccessContext) 
 	if err != nil {
 		return nil, err
 	}
-
 	return s.GetByID(ctx, alumniID, access)
 }
 
@@ -1392,8 +573,12 @@ func (s *AlumniService) UpdateMe(ctx context.Context, access common.AccessContex
 
 	profile := req.ToProfile().Normalize()
 	var before *model.AlumniProfile
+	var domainIDs []uint64
 	if s.auditWriter != nil && s.users != nil {
-		before, _ = s.alumni.GetByID(ctx, alumniID, nil)
+		before, _ = s.alumni.GetPersonalProfile(ctx, alumniID)
+		if record, err := s.alumni.GetDetail(ctx, alumniID, nil); err == nil {
+			domainIDs = enrollmentDomainIDs(record.Enrollments)
+		}
 	}
 	if !profile.IsEmpty() {
 		if err := s.alumni.UpdateEditableFields(ctx, alumniID, access.UserID, profile); err != nil {
@@ -1410,21 +595,14 @@ func (s *AlumniService) UpdateMe(ctx context.Context, access common.AccessContex
 		}
 	}
 	if before != nil {
-		after, _ := s.alumni.GetByID(ctx, alumniID, nil)
-		writeProfileAudit(
-			ctx,
-			s.auditWriter,
-			s.users,
-			access.UserID,
-			"update",
-			"alumni_self",
-			"校友本人修改个人资料",
-			defaultAuditScope,
-			before,
-			after,
-		)
+		after, _ := s.alumni.GetPersonalProfile(ctx, alumniID)
+		writeProfileAudit(ctx, s.auditWriter, s.users, access.UserID, AuditActionUpdate, "alumni_self",
+			"校友本人修改个人资料", defaultAuditScope, domainIDs, before, after)
 	}
 
+	if s.exportCache != nil {
+		_ = s.exportCache.Invalidate(ctx)
+	}
 	return s.GetByID(ctx, alumniID, access)
 }
 
@@ -1439,62 +617,142 @@ func accessAlumniID(access common.AccessContext) (uint64, error) {
 	return *access.AlumniID, nil
 }
 
-// mapAlumniListItems 将 AlumniProfile 列表转换为 AlumniListItem 列表
-func mapAlumniListItems(items []*model.AlumniProfile) []dto.AlumniListItem {
-	result := make([]dto.AlumniListItem, 0, len(items))
-	for _, item := range items {
-		if item == nil {
+// domainNameMap 返回数据域 ID 到名称的映射；包含已停用数据域，保证历史档案可展示。
+func (s *AlumniService) domainNameMap(ctx context.Context) (map[uint64]string, error) {
+	names := make(map[uint64]string)
+	if s.dataDomains == nil {
+		return names, nil
+	}
+	domains, err := s.dataDomains.ListDataDomains(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, domain := range domains {
+		if domain != nil {
+			names[domain.ID] = domain.Name
+		}
+	}
+	return names, nil
+}
+
+func enrollmentDomainIDs(enrollments []*model.AlumniEnrollment) []uint64 {
+	seen := make(map[uint64]struct{}, len(enrollments))
+	ids := make([]uint64, 0, len(enrollments))
+	for _, enrollment := range enrollments {
+		if enrollment == nil {
 			continue
 		}
-		result = append(result, dto.AlumniListItem{
-			ID:           item.ID,
-			DataDomainID: item.DataDomainID,
-			Name:         item.Name,
-			Grade:        item.Grade,
-			ClassName:    item.ClassName,
-			Cohort:       item.Cohort,
-			Counselor:    item.Counselor,
-			Mentor:       item.Mentor,
-			Major:        item.Major,
-			TrainingMode: item.TrainingMode,
-			Industry:     item.Industry,
-			WorkUnit:     item.WorkUnit,
-			Position:     item.Position,
-			Gender:       item.Gender,
-			Mobile:       item.Mobile,
-			Email:        item.Email,
-			UpdatedAt:    item.UpdatedAt,
-		})
+		if _, ok := seen[enrollment.DataDomainID]; ok {
+			continue
+		}
+		seen[enrollment.DataDomainID] = struct{}{}
+		ids = append(ids, enrollment.DataDomainID)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+func enrollmentLabel(enrollment *model.AlumniEnrollment, domainNames map[uint64]string) string {
+	if enrollment == nil {
+		return ""
+	}
+	parts := make([]string, 0, 3)
+	if enrollment.Grade != "" {
+		parts = append(parts, enrollment.Grade+"级")
+	}
+	if label := TrainingLevelLabel(enrollment.TrainingLevel); label != "未填写" {
+		parts = append(parts, label)
+	}
+	if name := domainNames[enrollment.DataDomainID]; name != "" {
+		parts = append(parts, name)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// mapAlumniListItems 将个人档案与可访问学籍转换为列表项。
+func mapAlumniListItems(records []do.AlumniRecord, domainNames map[uint64]string) []dto.AlumniListItem {
+	result := make([]dto.AlumniListItem, 0, len(records))
+	for _, record := range records {
+		if record.Profile == nil {
+			continue
+		}
+		item := dto.AlumniListItem{
+			ID:          record.Profile.ID,
+			Name:        record.Profile.Name,
+			Gender:      record.Profile.Gender,
+			Industry:    record.Profile.Industry,
+			WorkUnit:    record.Profile.WorkUnit,
+			Position:    record.Profile.Position,
+			Mobile:      record.Profile.Mobile,
+			Email:       record.Profile.Email,
+			Version:     record.Profile.Version,
+			UpdatedAt:   record.Profile.UpdatedAt,
+			Enrollments: make([]dto.AlumniEnrollmentSummary, 0, len(record.Enrollments)),
+		}
+		for _, enrollment := range record.Enrollments {
+			item.Enrollments = append(item.Enrollments, dto.AlumniEnrollmentSummary{
+				ID:             enrollment.ID,
+				DataDomainID:   enrollment.DataDomainID,
+				DataDomainName: domainNames[enrollment.DataDomainID],
+				TrainingLevel:  enrollment.TrainingLevel,
+				Grade:          enrollment.Grade,
+				ClassName:      enrollment.ClassName,
+				Cohort:         enrollment.Cohort,
+				Counselor:      enrollment.Counselor,
+				Mentor:         enrollment.Mentor,
+				Major:          enrollment.Major,
+				TrainingMode:   enrollment.TrainingMode,
+			})
+		}
+		result = append(result, item)
 	}
 	return result
 }
 
-// mapAlumniDetail 将 AlumniProfile 转换为详情响应
-func mapAlumniDetail(item *model.AlumniProfile) *dto.AlumniDetail {
-	if item == nil {
+// mapAlumniDetail 将个人档案与可访问学籍转换为详情响应。
+func mapAlumniDetail(record *do.AlumniRecord, domainNames map[uint64]string, viewer common.AccessContext) *dto.AlumniDetail {
+	if record == nil || record.Profile == nil {
 		return nil
 	}
-
-	return &dto.AlumniDetail{
-		ID:             item.ID,
-		DataDomainID:   item.DataDomainID,
-		Name:           item.Name,
-		Grade:          item.Grade,
-		ClassName:      item.ClassName,
-		Cohort:         item.Cohort,
-		Counselor:      item.Counselor,
-		Mentor:         item.Mentor,
-		Major:          item.Major,
-		TrainingMode:   item.TrainingMode,
-		Industry:       item.Industry,
-		WorkUnit:       item.WorkUnit,
-		Position:       item.Position,
-		MailingAddress: item.MailingAddress,
-		Gender:         item.Gender,
-		Mobile:         item.Mobile,
-		Email:          item.Email,
-		Status:         item.Status,
-		CreatedAt:      item.CreatedAt,
-		UpdatedAt:      item.UpdatedAt,
+	profile := record.Profile
+	detail := &dto.AlumniDetail{
+		ID:             profile.ID,
+		Name:           profile.Name,
+		Gender:         profile.Gender,
+		Mobile:         profile.Mobile,
+		Email:          profile.Email,
+		Industry:       profile.Industry,
+		WorkUnit:       profile.WorkUnit,
+		Position:       profile.Position,
+		MailingAddress: profile.MailingAddress,
+		Status:         profile.Status,
+		Version:        profile.Version,
+		CreatedAt:      profile.CreatedAt,
+		UpdatedAt:      profile.UpdatedAt,
+		Enrollments:    make([]dto.AlumniEnrollmentDetail, 0, len(record.Enrollments)),
 	}
+	for _, enrollment := range record.Enrollments {
+		item := dto.AlumniEnrollmentDetail{
+			ID:             enrollment.ID,
+			DataDomainID:   enrollment.DataDomainID,
+			DataDomainName: domainNames[enrollment.DataDomainID],
+			TrainingLevel:  enrollment.TrainingLevel,
+			Grade:          enrollment.Grade,
+			ClassName:      enrollment.ClassName,
+			Cohort:         enrollment.Cohort,
+			Counselor:      enrollment.Counselor,
+			Mentor:         enrollment.Mentor,
+			Major:          enrollment.Major,
+			TrainingMode:   enrollment.TrainingMode,
+			Version:        enrollment.Version,
+			CreatedAt:      enrollment.CreatedAt,
+			UpdatedAt:      enrollment.UpdatedAt,
+		}
+		// 学籍内备注只给管理员，且仅在当前查看者可访问该学籍时由仓储返回。
+		if viewer.IsAdministrator() {
+			item.Remark = enrollment.Remark
+		}
+		detail.Enrollments = append(detail.Enrollments, item)
+	}
+	return detail
 }

@@ -64,30 +64,34 @@ func TestDashboardRepositoryScopesStatisticsByDataDomain(t *testing.T) {
 		workUnit := "测试单位"
 		mentor := "测试导师"
 		mpaComplete := &model.AlumniProfile{
-			DataDomainID: mpa.ID,
-			Name:         "大屏范围测试 MPA 完整",
-			Grade:        mpaGrade,
-			Mobile:       &mobile,
-			WorkUnit:     &workUnit,
-			Mentor:       &mentor,
-			Status:       common.AlumniStatusActive,
+			Name:     "大屏范围测试 MPA 完整",
+			Mobile:   &mobile,
+			WorkUnit: &workUnit,
+			Status:   common.AlumniStatusActive,
+			Version:  1,
 		}
 		mpaIncomplete := &model.AlumniProfile{
-			DataDomainID: mpa.ID,
-			Name:         "大屏范围测试 MPA 未完整",
-			Grade:        mpaGrade,
-			Status:       common.AlumniStatusActive,
+			Name:    "大屏范围测试 MPA 未完整",
+			Status:  common.AlumniStatusActive,
+			Version: 1,
 		}
 		academicProfile := &model.AlumniProfile{
-			DataDomainID: academic.ID,
-			Name:         "大屏范围测试学硕",
-			Grade:        academicGrade,
-			Status:       common.AlumniStatusActive,
+			Name:    "大屏范围测试学硕",
+			Status:  common.AlumniStatusActive,
+			Version: 1,
 		}
 		for _, profile := range []*model.AlumniProfile{mpaComplete, mpaIncomplete, academicProfile} {
 			if err := tx.Create(profile).Error; err != nil {
 				return err
 			}
+		}
+		enrollments := []*model.AlumniEnrollment{
+			{AlumniID: mpaComplete.ID, DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: mpaGrade, Mentor: &mentor, Status: common.AlumniStatusActive, Version: 1},
+			{AlumniID: mpaIncomplete.ID, DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: mpaGrade, Status: common.AlumniStatusActive, Version: 1},
+			{AlumniID: academicProfile.ID, DataDomainID: academic.ID, TrainingLevel: common.TrainingLevelUnverified, Grade: academicGrade, Status: common.AlumniStatusActive, Version: 1},
+		}
+		if err := tx.Create(&enrollments).Error; err != nil {
+			return err
 		}
 		if err := tx.Create(&model.User{
 			Account:      fmt.Sprintf("dashboard_scope_%d", suffix),

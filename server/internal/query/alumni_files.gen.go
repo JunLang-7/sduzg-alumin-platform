@@ -28,7 +28,7 @@ func newAlumniFile(db *gorm.DB, opts ...gen.DOOption) alumniFile {
 	tableName := _alumniFile.alumniFileDo.TableName()
 	_alumniFile.ALL = field.NewAsterisk(tableName)
 	_alumniFile.ID = field.NewUint64(tableName, "id")
-	_alumniFile.AlumniID = field.NewUint64(tableName, "alumni_id")
+	_alumniFile.EnrollmentID = field.NewUint64(tableName, "enrollment_id")
 	_alumniFile.FileType = field.NewString(tableName, "file_type")
 	_alumniFile.ObjectKey = field.NewString(tableName, "object_key")
 	_alumniFile.OriginalName = field.NewString(tableName, "original_name")
@@ -51,7 +51,7 @@ type alumniFile struct {
 
 	ALL          field.Asterisk
 	ID           field.Uint64
-	AlumniID     field.Uint64 // 校友档案 ID
+	EnrollmentID field.Uint64 // 学籍段 ID
 	FileType     field.String // degree_archive / academic_record
 	ObjectKey    field.String // MinIO 对象路径
 	OriginalName field.String // 原始文件名
@@ -79,7 +79,7 @@ func (a alumniFile) As(alias string) *alumniFile {
 func (a *alumniFile) updateTableName(table string) *alumniFile {
 	a.ALL = field.NewAsterisk(table)
 	a.ID = field.NewUint64(table, "id")
-	a.AlumniID = field.NewUint64(table, "alumni_id")
+	a.EnrollmentID = field.NewUint64(table, "enrollment_id")
 	a.FileType = field.NewString(table, "file_type")
 	a.ObjectKey = field.NewString(table, "object_key")
 	a.OriginalName = field.NewString(table, "original_name")
@@ -118,7 +118,7 @@ func (a *alumniFile) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 func (a *alumniFile) fillFieldMap() {
 	a.fieldMap = make(map[string]field.Expr, 12)
 	a.fieldMap["id"] = a.ID
-	a.fieldMap["alumni_id"] = a.AlumniID
+	a.fieldMap["enrollment_id"] = a.EnrollmentID
 	a.fieldMap["file_type"] = a.FileType
 	a.fieldMap["object_key"] = a.ObjectKey
 	a.fieldMap["original_name"] = a.OriginalName

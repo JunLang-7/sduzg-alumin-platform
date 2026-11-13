@@ -603,7 +603,7 @@ func (s *AuthService) createUserForAlumni(ctx context.Context, mobile, email str
 
 	var realName *string
 	if s.alumni != nil {
-		if profile, err := s.alumni.GetByID(ctx, alumniID, nil); err == nil {
+		if profile, err := s.alumni.GetPersonalProfile(ctx, alumniID); err == nil {
 			realName = &profile.Name
 		}
 	}
@@ -748,12 +748,12 @@ func (s *AuthService) UpdateContact(ctx context.Context, userID uint64, req dto.
 
 	var before *model.AlumniProfile
 	if s.auditWriter != nil && user.AlumniID != nil && s.alumni != nil {
-		before, _ = s.alumni.GetByID(ctx, *user.AlumniID, nil)
+		before, _ = s.alumni.GetPersonalProfile(ctx, *user.AlumniID)
 		defer func() {
 			if before == nil {
 				return
 			}
-			after, fetchErr := s.alumni.GetByID(ctx, *user.AlumniID, nil)
+			after, fetchErr := s.alumni.GetPersonalProfile(ctx, *user.AlumniID)
 			if fetchErr != nil {
 				return
 			}
@@ -766,6 +766,7 @@ func (s *AuthService) UpdateContact(ctx context.Context, userID uint64, req dto.
 				"alumni_self",
 				"校友本人修改联系方式",
 				defaultAuditScope,
+				nil,
 				before,
 				after,
 			)

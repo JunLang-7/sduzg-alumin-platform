@@ -11,15 +11,25 @@ import (
 )
 
 type fakeAlumniFileStore struct {
-	file *model.AlumniFile
+	file        *model.AlumniFile
+	files       []*model.AlumniFile
+	deletedID   uint64
+	markDraftID uint64
 }
 
 func (s *fakeAlumniFileStore) Create(context.Context, *model.AlumniFile) (*model.AlumniFile, error) {
 	return nil, nil
 }
 
-func (s *fakeAlumniFileStore) ListByAlumniID(context.Context, uint64) ([]*model.AlumniFile, error) {
-	return nil, nil
+func (s *fakeAlumniFileStore) ListByEnrollmentID(ctx context.Context, enrollmentID uint64, includeDrafts bool) ([]*model.AlumniFile, error) {
+	return s.ListByEnrollmentIDs(ctx, []uint64{enrollmentID}, includeDrafts)
+}
+
+func (s *fakeAlumniFileStore) ListByEnrollmentIDs(context.Context, []uint64, bool) ([]*model.AlumniFile, error) {
+	if s.file != nil {
+		return []*model.AlumniFile{s.file}, nil
+	}
+	return s.files, nil
 }
 
 func (s *fakeAlumniFileStore) GetByID(context.Context, uint64) (*model.AlumniFile, error) {
@@ -30,11 +40,17 @@ func (s *fakeAlumniFileStore) GetByIDAnyStatus(context.Context, uint64) (*model.
 	return s.file, nil
 }
 
-func (s *fakeAlumniFileStore) MarkActive(context.Context, uint64, uint64) error { return nil }
+func (s *fakeAlumniFileStore) MarkDraft(_ context.Context, id uint64, _ uint64) error {
+	s.markDraftID = id
+	return nil
+}
 
-func (s *fakeAlumniFileStore) SoftDelete(context.Context, uint64) error { return nil }
+func (s *fakeAlumniFileStore) SoftDelete(_ context.Context, id uint64) error {
+	s.deletedID = id
+	return nil
+}
 
-func (s *fakeAlumniFileStore) SoftDeleteByAlumniIDAndType(context.Context, uint64, string) error {
+func (s *fakeAlumniFileStore) SoftDeleteByEnrollmentIDAndType(context.Context, uint64, string) error {
 	return nil
 }
 
@@ -51,33 +67,44 @@ func (l *fakeFileOperationLogger) Write(_ context.Context, log *model.OperationL
 	return nil
 }
 
-func TestAlumniFileServiceGetAccessibleAlumniScopesDomain(t *testing.T) {
-	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{ID: 9, Name: "张三", Grade: "2020级", Status: common.AlumniStatusActive},
-	}
-	service := &AlumniFileService{alumni: store}
-
-	_, err := service.getAccessibleAlumni(context.Background(), 9, common.AccessContext{
+func fileTestAccessContext() common.AccessContext {
+	return common.AccessContext{
 		Role:        common.RoleAdmin,
 		DomainIDs:   []uint64{2},
 		Permissions: map[string]bool{common.PermissionAlumniFilesManage: true},
-	})
+	}
+}
+
+func fileTestEnrollment() *model.AlumniEnrollment {
+	return &model.AlumniEnrollment{
+		ID: 11, AlumniID: 9, DataDomainID: 2, TrainingLevel: common.TrainingLevelMaster,
+		Grade: "2020级", Status: common.AlumniStatusActive, Version: 1,
+	}
+}
+
+func TestAlumniFileServiceGetAccessibleEnrollmentScopesDomain(t *testing.T) {
+	store := &fakeAlumniStore{
+		detail:            &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive},
+		detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()},
+	}
+	service := &AlumniFileService{alumni: store}
+
+	_, err := service.getAccessibleEnrollment(context.Background(), fileTestAccessContext(), 9, 11)
 	if err != nil {
-		t.Fatalf("expected scoped alumni lookup success, got %v", err)
+		t.Fatalf("expected scoped enrollment lookup success, got %v", err)
 	}
 	if len(store.getDomainIDs) != 1 || store.getDomainIDs[0] != 2 {
 		t.Fatalf("expected file lookup to receive domain 2, got %v", store.getDomainIDs)
 	}
 
-	_, err = service.getAccessibleAlumni(context.Background(), 9, common.AccessContext{
-		Role:        common.RoleAdmin,
-		Permissions: map[string]bool{common.PermissionAlumniFilesManage: true},
-	})
+	_, err = service.getAccessibleEnrollment(context.Background(), common.AccessContext{
+		Role: common.RoleAdmin, Permissions: map[string]bool{common.PermissionAlumniFilesManage: true},
+	}, 9, 11)
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected empty data-domain scope to be rejected, got %v", err)
 	}
 
-	_, err = service.getAccessibleAlumni(context.Background(), 9, common.AccessContext{Role: common.RoleAlumni})
+	_, err = service.getAccessibleEnrollment(context.Background(), common.AccessContext{Role: common.RoleAlumni}, 9, 11)
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected non-admin file access to be rejected, got %v", err)
 	}
@@ -85,50 +112,93 @@ func TestAlumniFileServiceGetAccessibleAlumniScopesDomain(t *testing.T) {
 
 func TestAlumniFileServiceRequiresFileManagementPermission(t *testing.T) {
 	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{ID: 9, Name: "张三", DataDomainID: 2, Status: common.AlumniStatusActive},
+		detail:            &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive},
+		detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()},
 	}
 	service := &AlumniFileService{alumni: store}
 
-	_, err := service.getAccessibleAlumni(context.Background(), 9, common.AccessContext{
+	_, err := service.getAccessibleEnrollment(context.Background(), common.AccessContext{
 		Role:        common.RoleAdmin,
 		DomainIDs:   []uint64{2},
 		Permissions: map[string]bool{common.PermissionAlumniSensitiveRead: true},
-	})
+	}, 9, 11)
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive-data permission not to grant file access, got %v", err)
 	}
 	if store.detailID != 0 {
-		t.Fatalf("expected file permission to be checked before alumni lookup, got lookup for %d", store.detailID)
+		t.Fatalf("expected file permission to be checked before enrollment lookup, got lookup for %d", store.detailID)
 	}
 }
 
-func TestAlumniFileServiceRejectsForgedAlumniAndFileCombination(t *testing.T) {
+func TestAlumniFileServiceRejectsForgedEnrollmentAndFileCombination(t *testing.T) {
+	enrollmentID := uint64(11)
 	alumniStore := &fakeAlumniStore{
-		detail: &model.AlumniProfile{ID: 9, Name: "张三", DataDomainID: 2, Status: common.AlumniStatusActive},
+		detail:            &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive},
+		detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()},
 	}
-	service := &AlumniFileService{
-		alumni: alumniStore,
-		files:  &fakeAlumniFileStore{file: &model.AlumniFile{ID: 11, AlumniID: 10}},
-	}
-	operator := common.AccessContext{
-		Role:        common.RoleAdmin,
-		DomainIDs:   []uint64{2},
-		Permissions: map[string]bool{common.PermissionAlumniFilesManage: true},
-	}
+	fileStore := &fakeAlumniFileStore{file: &model.AlumniFile{
+		ID: 21, EnrollmentID: new(uint64(99)), Status: common.FileStatusDraft,
+	}}
+	service := &AlumniFileService{alumni: alumniStore, files: fileStore}
 
-	err := service.DeleteFile(context.Background(), operator, 9, 11)
+	err := service.DeleteDraftFile(context.Background(), fileTestAccessContext(), 9, enrollmentID, 21)
 	if err != common.ErrFileNotFound {
-		t.Fatalf("expected mismatched alumni and file ids to be rejected, got %v", err)
+		t.Fatalf("expected mismatched enrollment and file ids to be rejected, got %v", err)
 	}
 }
 
-func TestAlumniFileServiceAuditIncludesScopeAndTargetDomain(t *testing.T) {
+func TestAlumniFileServiceDeleteDraftFileOnlyRemovesUnsavedFiles(t *testing.T) {
+	enrollmentID := uint64(11)
+	alumniStore := &fakeAlumniStore{
+		detail:            &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive},
+		detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()},
+	}
+	fileStore := &fakeAlumniFileStore{file: &model.AlumniFile{
+		ID: 21, EnrollmentID: &enrollmentID, Status: common.FileStatusActive,
+	}}
+	service := &AlumniFileService{alumni: alumniStore, files: fileStore}
+
+	err := service.DeleteDraftFile(context.Background(), fileTestAccessContext(), 9, enrollmentID, 21)
+	if err != common.ErrFileNotDraft {
+		t.Fatalf("expected active file deletion to be rejected, got %v", err)
+	}
+	if fileStore.deletedID != 0 {
+		t.Fatalf("active file must not be deleted by draft cleanup, got %d", fileStore.deletedID)
+	}
+}
+
+func TestAlumniFileServiceListFilesGroupsByAccessibleEnrollment(t *testing.T) {
+	enrollmentID := uint64(11)
+	alumniStore := &fakeAlumniStore{
+		detail:            &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive},
+		detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()},
+	}
+	fileStore := &fakeAlumniFileStore{files: []*model.AlumniFile{
+		{ID: 21, EnrollmentID: &enrollmentID, FileType: common.FileTypeDegreeArchive, OriginalName: "学位.pdf", Status: common.FileStatusActive},
+		{ID: 22, EnrollmentID: &enrollmentID, FileType: common.FileTypeAcademicRecord, OriginalName: "学籍.pdf", Status: common.FileStatusActive},
+	}}
+	service := &AlumniFileService{alumni: alumniStore, files: fileStore}
+
+	result, err := service.ListFiles(context.Background(), fileTestAccessContext(), 9, false)
+	if err != nil {
+		t.Fatalf("expected list files success, got %v", err)
+	}
+	if len(result.Enrollments) != 1 || result.Enrollments[0].EnrollmentID != enrollmentID {
+		t.Fatalf("unexpected file groups: %+v", result.Enrollments)
+	}
+	if len(result.Enrollments[0].DegreeArchive) != 1 || len(result.Enrollments[0].AcademicRecord) != 1 {
+		t.Fatalf("expected both file types to be grouped, got %+v", result.Enrollments[0])
+	}
+}
+
+func TestAlumniFileServiceAuditIncludesEnrollmentScopeAndTargetDomain(t *testing.T) {
 	writer := &fakeFileOperationLogger{}
 	service := &AlumniFileService{opLogger: writer}
 	operator := common.AccessContext{UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{1, 3}}
-	alumni := &model.AlumniProfile{ID: 9, Name: "张三", DataDomainID: 3}
+	alumni := &model.AlumniProfile{ID: 9, Name: "张三"}
+	enrollment := &model.AlumniEnrollment{ID: 11, AlumniID: 9, DataDomainID: 3}
 
-	service.writeOpLog(context.Background(), operator, "download_alumni_file", 11, alumni, common.FileTypeDegreeArchive, "证明.pdf")
+	service.writeOpLog(context.Background(), operator, "download_alumni_file", 11, alumni, enrollment, common.FileTypeDegreeArchive, "证明.pdf")
 
 	if len(writer.logs) != 1 {
 		t.Fatalf("expected one audit log, got %d", len(writer.logs))
@@ -138,13 +208,17 @@ func TestAlumniFileServiceAuditIncludesScopeAndTargetDomain(t *testing.T) {
 		t.Fatalf("unexpected audit log: %+v", log)
 	}
 	var detail struct {
+		EnrollmentID          uint64   `json:"enrollment_id"`
 		TargetDataDomainID    uint64   `json:"target_data_domain_id"`
 		OperatorDataDomainIDs []uint64 `json:"operator_data_domain_ids"`
 	}
 	if err := json.Unmarshal([]byte(*log.Detail), &detail); err != nil {
 		t.Fatalf("unmarshal audit detail: %v", err)
 	}
-	if detail.TargetDataDomainID != 3 || len(detail.OperatorDataDomainIDs) != 2 || detail.OperatorDataDomainIDs[0] != 1 || detail.OperatorDataDomainIDs[1] != 3 {
+	if detail.EnrollmentID != 11 || detail.TargetDataDomainID != 3 {
+		t.Fatalf("unexpected audit target detail: %+v", detail)
+	}
+	if len(detail.OperatorDataDomainIDs) != 2 || detail.OperatorDataDomainIDs[0] != 1 || detail.OperatorDataDomainIDs[1] != 3 {
 		t.Fatalf("unexpected audit access detail: %+v", detail)
 	}
 }

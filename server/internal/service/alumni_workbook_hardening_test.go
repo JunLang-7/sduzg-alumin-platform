@@ -61,7 +61,7 @@ func TestExcelizeOpenReaderRejectsOversizedZipEntry(t *testing.T) {
 func TestImportRejectsOversizedZipEntryWorkbook(t *testing.T) {
 	reader := bytes.NewReader(oversizedZipEntry(t))
 
-	_, err := importAsSuperAdmin(NewAlumniService(&fakeAlumniStore{}, nil), reader)
+	_, err := importAsSuperAdmin(NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()), reader)
 	if err != common.ErrInvalidRequest {
 		t.Fatalf("expected invalid request for crafted workbook, got %v", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 )
 
@@ -14,13 +15,11 @@ func TestProfileAuditChangesSupportsCreateUpdateDelete(t *testing.T) {
 	before := &model.AlumniProfile{
 		ID:       42,
 		Name:     "张三",
-		Grade:    "2020级",
 		WorkUnit: &oldUnit,
 	}
 	after := &model.AlumniProfile{
 		ID:       42,
 		Name:     "张三",
-		Grade:    "2020级",
 		WorkUnit: &newUnit,
 	}
 
@@ -31,7 +30,7 @@ func TestProfileAuditChangesSupportsCreateUpdateDelete(t *testing.T) {
 		after      *model.AlumniProfile
 		wantFields []string
 	}{
-		{name: "create", action: AuditActionCreate, after: after, wantFields: []string{"name", "grade", "work_unit"}},
+		{name: "create", action: AuditActionCreate, after: after, wantFields: []string{"name", "work_unit"}},
 		{name: "update", action: AuditActionUpdate, before: before, after: after, wantFields: []string{"work_unit"}},
 		{name: "delete", action: AuditActionDelete, before: before, wantFields: []string{"status"}},
 	}
@@ -92,5 +91,36 @@ func TestProfileAuditChangesMasksSensitiveValues(t *testing.T) {
 		if change.OldValue != "已填写" || change.NewValue != "已修改" {
 			t.Errorf("field %q transition = %q -> %q, want filled -> modified", change.FieldName, change.OldValue, change.NewValue)
 		}
+	}
+}
+
+func TestEnrollmentAuditChangesTrackSegmentFields(t *testing.T) {
+	oldMajor := "公共管理"
+	newMajor := "行政管理"
+	oldRemark := "旧备注"
+	newRemark := "新备注"
+	before := &model.AlumniEnrollment{
+		ID: 11, DataDomainID: 3, TrainingLevel: common.TrainingLevelUnverified,
+		Grade: "2020级", Major: &oldMajor, Remark: &oldRemark,
+	}
+	after := &model.AlumniEnrollment{
+		ID: 11, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster,
+		Grade: "2020级", Major: &newMajor, Remark: &newRemark,
+	}
+	changes := enrollmentAuditChanges(AuditActionUpdate, before, after, map[uint64]string{3: "MPA专业学位研究生"})
+	want := []string{"training_level", "major", "remark"}
+	if len(changes) != len(want) {
+		t.Fatalf("changes = %d, want %d: %+v", len(changes), len(want), changes)
+	}
+	for i, field := range want {
+		if changes[i].FieldName != field {
+			t.Fatalf("change %d field = %q, want %q", i, changes[i].FieldName, field)
+		}
+	}
+	if !changes[2].Sensitive || changes[2].NewValue != "已修改" {
+		t.Fatalf("remark change should be masked as sensitive: %+v", changes[2])
+	}
+	if changes[0].OldValue != "待核验" || changes[0].NewValue != "硕士" {
+		t.Fatalf("training level labels = %q -> %q, want 待核验 -> 硕士", changes[0].OldValue, changes[0].NewValue)
 	}
 }

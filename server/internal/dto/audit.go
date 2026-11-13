@@ -105,6 +105,8 @@ type AuditOperation struct {
 	TargetType                  string             `json:"target_type"`
 	TargetName                  string             `json:"target_name"`
 	TargetMeta                  string             `json:"target_meta,omitempty"`
+	EnrollmentID                *uint64            `json:"enrollment_id,omitempty"`
+	EnrollmentLabel             string             `json:"enrollment_label,omitempty"`
 	ManagementScope             string             `json:"management_scope"`
 	Action                      string             `json:"action"`
 	Source                      string             `json:"source"`

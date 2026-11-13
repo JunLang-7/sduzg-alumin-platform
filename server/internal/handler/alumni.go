@@ -38,6 +38,7 @@ func NewAlumniHandler(alumni *service.AlumniService) *AlumniHandler {
 //	@Param			mentor			query		string	false	"导师"
 //	@Param			major			query		string	false	"专业"
 //	@Param			training_mode	query		string	false	"培养方式"
+//	@Param			training_level	query		string	false	"培养层次：undergraduate/master/doctor/unverified"
 //	@Param			industry		query		string	false	"行业"
 //	@Param			work_unit		query		string	false	"工作单位；需 alumni.sensitive.read 权限"
 //	@Param			position		query		string	false	"职务；需 alumni.sensitive.read 权限"
@@ -114,6 +115,8 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
+	case errors.Is(err, common.ErrAlumniMultiEnrollment):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "该校友档案暂不支持整人删除")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -126,7 +129,7 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 // Create 新增校友档案，成功返回 HTTP 201。
 //
 //	@Summary		新增校友档案
-//	@Description	管理员在已授权数据域内新增档案。写入敏感字段需要 alumni.sensitive.read 功能权限。
+//	@Description	管理员在已授权数据域内新增档案，同时创建个人主档案与至少一段初始学籍。写入敏感字段需要 alumni.sensitive.read 功能权限。
 //	@Tags			校友档案查询与管理
 //	@Accept			json
 //	@Produce		json
@@ -161,6 +164,8 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrInvalidTrainingLevel):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次无效，请选择本科、硕士或博士")
 	case errors.Is(err, common.ErrInvalidDataDomain):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDataDomainUnavailable):
@@ -175,7 +180,7 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 // Update 按 ID 更新校友档案。
 //
 //	@Summary		更新校友档案
-//	@Description	管理员在已授权数据域内更新档案。指针字段为空时不修改，传入空字符串则清空。
+//	@Description	保存全部修改：个人共享字段、提交的已有学籍与本次新增学籍、文件草稿确认和移除在同一事务内完成。version 不匹配返回 409。
 //	@Tags			校友档案查询与管理
 //	@Accept			json
 //	@Produce		json
@@ -218,6 +223,18 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrInvalidRequest):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
+	case errors.Is(err, common.ErrInvalidTrainingLevel):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次无效")
+	case errors.Is(err, common.ErrEnrollmentDomainFixed):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "已有学籍的培养类别不能通过编辑修改")
+	case errors.Is(err, common.ErrVersionConflict):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "数据已被其他管理员修改，请重新加载后再保存")
+	case errors.Is(err, common.ErrAlumniMultiEnrollment):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "该校友档案暂不支持整人删除")
+	case errors.Is(err, common.ErrEnrollmentNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应学籍不存在或不在可维护范围")
+	case errors.Is(err, common.ErrFileNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeFileNotFound, "文件不存在或不属于该学籍")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -261,6 +278,8 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
+	case errors.Is(err, common.ErrAlumniMultiEnrollment):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "该校友档案暂不支持整人删除")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):

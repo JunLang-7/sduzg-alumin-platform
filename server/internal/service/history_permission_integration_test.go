@@ -107,9 +107,15 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 				return err
 			}
 			seededProfile = model.AlumniProfile{
-				DataDomainID: mpaID, Name: tag + "-seeded-author", Grade: "2020", Mobile: &seededMobile, Status: "active",
+				Name: tag + "-seeded-author", Mobile: &seededMobile, Status: "active", Version: 1,
 			}
 			if err := tx.Create(&seededProfile).Error; err != nil {
+				return err
+			}
+			if err := tx.Create(&model.AlumniEnrollment{
+				AlumniID: seededProfile.ID, DataDomainID: mpaID, TrainingLevel: common.TrainingLevelMaster,
+				Grade: "2020", Status: common.AlumniStatusActive, Version: 1,
+			}).Error; err != nil {
 				return err
 			}
 		}
@@ -136,12 +142,17 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		}
 
 		profile := &model.AlumniProfile{
-			DataDomainID: mpaID,
-			Name:         tag + "-author",
-			Grade:        "2020",
-			Status:       "active",
+			Name:    tag + "-author",
+			Status:  "active",
+			Version: 1,
 		}
 		if err := tx.Create(profile).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.AlumniEnrollment{
+			AlumniID: profile.ID, DataDomainID: mpaID, TrainingLevel: common.TrainingLevelMaster,
+			Grade: "2020", Status: common.AlumniStatusActive, Version: 1,
+		}).Error; err != nil {
 			return err
 		}
 		created, err := svc.CreateDraft(ctx, common.AccessContext{
@@ -152,8 +163,14 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || created == nil || created.Status != repository.HistoryContributionDraft || created.DataDomainID == nil || *created.DataDomainID != mpaID {
 			t.Errorf("alumni create draft = %+v, err %v; want MPA draft", created, err)
 		}
-		undergraduateProfile := &model.AlumniProfile{DataDomainID: undergraduateID, Name: tag + "-undergraduate-author", Grade: "2020", Status: "active"}
+		undergraduateProfile := &model.AlumniProfile{Name: tag + "-undergraduate-author", Status: "active", Version: 1}
 		if err := tx.Create(undergraduateProfile).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.AlumniEnrollment{
+			AlumniID: undergraduateProfile.ID, DataDomainID: undergraduateID, TrainingLevel: common.TrainingLevelUndergraduate,
+			Grade: "2020", Status: common.AlumniStatusActive, Version: 1,
+		}).Error; err != nil {
 			return err
 		}
 		undergraduateDraft, err := svc.CreateDraft(ctx, common.AccessContext{
@@ -162,8 +179,14 @@ func TestHistoryPermissionsAndReview(t *testing.T) {
 		if err != nil || undergraduateDraft == nil || undergraduateDraft.DataDomainID == nil || *undergraduateDraft.DataDomainID != undergraduateID {
 			t.Errorf("undergraduate alumni draft = %+v, err %v; want assigned undergraduate domain", undergraduateDraft, err)
 		}
-		academicGraduateProfile := &model.AlumniProfile{DataDomainID: academicGraduateID, Name: tag + "-academic-graduate-author", Grade: "2020", Status: "active"}
+		academicGraduateProfile := &model.AlumniProfile{Name: tag + "-academic-graduate-author", Status: "active", Version: 1}
 		if err := tx.Create(academicGraduateProfile).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.AlumniEnrollment{
+			AlumniID: academicGraduateProfile.ID, DataDomainID: academicGraduateID, TrainingLevel: common.TrainingLevelUnverified,
+			Grade: "2020", Status: common.AlumniStatusActive, Version: 1,
+		}).Error; err != nil {
 			return err
 		}
 		academicGraduateDraft, err := svc.CreateDraft(ctx, common.AccessContext{

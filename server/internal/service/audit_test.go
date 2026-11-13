@@ -37,11 +37,12 @@ func (s *fakeAuditStore) GetByID(_ context.Context, id uint64, query do.AuditQue
 type fakeAuditAlumniStore struct {
 	*fakeAlumniStore
 	profile      *model.AlumniProfile
+	enrollments  []*model.AlumniEnrollment
 	getDomainIDs []uint64
 	err          error
 }
 
-func (s *fakeAuditAlumniStore) GetByID(_ context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error) {
+func (s *fakeAuditAlumniStore) GetDetail(_ context.Context, id uint64, dataDomainIDs []uint64) (*do.AlumniRecord, error) {
 	s.getDomainIDs = append([]uint64(nil), dataDomainIDs...)
 	if s.err != nil {
 		return nil, s.err
@@ -49,7 +50,7 @@ func (s *fakeAuditAlumniStore) GetByID(_ context.Context, id uint64, dataDomainI
 	if s.profile == nil || s.profile.ID != id {
 		return nil, common.ErrAlumniNotFound
 	}
-	return s.profile, nil
+	return &do.AlumniRecord{Profile: s.profile, Enrollments: s.enrollments}, nil
 }
 
 func TestMapAuditChangeMasksSensitiveValues(t *testing.T) {
@@ -309,7 +310,6 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 		profile: &model.AlumniProfile{
 			ID:             401,
 			Name:           "周七",
-			Grade:          "2020级",
 			Mobile:         &mobile,
 			Email:          &email,
 			WorkUnit:       &workUnit,

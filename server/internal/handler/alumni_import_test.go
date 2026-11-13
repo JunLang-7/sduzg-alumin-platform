@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
-	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/middleware"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/service"
@@ -60,64 +59,40 @@ func buildMultipartXLSX(t *testing.T, rows [][]string) (*bytes.Buffer, string) {
 	return &buf, "alumni_import.xlsx"
 }
 
-func (s *fakeImportStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
+type fakeImportStore struct {
+	stubAlumniStore
 }
 
-func (s *fakeImportStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
+type stubDataDomainStore struct{}
+
+func (stubDataDomainStore) ListActiveDataDomains(context.Context) ([]*model.DataDomain, error) {
+	return []*model.DataDomain{
+		{ID: 1, Code: common.DataDomainUndergraduate, Name: "本科生", Status: common.DataDomainStatusActive},
+		{ID: 2, Code: common.DataDomainMPA, Name: "MPA专业学位研究生", Status: common.DataDomainStatusActive},
+	}, nil
 }
 
-func (s *fakeImportStore) UpdateMobile(_ context.Context, _ uint64, _ string) error { return nil }
-func (s *fakeImportStore) UpdateEmail(_ context.Context, _ uint64, _ string) error  { return nil }
-
-type fakeImportStore struct{}
-
-func (s *fakeImportStore) List(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
-	return nil, 0, nil
+func (stubDataDomainStore) ListDataDomains(ctx context.Context) ([]*model.DataDomain, error) {
+	return stubDataDomainStore{}.ListActiveDataDomains(ctx)
 }
 
-func (s *fakeImportStore) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, error) {
+func (stubDataDomainStore) ListAdminDataDomainIDs(context.Context, uint64) ([]uint64, error) {
 	return nil, nil
 }
 
-func (s *fakeImportStore) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
-}
-
-func (s *fakeImportStore) Create(_ context.Context, _ *do.AlumniCreateProfile, _ uint64) (*model.AlumniProfile, error) {
+func (stubDataDomainStore) ListAdminPermissionCodes(context.Context, uint64) ([]string, error) {
 	return nil, nil
 }
 
-func (s *fakeImportStore) BatchCreate(_ context.Context, _ []do.AlumniCreateProfile, _ uint64) error {
-	return nil
-}
-
-func (s *fakeImportStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return make(map[string]bool), nil
-}
-
-func (s *fakeImportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
-	return nil
-}
-
-func (s *fakeImportStore) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error { return nil }
-
-func (s *fakeImportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
-	return nil
-}
-
-func (s *fakeImportStore) CountActive(_ context.Context) (int64, error) { return 0, nil }
-
-func (s *fakeImportStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	return nil, nil
+func newImportTestService(store *fakeImportStore) *service.AlumniService {
+	return service.NewAlumniService(store, nil, stubDataDomainStore{})
 }
 
 func TestImportHandlerSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	store := &fakeImportStore{}
-	svc := service.NewAlumniService(store, nil)
+	svc := newImportTestService(store)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()
@@ -155,7 +130,7 @@ func TestImportHandlerUnauthorized(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	store := &fakeImportStore{}
-	svc := service.NewAlumniService(store, nil)
+	svc := newImportTestService(store)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()
@@ -187,7 +162,7 @@ func TestImportHandlerBadFile(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	store := &fakeImportStore{}
-	svc := service.NewAlumniService(store, nil)
+	svc := newImportTestService(store)
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()
@@ -217,7 +192,7 @@ func TestImportHandlerBadFile(t *testing.T) {
 func TestImportHandlerReportsMissingDataDomain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	svc := service.NewAlumniService(&fakeImportStore{}, nil)
+	svc := newImportTestService(&fakeImportStore{})
 	h := NewAlumniHandler(svc)
 
 	engine := gin.New()

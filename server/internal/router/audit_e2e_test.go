@@ -36,9 +36,10 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
 
-	var operatorID, viewerID, profileID uint64
+	var operatorID, viewerID, profileID, enrollmentID uint64
 	t.Cleanup(func() {
 		if profileID != 0 {
+			_ = db.Where("alumni_id = ?", profileID).Delete(&model.AlumniEnrollment{}).Error
 			_ = db.Where("id = ?", profileID).Delete(&model.AlumniProfile{}).Error
 		}
 		if operatorID != 0 {
@@ -90,19 +91,27 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		}
 
 		profile := &model.AlumniProfile{
-			DataDomainID: domain.ID,
-			Name:         fmt.Sprintf("操作历史E2E校友-%d", suffix),
-			Grade:        "2020级",
-			WorkUnit:     ptrString("旧单位"),
-			Mobile:       ptrString("13800000000"),
-			Status:       common.AlumniStatusActive,
-			CreatedBy:    &operator.ID,
-			UpdatedBy:    &operator.ID,
+			Name:      fmt.Sprintf("操作历史E2E校友-%d", suffix),
+			WorkUnit:  ptrString("旧单位"),
+			Mobile:    ptrString("13800000000"),
+			Status:    common.AlumniStatusActive,
+			Version:   1,
+			CreatedBy: &operator.ID,
+			UpdatedBy: &operator.ID,
 		}
 		if err := tx.Create(profile).Error; err != nil {
 			return fmt.Errorf("create e2e alumni: %w", err)
 		}
 		profileID = profile.ID
+		enrollment := &model.AlumniEnrollment{
+			AlumniID: profile.ID, DataDomainID: domain.ID, TrainingLevel: common.TrainingLevelMaster,
+			Grade: "2020级", Status: common.AlumniStatusActive, Version: 1,
+			CreatedBy: &operator.ID, UpdatedBy: &operator.ID,
+		}
+		if err := tx.Create(enrollment).Error; err != nil {
+			return fmt.Errorf("create e2e enrollment: %w", err)
+		}
+		enrollmentID = enrollment.ID
 
 		gin.SetMode(gin.TestMode)
 		secret := "audit-e2e-secret"
@@ -119,7 +128,7 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 		updateRequest := httptest.NewRequest(
 			http.MethodPut,
 			fmt.Sprintf("/api/v1/admin/alumni/%d", profile.ID),
-			strings.NewReader(fmt.Sprintf(`{"name":%q,"grade":"2021级","work_unit":"新单位","mobile":"13900000000"}`, profile.Name)),
+			strings.NewReader(fmt.Sprintf(`{"version":1,"name":%q,"work_unit":"新单位","mobile":"13900000000","enrollments":[{"id":%d,"version":1,"data_domain_id":%d,"training_level":"master","grade":"2021级"}]}`, profile.Name, enrollmentID, domain.ID)),
 		)
 		updateRequest.Header.Set("Authorization", "Bearer "+token)
 		updateRequest.Header.Set("Content-Type", "application/json")
@@ -129,12 +138,16 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			return fmt.Errorf("update status = %d, body = %s", updateResponse.Code, updateResponse.Body.String())
 		}
 
-		var log model.OperationLog
+		var updateLogs []model.OperationLog
 		if err := tx.Where("operator_id = ? AND target_type = ? AND target_id = ? AND action = ?", operator.ID, "alumni_profile", profile.ID, "update").
-			Order("id DESC").
-			First(&log).Error; err != nil {
-			return fmt.Errorf("find operation log written by update flow: %w", err)
+			Order("id ASC").
+			Find(&updateLogs).Error; err != nil {
+			return fmt.Errorf("find operation logs written by update flow: %w", err)
 		}
+		if len(updateLogs) != 2 {
+			return fmt.Errorf("update flow wrote %d logs, want personal + enrollment", len(updateLogs))
+		}
+		personalLog, log := updateLogs[0], updateLogs[1]
 
 		query := url.Values{}
 		query.Set("action", "update")
@@ -237,18 +250,17 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 			return fmt.Errorf("viewer could not see in-domain super-admin operation: status=%d body=%s", viewerResponse.Code, viewerResponse.Body.String())
 		}
 
-		detailRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/audit/operations/%d", log.ID), nil)
-		detailRequest.Header.Set("Authorization", "Bearer "+token)
-		detailResponse := httptest.NewRecorder()
-		engine.ServeHTTP(detailResponse, detailRequest)
-		if detailResponse.Code != http.StatusOK {
-			return fmt.Errorf("detail status = %d, body = %s", detailResponse.Code, detailResponse.Body.String())
+		personalDetailRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/audit/operations/%d", personalLog.ID), nil)
+		personalDetailRequest.Header.Set("Authorization", "Bearer "+token)
+		personalDetailResponse := httptest.NewRecorder()
+		engine.ServeHTTP(personalDetailResponse, personalDetailRequest)
+		if personalDetailResponse.Code != http.StatusOK {
+			return fmt.Errorf("personal detail status = %d, body = %s", personalDetailResponse.Code, personalDetailResponse.Body.String())
 		}
-		bodyText := detailResponse.Body.String()
-		if strings.Contains(bodyText, "13800000000") || strings.Contains(bodyText, "13900000000") {
-			return fmt.Errorf("sensitive value leaked in detail response: %s", bodyText)
+		if strings.Contains(personalDetailResponse.Body.String(), "13800000000") || strings.Contains(personalDetailResponse.Body.String(), "13900000000") {
+			return fmt.Errorf("sensitive value leaked in personal detail response: %s", personalDetailResponse.Body.String())
 		}
-		var detailBody struct {
+		var personalDetailBody struct {
 			Code int `json:"code"`
 			Data struct {
 				Changes []struct {
@@ -258,30 +270,51 @@ func TestAuditOperationHistoryE2E(t *testing.T) {
 				} `json:"changes"`
 			} `json:"data"`
 		}
-		if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailBody); err != nil {
-			return fmt.Errorf("decode detail response: %w", err)
+		if err := json.Unmarshal(personalDetailResponse.Body.Bytes(), &personalDetailBody); err != nil {
+			return fmt.Errorf("decode personal detail response: %w", err)
 		}
-		if detailBody.Code != 0 || len(detailBody.Data.Changes) != 3 {
-			return fmt.Errorf("unexpected detail response: %s", bodyText)
+		if personalDetailBody.Code != 0 || len(personalDetailBody.Data.Changes) != 2 {
+			return fmt.Errorf("unexpected personal detail response: %s", personalDetailResponse.Body.String())
 		}
-		changesByField := make(map[string]struct {
-			oldValue string
-			newValue string
-		}, len(detailBody.Data.Changes))
-		for _, change := range detailBody.Data.Changes {
-			changesByField[change.FieldName] = struct {
-				oldValue string
-				newValue string
-			}{oldValue: change.OldValue, newValue: change.NewValue}
-		}
-		if change, ok := changesByField["grade"]; !ok || change.oldValue != "2020级" || change.newValue != "2021级" {
-			return fmt.Errorf("unexpected public diff: %+v", changesByField["grade"])
+		personalChanges := make(map[string]struct{ oldValue, newValue string })
+		for _, change := range personalDetailBody.Data.Changes {
+			personalChanges[change.FieldName] = struct{ oldValue, newValue string }{change.OldValue, change.NewValue}
 		}
 		for _, field := range []string{"work_unit", "mobile"} {
-			change, ok := changesByField[field]
+			change, ok := personalChanges[field]
 			if !ok || change.oldValue != "已填写" || change.newValue != "已修改" {
 				return fmt.Errorf("unexpected sensitive diff for %s: %+v", field, change)
 			}
+		}
+
+		detailRequest := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/v1/admin/audit/operations/%d", log.ID), nil)
+		detailRequest.Header.Set("Authorization", "Bearer "+token)
+		detailResponse := httptest.NewRecorder()
+		engine.ServeHTTP(detailResponse, detailRequest)
+		if detailResponse.Code != http.StatusOK {
+			return fmt.Errorf("detail status = %d, body = %s", detailResponse.Code, detailResponse.Body.String())
+		}
+		bodyText := detailResponse.Body.String()
+		var detailBody struct {
+			Code int `json:"code"`
+			Data struct {
+				EnrollmentID *uint64 `json:"enrollment_id"`
+				Changes      []struct {
+					FieldName string `json:"field_name"`
+					OldValue  string `json:"old_value"`
+					NewValue  string `json:"new_value"`
+				} `json:"changes"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(detailResponse.Body.Bytes(), &detailBody); err != nil {
+			return fmt.Errorf("decode detail response: %w", err)
+		}
+		if detailBody.Code != 0 || detailBody.Data.EnrollmentID == nil || *detailBody.Data.EnrollmentID != enrollmentID {
+			return fmt.Errorf("unexpected enrollment detail response: %s", bodyText)
+		}
+		if len(detailBody.Data.Changes) != 1 || detailBody.Data.Changes[0].FieldName != "grade" ||
+			detailBody.Data.Changes[0].OldValue != "2020级" || detailBody.Data.Changes[0].NewValue != "2021级" {
+			return fmt.Errorf("unexpected enrollment diff: %s", bodyText)
 		}
 
 		return nil

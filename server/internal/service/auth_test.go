@@ -200,78 +200,8 @@ func (s *fakeLoginAttemptStore) ClearFailures(context.Context, string) error {
 	return s.clearErr
 }
 
-type fakeAlumniStoreForAuth struct {
-	profile   *model.AlumniProfile
-	findErr   error
-	updateErr error
-	updatedID uint64
-	updatedMB string
-	updatedEM string
-}
-
-func (s *fakeAlumniStoreForAuth) List(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
-	return nil, 0, nil
-}
-
-func (s *fakeAlumniStoreForAuth) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	return nil, nil
-}
-
-func (s *fakeAlumniStoreForAuth) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
-}
-
-func (s *fakeAlumniStoreForAuth) Create(_ context.Context, _ *do.AlumniCreateProfile, _ uint64) (*model.AlumniProfile, error) {
-	return nil, nil
-}
-
-func (s *fakeAlumniStoreForAuth) BatchCreate(_ context.Context, _ []do.AlumniCreateProfile, _ uint64) error {
-	return nil
-}
-
-func (s *fakeAlumniStoreForAuth) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return nil, nil
-}
-
-func (s *fakeAlumniStoreForAuth) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
-	return nil
-}
-
-func (s *fakeAlumniStoreForAuth) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error {
-	return nil
-}
-
-func (s *fakeAlumniStoreForAuth) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
-	return nil
-}
-
-func (s *fakeAlumniStoreForAuth) CountActive(_ context.Context) (int64, error) {
-	return 0, nil
-}
-
-func (s *fakeAlumniStoreForAuth) FindOnly(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	return nil, nil
-}
-
-func (s *fakeAlumniStoreForAuth) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return s.profile, s.findErr
-}
-
-func (s *fakeAlumniStoreForAuth) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return s.profile, s.findErr
-}
-
-func (s *fakeAlumniStoreForAuth) UpdateMobile(_ context.Context, id uint64, mobile string) error {
-	s.updatedID = id
-	s.updatedMB = mobile
-	return s.updateErr
-}
-
-func (s *fakeAlumniStoreForAuth) UpdateEmail(_ context.Context, id uint64, email string) error {
-	s.updatedID = id
-	s.updatedEM = email
-	return s.updateErr
-}
+// fakeAlumniStoreForAuth 复用校友服务测试的内存仓储实现。
+type fakeAlumniStoreForAuth = fakeAlumniStore
 
 type fakeVerifyCodeStore struct {
 	savedTarget string
@@ -721,7 +651,6 @@ func TestAuthServiceSmsCodeLoginExistingUser(t *testing.T) {
 		profile: &model.AlumniProfile{
 			ID:     10,
 			Name:   "张三",
-			Grade:  "2020级",
 			Mobile: new("13800138000"),
 		},
 	}
@@ -770,7 +699,7 @@ func TestAuthServiceSmsCodeLoginNoAlumniProfile(t *testing.T) {
 
 func TestAuthServiceSmsCodeLoginInvalidCode(t *testing.T) {
 	alumni := &fakeAlumniStoreForAuth{
-		profile: &model.AlumniProfile{ID: 1, Name: "张三", Grade: "2020"},
+		profile: &model.AlumniProfile{ID: 1, Name: "张三"},
 	}
 	verifyCode := &fakeVerifyCodeStore{verifyOk: false}
 
@@ -828,7 +757,6 @@ func TestAuthServiceEmailCodeLoginExistingUser(t *testing.T) {
 		profile: &model.AlumniProfile{
 			ID:    11,
 			Name:  "李四",
-			Grade: "2021级",
 			Email: new("user@example.com"),
 		},
 	}

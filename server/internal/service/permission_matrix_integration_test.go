@@ -58,12 +58,21 @@ func TestPermissionMatrixAcrossBusinessEntrypoints(t *testing.T) {
 		secretMobile := "13900000000"
 		secretWorkUnit := "权限矩阵测试单位"
 		profiles := []*model.AlumniProfile{
-			{DataDomainID: undergraduate.ID, Name: tag + "-undergraduate", Grade: tag + "-u", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive},
-			{DataDomainID: academic.ID, Name: tag + "-academic", Grade: tag + "-a", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive},
-			{DataDomainID: mpa.ID, Name: tag + "-mpa", Grade: tag + "-m", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive},
+			{Name: tag + "-undergraduate", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive, Version: 1},
+			{Name: tag + "-academic", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive, Version: 1},
+			{Name: tag + "-mpa", Mobile: &secretMobile, WorkUnit: &secretWorkUnit, Status: common.AlumniStatusActive, Version: 1},
 		}
-		for _, profile := range profiles {
+		enrollmentDomains := []uint64{undergraduate.ID, academic.ID, mpa.ID}
+		enrollmentLevels := []string{common.TrainingLevelUndergraduate, common.TrainingLevelUnverified, common.TrainingLevelMaster}
+		enrollmentGrades := []string{tag + "-u", tag + "-a", tag + "-m"}
+		for i, profile := range profiles {
 			if err := tx.Create(profile).Error; err != nil {
+				return err
+			}
+			if err := tx.Create(&model.AlumniEnrollment{
+				AlumniID: profile.ID, DataDomainID: enrollmentDomains[i], TrainingLevel: enrollmentLevels[i],
+				Grade: enrollmentGrades[i], Status: common.AlumniStatusActive, Version: 1,
+			}).Error; err != nil {
 				return err
 			}
 		}
@@ -102,7 +111,7 @@ func TestPermissionMatrixAcrossBusinessEntrypoints(t *testing.T) {
 		if _, err := alumniService.GetByID(ctx, profiles[1].ID, mpaAdmin); !errors.Is(err, common.ErrAlumniNotFound) {
 			t.Errorf("cross-domain detail error = %v, want alumni not found", err)
 		}
-		if _, err := alumniService.Update(ctx, mpaAdmin, profiles[1].ID, dto.AdminAlumniUpdateRequest{Name: "不应写入", Grade: profiles[1].Grade}); !errors.Is(err, common.ErrAlumniNotFound) {
+		if _, err := alumniService.Update(ctx, mpaAdmin, profiles[1].ID, dto.AdminAlumniUpdateRequest{Name: "不应写入", Version: profiles[1].Version}); !errors.Is(err, common.ErrAlumniNotFound) {
 			t.Errorf("cross-domain update error = %v, want alumni not found", err)
 		}
 
@@ -135,7 +144,7 @@ func TestPermissionMatrixAcrossBusinessEntrypoints(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if permissionMatrixDistributionValue(distribution, profiles[2].Grade) != 1 || permissionMatrixDistributionValue(distribution, profiles[0].Grade) != 0 || permissionMatrixDistributionValue(distribution, profiles[1].Grade) != 0 {
+		if permissionMatrixDistributionValue(distribution, tag+"-m") != 1 || permissionMatrixDistributionValue(distribution, tag+"-u") != 0 || permissionMatrixDistributionValue(distribution, tag+"-a") != 0 {
 			t.Errorf("MPA dashboard distribution leaked another domain: %+v", distribution)
 		}
 		noScopeAdmin := common.AccessContext{UserID: 704, Role: common.RoleAdmin}

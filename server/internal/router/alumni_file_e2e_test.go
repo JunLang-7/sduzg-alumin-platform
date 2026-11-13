@@ -58,7 +58,7 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 		t.Fatalf("create MinIO client: %v", err)
 	}
 
-	var operatorID, alumniID uint64
+	var operatorID, alumniID, enrollmentID uint64
 	var objectKey string
 	t.Cleanup(func() {
 		if objectKey != "" {
@@ -68,7 +68,8 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 			_ = db.Where("operator_id = ?", operatorID).Delete(&model.OperationLog{}).Error
 		}
 		if alumniID != 0 {
-			_ = db.Unscoped().Where("alumni_id = ?", alumniID).Delete(&model.AlumniFile{}).Error
+			_ = db.Unscoped().Where("enrollment_id IN (SELECT id FROM alumni_enrollments WHERE alumni_id = ?)", alumniID).Delete(&model.AlumniFile{}).Error
+			_ = db.Unscoped().Where("alumni_id = ?", alumniID).Delete(&model.AlumniEnrollment{}).Error
 			_ = db.Unscoped().Where("id = ?", alumniID).Delete(&model.AlumniProfile{}).Error
 		}
 		if operatorID != 0 {
@@ -94,17 +95,25 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 	}
 	operatorID = operator.ID
 	profile := &model.AlumniProfile{
-		DataDomainID: domain.ID,
-		Name:         fmt.Sprintf("文件集成测试校友-%d", suffix),
-		Grade:        "2020级",
-		Status:       common.AlumniStatusActive,
-		CreatedBy:    &operatorID,
-		UpdatedBy:    &operatorID,
+		Name:      fmt.Sprintf("文件集成测试校友-%d", suffix),
+		Status:    common.AlumniStatusActive,
+		Version:   1,
+		CreatedBy: &operatorID,
+		UpdatedBy: &operatorID,
 	}
 	if err := db.Create(profile).Error; err != nil {
 		t.Fatalf("create e2e alumni: %v", err)
 	}
 	alumniID = profile.ID
+	enrollment := &model.AlumniEnrollment{
+		AlumniID: alumniID, DataDomainID: domain.ID, TrainingLevel: common.TrainingLevelMaster,
+		Grade: "2020级", Status: common.AlumniStatusActive, Version: 1,
+		CreatedBy: &operatorID, UpdatedBy: &operatorID,
+	}
+	if err := db.Create(enrollment).Error; err != nil {
+		t.Fatalf("create e2e enrollment: %v", err)
+	}
+	enrollmentID = enrollment.ID
 
 	gin.SetMode(gin.TestMode)
 	secret := "alumni-file-e2e-secret"
@@ -123,7 +132,7 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 	assertAPIStatus(t, engine, http.MethodGet, "/api/v1/health/ready", "", "", http.StatusOK)
 
 	uploadResponse := performAPIRequest(t, engine, http.MethodPost,
-		fmt.Sprintf("/api/v1/admin/alumni/%d/files/upload-url", alumniID),
+		fmt.Sprintf("/api/v1/admin/alumni/%d/enrollments/%d/files/upload-url", alumniID, enrollmentID),
 		`{"file_type":"degree_archive","original_name":"degree.pdf","mime_type":"application/pdf"}`,
 		token,
 	)
@@ -159,7 +168,7 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 	_ = putResponse.Body.Close()
 
 	confirmResponse := performAPIRequest(t, engine, http.MethodPost,
-		fmt.Sprintf("/api/v1/admin/alumni/%d/files/%d/confirm", alumniID, uploadBody.Data.FileID), "", token)
+		fmt.Sprintf("/api/v1/admin/alumni/%d/enrollments/%d/files/%d/confirm", alumniID, enrollmentID, uploadBody.Data.FileID), "", token)
 	if confirmResponse.Code != http.StatusOK {
 		t.Fatalf("confirm upload status = %d, body = %s", confirmResponse.Code, confirmResponse.Body.String())
 	}
@@ -179,12 +188,31 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 		t.Fatalf("find confirmed file record: %v", err)
 	}
 	objectKey = file.ObjectKey
+	if file.Status != common.FileStatusDraft {
+		t.Fatalf("confirmed file status = %q, want %q", file.Status, common.FileStatusDraft)
+	}
+
+	// 草稿文件不属于正式附件，保存前不能下载。
+	assertAPIStatus(t, engine, http.MethodGet,
+		fmt.Sprintf("/api/v1/admin/alumni/%d/enrollments/%d/files/%d/download", alumniID, enrollmentID, file.ID),
+		"", token, http.StatusNotFound)
+
+	// 保存全部修改时确认草稿文件，才转为正式附件。
+	saveBody := fmt.Sprintf(`{"version":1,"name":%q,"enrollments":[{"id":%d,"version":1,"data_domain_id":%d,"training_level":"master","grade":"2020级","activate_file_ids":[%d]}]}`,
+		profile.Name, enrollmentID, domain.ID, file.ID)
+	saveResponse := performAPIRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/v1/admin/alumni/%d", alumniID), saveBody, token)
+	if saveResponse.Code != http.StatusOK {
+		t.Fatalf("activate file status = %d, body = %s", saveResponse.Code, saveResponse.Body.String())
+	}
+	if err := db.Where("id = ?", file.ID).First(&file).Error; err != nil {
+		t.Fatalf("reload activated file: %v", err)
+	}
 	if file.Status != common.FileStatusActive {
-		t.Fatalf("file status = %q, want %q", file.Status, common.FileStatusActive)
+		t.Fatalf("activated file status = %q, want %q", file.Status, common.FileStatusActive)
 	}
 
 	downloadResponse := performAPIRequest(t, engine, http.MethodGet,
-		fmt.Sprintf("/api/v1/admin/alumni/%d/files/%d/download", alumniID, file.ID), "", token)
+		fmt.Sprintf("/api/v1/admin/alumni/%d/enrollments/%d/files/%d/download", alumniID, enrollmentID, file.ID), "", token)
 	if downloadResponse.Code != http.StatusOK {
 		t.Fatalf("request download URL status = %d, body = %s", downloadResponse.Code, downloadResponse.Body.String())
 	}
@@ -205,13 +233,19 @@ func TestAlumniFileUploadDownloadDeleteE2E(t *testing.T) {
 		t.Fatalf("MinIO download = status %d, body %q, read error %v", getResponse.StatusCode, downloaded, readErr)
 	}
 
-	deleteResponse := performAPIRequest(t, engine, http.MethodDelete,
-		fmt.Sprintf("/api/v1/admin/alumni/%d/files/%d", alumniID, file.ID), "", token)
-	if deleteResponse.Code != http.StatusOK {
-		t.Fatalf("delete file status = %d, body = %s", deleteResponse.Code, deleteResponse.Body.String())
+	// 正式附件不能通过草稿删除接口移除，必须走保存全部修改。
+	assertAPIStatus(t, engine, http.MethodDelete,
+		fmt.Sprintf("/api/v1/admin/alumni/%d/enrollments/%d/files/%d", alumniID, enrollmentID, file.ID),
+		"", token, http.StatusConflict)
+
+	removeBody := fmt.Sprintf(`{"version":2,"name":%q,"enrollments":[{"id":%d,"version":2,"data_domain_id":%d,"training_level":"master","grade":"2020级","remove_file_ids":[%d]}]}`,
+		profile.Name, enrollmentID, domain.ID, file.ID)
+	removeResponse := performAPIRequest(t, engine, http.MethodPut, fmt.Sprintf("/api/v1/admin/alumni/%d", alumniID), removeBody, token)
+	if removeResponse.Code != http.StatusOK {
+		t.Fatalf("remove file status = %d, body = %s", removeResponse.Code, removeResponse.Body.String())
 	}
 	if _, err := storageClient.StatObject(context.Background(), objectKey); err == nil {
-		t.Fatal("deleted file still exists in MinIO")
+		t.Fatal("removed file still exists in MinIO")
 	}
 	objectKey = ""
 }
