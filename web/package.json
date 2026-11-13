@@ -28,11 +28,11 @@
     "remark-gfm": "4.0.1",
     "remark-parse": "11.0.0",
     "unified": "11.0.5",
-    "zustand": "^5.0.16"
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@playwright/test": "1.64.1",
+    "@playwright/test": "1.65.0",
     "@types/mdast": "4.0.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -45,7 +45,7 @@
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.72.1",
     "vite": "6.4.5",
-    "vitest": "^5.0.5"
+    "vitest": "^5.1.0"
   },
   "overrides": {
     "follow-redirects": "1.16.2"
