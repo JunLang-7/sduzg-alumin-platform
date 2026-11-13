@@ -142,24 +142,28 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     await page.getByRole('button', { name: '新增校友' }).click();
     const dialog = page.getByRole('dialog', { name: '新增校友' });
     await dialog.getByTestId('alumni-name-input').fill(alumniName);
-    await dialog.getByTestId('alumni-grade-input').fill('2026级');
-    await dialog.getByRole('combobox').first().click();
-    await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
-    await dialog.getByRole('button', { name: /确\s*定/ }).click();
+    await dialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await dialog.getByTestId('enrollment-grade-0').fill('2026级');
+    await dialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(dialog).toBeHidden();
+
     const keyword = page.getByPlaceholder('姓名、单位、导师');
     await keyword.fill(alumniName);
     await page.getByRole('button', { name: '查询' }).click();
     const row = page.getByRole('row').filter({ hasText: alumniName });
     await expect(row).toBeVisible();
+    await expect(row).toContainText('2026级');
+
     await row.getByRole('button', { name: '编辑' }).click();
     const editDialog = page.getByRole('dialog', { name: '编辑校友' });
-    await editDialog.getByTestId('alumni-grade-input').fill('2027级');
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-grade-0').fill('2027级');
     const saved = page.waitForResponse(
       (response) =>
         response.request().method() === 'PUT' &&
         /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
     );
-    await editDialog.getByRole('button', { name: /确\s*定/ }).click();
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
     expect((await saved).ok()).toBe(true);
     await expect(editDialog).toBeHidden();
     await page.reload();
@@ -169,7 +173,7 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
   }
 });
 
-test('管理员可以上传、下载并删除校友附件', async ({ page }) => {
+test('管理员可以上传、下载并移除校友附件', async ({ page }) => {
   const alumniName = `E2E附件校友${Date.now()}`;
   const attachmentName = 'e2e-alumni-attachment.pdf';
   await login(page, 'admin');
@@ -177,19 +181,19 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
     await page.getByRole('button', { name: '新增校友' }).click();
     const dialog = page.getByRole('dialog', { name: '新增校友' });
     await dialog.getByTestId('alumni-name-input').fill(alumniName);
-    await dialog.getByTestId('alumni-grade-input').fill('2026级');
-    await dialog.getByRole('combobox').first().click();
-    await page.getByText('MPA专业学位研究生', { exact: true }).last().click();
-    await dialog.getByRole('button', { name: /确\s*定/ }).click();
+    await dialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await dialog.getByTestId('enrollment-grade-0').fill('2026级');
+    await dialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(dialog).toBeHidden();
+
     const keyword = page.getByPlaceholder('姓名、单位、导师');
     await keyword.fill(alumniName);
     await page.getByRole('button', { name: '查询' }).click();
-    await page
-      .getByRole('row')
-      .filter({ hasText: alumniName })
-      .getByRole('button', { name: '查看' })
-      .click();
-    await page
+    const row = page.getByRole('row').filter({ hasText: alumniName });
+    await row.getByRole('button', { name: '编辑' }).click();
+    const editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog
       .getByTestId('alumni-file-upload-degree_archive')
       .locator('input[type="file"]')
       .setInputFiles({
@@ -197,20 +201,88 @@ test('管理员可以上传、下载并删除校友附件', async ({ page }) => 
         mimeType: 'application/pdf',
         buffer: attachmentContent,
       });
+    await expect(editDialog.getByText(attachmentName)).toBeVisible();
+    const activated = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
+    );
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
+    expect((await activated).ok()).toBe(true);
+    await expect(editDialog).toBeHidden();
+
+    await row.getByRole('button', { name: '查看' }).click();
     const fileRow = page.getByRole('listitem').filter({ hasText: attachmentName });
     await expect(fileRow).toBeVisible();
     const downloadPromise = page.waitForEvent('download');
     await fileRow.getByRole('button', { name: '下载' }).click();
     const download = await downloadPromise;
     expect(await readFile((await download.path())!)).toEqual(attachmentContent);
-    await fileRow.getByRole('button', { name: '删除' }).click();
-    await page
-      .getByRole('button', { name: /确\s*定/ })
-      .last()
-      .click();
+
+    await page.getByRole('button', { name: '返回' }).click();
+    const rowAfterView = page.getByRole('row').filter({ hasText: alumniName });
+    await rowAfterView.getByRole('button', { name: '编辑' }).click();
+    const removeDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await removeDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await removeDialog.getByRole('button', { name: '移除' }).first().click();
+    await expect(removeDialog.getByText('待移除')).toBeVisible();
+    const removed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
+    );
+    await removeDialog.getByRole('button', { name: '保存全部修改' }).click();
+    expect((await removed).ok()).toBe(true);
+    await expect(removeDialog).toBeHidden();
+    await page.reload();
     await expect(page.getByText(attachmentName)).toHaveCount(0);
   } finally {
     await removeAlumni(page, alumniName).catch(() => undefined);
+  }
+});
+
+test('同一校友可维护多段学籍，取消编辑不落库', async ({ page }) => {
+  const alumniName = `E2E多学籍${Date.now()}`;
+  await login(page, 'admin');
+  try {
+    await page.getByRole('button', { name: '新增校友' }).click();
+    const dialog = page.getByRole('dialog', { name: '新增校友' });
+    await dialog.getByTestId('alumni-name-input').fill(alumniName);
+    await dialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await dialog.getByTestId('enrollment-grade-0').fill('2015');
+    await dialog.getByRole('button', { name: '添加一段学籍' }).click();
+    await dialog.getByTestId('enrollment-grade-1').fill('2019');
+    await dialog.getByTestId('enrollment-level-1').click();
+    await page.getByText('硕士', { exact: true }).last().click();
+    await dialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(dialog).toBeHidden();
+
+    const keyword = page.getByPlaceholder('姓名、单位、导师');
+    await keyword.fill(alumniName);
+    await page.getByRole('button', { name: '查询' }).click();
+    const row = page.getByRole('row').filter({ hasText: alumniName });
+    await expect(row).toContainText('2015级');
+    await expect(row).toContainText('2019级');
+
+    await row.getByRole('button', { name: '编辑' }).click();
+    const editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-grade-0').fill('2016');
+    await page.keyboard.press('Escape');
+    await expect(editDialog).toBeHidden();
+    await page.reload();
+    await expect(page.getByRole('row').filter({ hasText: alumniName })).toContainText('2015级');
+    await expect(page.getByRole('row').filter({ hasText: alumniName })).not.toContainText('2016级');
+
+    await page
+      .getByRole('row')
+      .filter({ hasText: alumniName })
+      .getByRole('button', { name: '查看' })
+      .click();
+    await expect(page.getByRole('heading', { name: '学籍信息' })).toBeVisible();
+    await expect(page.locator('.alumni-enrollment-card')).toHaveCount(2);
+  } finally {
+    // 多段学籍校友当前不允许整人删除，测试数据随隔离 E2E 数据库一并清理。
   }
 });
 

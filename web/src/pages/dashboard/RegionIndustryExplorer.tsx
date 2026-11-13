@@ -13,10 +13,10 @@ import administrativeIndex from '../../assets/maps/administrative-index.json';
 import chinaGeoJSON from '../../assets/maps/china.json';
 import citySeats from '../../assets/maps/city-seats.json';
 import shandongGeoJSON from '../../assets/maps/shandong.json';
-import type { AlumniProfile } from '../../types/alumni';
+import type { DashboardAlumni } from './dashboardAlumni';
 
 interface RegionIndustryExplorerProps {
-  alumni: AlumniProfile[];
+  alumni: DashboardAlumni[];
   expanded: boolean;
   loading?: boolean;
   view?: 'map' | 'industry' | 'combined';
@@ -26,7 +26,7 @@ interface RegionIndustryExplorerProps {
   onMapModeChange?: (mode: MapMode) => void;
   onRegionChange?: (region: string) => void;
   onDistrictChange?: (district: string) => void;
-  onSelectAlumni: (profile: AlumniProfile) => void;
+  onSelectAlumni: (profile: DashboardAlumni) => void;
 }
 
 export type MapMode = 'shandong' | 'china';
@@ -302,7 +302,7 @@ function regionFromAlias(alias: string, source: string): AlumniRegion | null {
   return province ? { province } : null;
 }
 
-function resolveRegion(item: AlumniProfile): AlumniRegion | null {
+function resolveRegion(item: DashboardAlumni): AlumniRegion | null {
   const workUnit = normalize(item.work_unit).replace(
     /台湾(?:工作办公室|事务办公室|工作办|事务办)/gu,
     '',
@@ -344,7 +344,7 @@ function locationTextMatches(text: string, location: string) {
   return administrativeNameAliases(location).some((alias) => text.includes(alias));
 }
 
-function profileMatchesLocation(item: AlumniProfile, location: string) {
+function profileMatchesLocation(item: DashboardAlumni, location: string) {
   const workUnit = normalize(item.work_unit).replace(
     /台湾(?:工作办公室|事务办公室|工作办|事务办)/gu,
     '',
@@ -377,7 +377,7 @@ function matchDistrictName(text: string, districtNames: string[], parentCity: st
 }
 
 function assignProfileToDistrict(
-  item: AlumniProfile,
+  item: DashboardAlumni,
   districtNames: string[],
   fallbackDistrict: string,
   parentCity: string,

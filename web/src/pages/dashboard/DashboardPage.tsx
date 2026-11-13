@@ -13,11 +13,16 @@ import { alumniApi } from '../../api/alumni';
 import { dashboardApi } from '../../api/dashboard';
 import logoUrl from '../../assets/pspa-logo.png';
 import { useAuthStore } from '../../store/authStore';
-import type { AlumniProfile } from '../../types/alumni';
+import type { AlumniEnrollmentSummary, AlumniProfile } from '../../types/alumni';
 import { canReadSensitive } from '../../utils/access';
 import { formatDateTime } from '../../utils/datetime';
 import { AlumniDetailModal } from './AlumniDetailModal';
-import { enrichAlumniMailingAddresses, loadAllAlumni } from './dashboardAlumni';
+import {
+  enrichAlumniMailingAddresses,
+  flattenAlumni,
+  loadAllAlumni,
+  type DashboardAlumni,
+} from './dashboardAlumni';
 import { DistributionAlumniModal } from './DistributionAlumniModal';
 import { RegionIndustryExplorer, type MapMode } from './RegionIndustryExplorer';
 import type {
@@ -38,7 +43,7 @@ const dimensions: Array<{ label: string; value: DashboardDimension }> = [
 
 const FEED_WINDOW_SIZE = 20;
 
-const dimensionFields: Record<DashboardDimension, keyof AlumniProfile> = {
+const dimensionFields: Record<DashboardDimension, keyof DashboardAlumni> = {
   grade: 'grade',
   class_name: 'class_name',
   cohort: 'cohort',
@@ -130,23 +135,26 @@ function extractYear(value?: string) {
 
 function toGraduationRateDistribution(
   items: DistributionItem[],
-  alumni: AlumniProfile[],
+  alumni: DashboardAlumni[],
 ): ChartDistributionItem[] {
   const currentYear = new Date().getFullYear();
   const admissionCounts = new Map<number, number>();
   const normalGraduationCounts = new Map<number, number>();
 
   alumni.forEach((profile) => {
-    const gradeYear = extractYear(profile.grade);
-    const cohortYear = extractYear(profile.cohort);
-    if (!gradeYear || !cohortYear) {
-      return;
-    }
-    admissionCounts.set(gradeYear, (admissionCounts.get(gradeYear) || 0) + 1);
+    // 毕业率按学籍段统计：同一人的本科、硕士各段分别进入对应年级。
+    (profile.enrollments || []).forEach((enrollment) => {
+      const gradeYear = extractYear(enrollment.grade);
+      const cohortYear = extractYear(enrollment.cohort);
+      if (!gradeYear || !cohortYear) {
+        return;
+      }
+      admissionCounts.set(gradeYear, (admissionCounts.get(gradeYear) || 0) + 1);
 
-    if (cohortYear - gradeYear === 3) {
-      normalGraduationCounts.set(cohortYear, (normalGraduationCounts.get(cohortYear) || 0) + 1);
-    }
+      if (cohortYear - gradeYear === 3) {
+        normalGraduationCounts.set(cohortYear, (normalGraduationCounts.get(cohortYear) || 0) + 1);
+      }
+    });
   });
 
   return items
@@ -252,9 +260,9 @@ export function DashboardPage() {
   const [mainDistribution, setMainDistribution] = useState<DistributionItem[]>([]);
   const [mainDistributionDimension, setMainDistributionDimension] =
     useState<DashboardDimension>('grade');
-  const [alumniFeed, setAlumniFeed] = useState<AlumniProfile[]>([]);
+  const [alumniFeed, setAlumniFeed] = useState<DashboardAlumni[]>([]);
   const [searchKeyword, setSearchKeyword] = useState('');
-  const [searchResults, setSearchResults] = useState<AlumniProfile[]>([]);
+  const [searchResults, setSearchResults] = useState<DashboardAlumni[]>([]);
   const [mainLoading, setMainLoading] = useState(false);
   const [feedLoading, setFeedLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -264,8 +272,8 @@ export function DashboardPage() {
   const [distributionOpen, setDistributionOpen] = useState(false);
   const [distributionLoading, setDistributionLoading] = useState(false);
   const [distributionTitle, setDistributionTitle] = useState('');
-  const [distributionAlumni, setDistributionAlumni] = useState<AlumniProfile[]>([]);
-  const [allAlumniCache, setAllAlumniCache] = useState<AlumniProfile[] | null>(null);
+  const [distributionAlumni, setDistributionAlumni] = useState<DashboardAlumni[]>([]);
+  const [allAlumniCache, setAllAlumniCache] = useState<DashboardAlumni[] | null>(null);
   const [regionDataLoading, setRegionDataLoading] = useState(true);
   const [regionMapMode, setRegionMapMode] = useState<MapMode>('shandong');
   const [selectedMapRegion, setSelectedMapRegion] = useState('');
@@ -666,7 +674,7 @@ export function DashboardPage() {
     alumniApi
       .list({ page: 1, page_size: 100, keyword })
       .then((result) => {
-        setSearchResults(result.items);
+        setSearchResults(result.items.map(flattenAlumni));
       })
       .catch((error: Error) => message.error(error.message || '校友搜索失败'))
       .finally(() => setSearchLoading(false));
@@ -683,8 +691,8 @@ export function DashboardPage() {
       .catch(() => message.warning('进入全屏失败，请重试'));
   };
 
-  const openAlumniDetail = (item: AlumniProfile) => {
-    setSelectedAlumni(item);
+  const openAlumniDetail = (item: DashboardAlumni) => {
+    setSelectedAlumni(null);
     setDetailOpen(true);
     setDetailLoading(true);
     alumniApi
@@ -713,13 +721,33 @@ export function DashboardPage() {
       if (dimension === 'cohort') {
         const cohortYear = extractYear(value);
         setDistributionAlumni(
-          profiles.filter((profile) => extractYear(profile.cohort) === cohortYear),
+          profiles.filter((profile) =>
+            (profile.enrollments || []).some(
+              (enrollment) => extractYear(enrollment.cohort) === cohortYear,
+            ),
+          ),
         );
         return;
       }
 
+      // 学籍维度要求任一学籍段命中；个人维度仍按个人字段匹配。
+      const enrollmentDimensions = new Set<DashboardDimension>([
+        'grade',
+        'class_name',
+        'cohort',
+        'major',
+        'training_mode',
+      ]);
       setDistributionAlumni(
-        profiles.filter((profile) => formatText(String(profile[field] || '')) === value),
+        profiles.filter((profile) => {
+          if (enrollmentDimensions.has(dimension)) {
+            const enrollmentField = field as keyof AlumniEnrollmentSummary;
+            return (profile.enrollments || []).some(
+              (enrollment) => formatText(String(enrollment[enrollmentField] || '')) === value,
+            );
+          }
+          return formatText(String(profile[field] || '')) === value;
+        }),
       );
     } catch (error) {
       message.error((error as Error).message || '分布项校友信息加载失败');
@@ -737,7 +765,7 @@ export function DashboardPage() {
     },
   };
 
-  const renderAlumniRows = (items: AlumniProfile[]) =>
+  const renderAlumniRows = (items: DashboardAlumni[]) =>
     items.map((item) => (
       <tr
         key={item.id}

@@ -13,3 +13,14 @@ export const industryOptions = [
 ];
 
 export const genderOptions = ['男', '女', '未填'];
+
+export const trainingLevelOptions = [
+  { value: 'undergraduate', label: '本科' },
+  { value: 'master', label: '硕士' },
+  { value: 'doctor', label: '博士' },
+] as const;
+
+export const storedTrainingLevelOptions = [
+  ...trainingLevelOptions,
+  { value: 'unverified', label: '待核验' },
+] as const;

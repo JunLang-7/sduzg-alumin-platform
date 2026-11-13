@@ -148,6 +148,11 @@ export function AuditOperationDetailDrawer({
                 <Typography.Text type="secondary"> · {record.target_meta}</Typography.Text>
               ) : null}
             </Descriptions.Item>
+            {record.enrollment_label ? (
+              <Descriptions.Item label="学籍" span={2}>
+                {record.enrollment_label}
+              </Descriptions.Item>
+            ) : null}
             <Descriptions.Item label="记录状态" span={record.reason ? 1 : 2}>
               <Tag color={statusColor(record.status)}>{statusLabel(record.status)}</Tag>
             </Descriptions.Item>

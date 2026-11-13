@@ -1,10 +1,22 @@
 import { MailOutlined, MobileOutlined, SaveOutlined } from '@ant-design/icons';
-import { Button, Card, Form, Input, Modal, Spin, Typography, message } from 'antd';
+import {
+  Button,
+  Card,
+  Descriptions,
+  Form,
+  Input,
+  Modal,
+  Spin,
+  Tag,
+  Typography,
+  message,
+} from 'antd';
 import { useCallback, useEffect, useState } from 'react';
 import { authApi } from '../../api/auth';
 import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import type { AlumniProfile, MyProfilePayload } from '../../types/alumni';
+import { TRAINING_LEVEL_LABELS } from '../../types/alumni';
 
 const { Text } = Typography;
 
@@ -125,8 +137,13 @@ export function ProfilePage() {
         <Spin spinning={loading}>
           <div className="profile-summary">
             <span>{profile?.name || '-'}</span>
-            <span>{profile?.grade || '-'}</span>
-            <span>{profile?.class_name || '-'}</span>
+            {(profile?.enrollments || []).map((enrollment) => (
+              <span key={enrollment.id}>
+                {enrollment.grade ? `${enrollment.grade}级` : '年级待补'} ·{' '}
+                {TRAINING_LEVEL_LABELS[enrollment.training_level] || '待核验'}
+                {enrollment.major ? ` · ${enrollment.major}` : ''}
+              </span>
+            ))}
           </div>
 
           {/* Contact Info Section */}
@@ -177,6 +194,45 @@ export function ProfilePage() {
               保存资料
             </Button>
           </Form>
+
+          <div style={{ marginTop: 24 }}>
+            <Text strong>学籍信息</Text>
+            <div className="empty-hint">学籍由管理员维护；如需更正请联系学院管理员。</div>
+            {(profile?.enrollments || []).map((enrollment) => (
+              <Card
+                key={enrollment.id}
+                size="small"
+                style={{ marginTop: 12 }}
+                title={
+                  <span>
+                    {TRAINING_LEVEL_LABELS[enrollment.training_level] || '待核验'}学籍 ·{' '}
+                    {enrollment.grade ? `${enrollment.grade}级` : '年级待补'}
+                  </span>
+                }
+              >
+                <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
+                  <Descriptions.Item label="培养类别">
+                    {enrollment.data_domain_name || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="班级">{enrollment.class_name || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="届数">{enrollment.cohort || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="专业">{enrollment.major || '-'}</Descriptions.Item>
+                  <Descriptions.Item label="培养方式">
+                    {enrollment.training_mode || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="辅导员">
+                    {enrollment.counselor || '-'}
+                  </Descriptions.Item>
+                  <Descriptions.Item label="导师">{enrollment.mentor || '-'}</Descriptions.Item>
+                </Descriptions>
+              </Card>
+            ))}
+            {(!profile?.enrollments || profile.enrollments.length === 0) && (
+              <div className="empty-hint" style={{ marginTop: 8 }}>
+                <Tag>暂无可查看学籍</Tag>
+              </div>
+            )}
+          </div>
         </Spin>
       </Card>
 
