@@ -1,0 +1,1591 @@
+<!doctype html>
+<!-- Issue #236: retain the existing detail page; separate personal information from academic records. Synthetic data only. -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>校友详情 · 多段学籍设计</title>
+    <style>
+      :root {
+        --red: #a7190f;
+        --dark: #7e1009;
+        --line: #eadfdc;
+        --ink: #241817;
+        --muted: #746764;
+        --page: #f6f2ef;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        background: var(--page);
+        font:
+          14px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "PingFang SC",
+          "Microsoft YaHei",
+          sans-serif;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+      }
+      button {
+        cursor: pointer;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        background: white;
+        padding: 6px 15px;
+        color: var(--ink);
+      }
+      button:hover {
+        color: var(--red);
+        border-color: var(--red);
+      }
+      input,
+      select {
+        padding: 7px 10px;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        background: white;
+        min-width: 0;
+        color: var(--ink);
+      }
+      button:focus-visible,
+      input:focus-visible,
+      select:focus-visible,
+      summary:focus-visible {
+        outline: 3px solid #dba69b;
+        outline-offset: 2px;
+      }
+      .primary {
+        background: var(--red);
+        border-color: var(--red);
+        color: white;
+      }
+      .primary:hover {
+        background: var(--dark);
+        color: white;
+      }
+      .link {
+        border: 0;
+        padding: 0;
+        background: none;
+        color: #1677ff;
+      }
+      .danger {
+        color: #ff4d4f;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .header {
+        background: var(--red);
+        color: white;
+      }
+      .header-inner {
+        max-width: 1440px;
+        margin: auto;
+        min-height: 92px;
+        padding: 18px 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+      }
+      .header img {
+        width: 425px;
+        max-width: 66%;
+        max-height: 62px;
+        object-fit: contain;
+      }
+      .user {
+        text-align: right;
+        font-size: 13px;
+      }
+      .user b {
+        display: block;
+        font-weight: 500;
+      }
+      .nav {
+        background: var(--dark);
+      }
+      .nav-inner {
+        max-width: 1160px;
+        margin: auto;
+        display: flex;
+        overflow: auto;
+      }
+      .nav span {
+        padding: 16px 25px;
+        white-space: nowrap;
+        font-weight: 600;
+      }
+      .nav .active {
+        background: #ffffff1f;
+      }
+      .preview {
+        border-bottom: 1px solid var(--line);
+        background: #fffaf7;
+      }
+      .preview-inner {
+        max-width: 1440px;
+        margin: auto;
+        padding: 8px 44px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .preview label {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .preview select {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      main {
+        max-width: 1440px;
+        margin: auto;
+        padding: 30px 44px 48px;
+      }
+      .page-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 18px;
+        margin-bottom: 20px;
+      }
+      .page-header h1 {
+        font-size: 28px;
+        font-weight: 900;
+        color: var(--red);
+      }
+      .card {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 10px 26px #48120c0d;
+        margin-top: 16px;
+        overflow: hidden;
+      }
+      .card-head {
+        min-height: 56px;
+        padding: 16px 24px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .card-head h2 {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .card-body {
+        padding: 24px;
+      }
+      .descriptions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        border: 1px solid #f0f0f0;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .pair {
+        display: grid;
+        grid-template-columns: minmax(90px, 0.85fr) minmax(0, 1.6fr);
+        margin: 0;
+        border-right: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+        min-height: 55px;
+      }
+      .pair:nth-child(3n) {
+        border-right: 0;
+      }
+      .pair dt {
+        background: #fafafa;
+        padding: 15px 20px;
+        color: #595959;
+        font-weight: 500;
+        border-right: 1px solid #f0f0f0;
+        display: flex;
+        align-items: center;
+      }
+      .pair dd {
+        margin: 0;
+        padding: 15px 20px;
+        overflow-wrap: anywhere;
+        display: flex;
+        align-items: center;
+      }
+      .pair:last-child {
+        border-bottom: 0;
+      }
+      .personal .pair:nth-child(n + 7) {
+        border-bottom: 0;
+      }
+      .span2 {
+        grid-column: span 2;
+        grid-template-columns: minmax(90px, 0.85fr) minmax(0, 4.2fr);
+        border-right: 0;
+      }
+      .academic .pair:nth-child(n + 7) {
+        border-bottom: 0;
+      }
+      .academic-section {
+        margin-top: 24px;
+      }
+      .section-label {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 12px;
+      }
+      .section-label h2 {
+        font-size: 18px;
+      }
+      .academic-record {
+        margin-top: 12px;
+      }
+      .academic-record > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 17px 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+      .academic-record > summary::-webkit-details-marker {
+        display: none;
+      }
+      .academic-record[open] > summary {
+        border-bottom: 1px solid var(--line);
+      }
+      .summary-title {
+        font-size: 16px;
+        font-weight: 600;
+        display: flex;
+        gap: 13px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .summary-meta {
+        font-weight: 400;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .chevron {
+        font-size: 12px;
+        color: var(--muted);
+        white-space: nowrap;
+      }
+      .chevron:before {
+        content: "展开　⌄";
+      }
+      .academic-record[open] .chevron:before {
+        content: "收起　⌃";
+      }
+      .record-section-title {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin-bottom: 16px;
+      }
+      .record-section-title h3 {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .files-heading {
+        margin-top: 24px;
+        padding-top: 22px;
+        border-top: 1px solid var(--line);
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 16px;
+      }
+      .file-box {
+        border: 1px solid #f0f0f0;
+        border-radius: 8px;
+        overflow: hidden;
+        margin-top: 16px;
+      }
+      .file-box-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 9px 12px;
+        border-bottom: 1px solid var(--line);
+        gap: 10px;
+        min-height: 40px;
+      }
+      .file-box-head strong {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .file-kind {
+        font-size: 12px;
+        border: 1px solid #91caff;
+        background: #e6f4ff;
+        color: #0958d9;
+        border-radius: 4px;
+        padding: 1px 7px;
+        margin-right: 10px;
+      }
+      .file-kind.green {
+        color: #389e0d;
+        border-color: #b7eb8f;
+        background: #f6ffed;
+      }
+      .file-empty {
+        padding: 12px;
+        color: #333;
+      }
+      .file-row {
+        padding: 11px 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 13px;
+      }
+      .file-row:last-child {
+        border-bottom: 0;
+      }
+      .file-row > span {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .file-actions {
+        display: flex;
+        gap: 16px;
+        flex-shrink: 0;
+      }
+      .empty {
+        padding: 35px;
+        text-align: center;
+        color: var(--muted);
+      }
+      .audit-head {
+        justify-content: flex-start;
+        gap: 9px;
+      }
+      .history-mark {
+        color: var(--red);
+        font-size: 22px;
+        line-height: 1;
+      }
+      .audit-table,
+      .diff-table {
+        border-collapse: collapse;
+        width: 100%;
+        text-align: left;
+      }
+      .audit-table th,
+      .audit-table td,
+      .diff-table th,
+      .diff-table td {
+        padding: 13px 20px;
+        border-bottom: 1px solid #f0f0f0;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .audit-table th,
+      .diff-table th {
+        background: #fffaf7;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .scroll {
+        overflow: auto;
+      }
+      .tag {
+        font-size: 12px;
+        background: #fffaf7;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 2px 7px;
+        color: var(--muted);
+      }
+      .tag.action {
+        color: #389e0d;
+        border-color: #b7eb8f;
+        background: #f6ffed;
+      }
+      .empty-history {
+        padding: 30px;
+        text-align: center;
+        color: #999;
+      }
+      .caption {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 12px;
+      }
+      .dialog {
+        width: min(630px, calc(100vw - 32px));
+        max-height: 90vh;
+        border: 0;
+        padding: 0;
+        border-radius: 8px;
+        box-shadow: 0 20px 80px #0004;
+        color: var(--ink);
+      }
+      .dialog::backdrop {
+        background: #0006;
+      }
+      .dialog-head {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+        background: white;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--line);
+      }
+      .dialog-head h2 {
+        font-size: 17px;
+      }
+      .close {
+        border: 0;
+        padding: 0 3px;
+        color: #888;
+        font-size: 23px;
+        line-height: 1;
+        background: none;
+      }
+      .dialog-body {
+        padding: 20px 24px;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .form-grid label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+      }
+      .required {
+        color: var(--red);
+        margin-left: 3px;
+      }
+      .dialog-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        border-top: 1px solid var(--line);
+        padding: 14px 24px;
+        background: white;
+        position: sticky;
+        bottom: 0;
+        z-index: 1;
+      }
+      .error {
+        color: var(--red);
+        font-size: 12px;
+        margin-top: 12px;
+      }
+      .toast {
+        position: fixed;
+        bottom: 25px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 11px 20px;
+        border-radius: 6px;
+        background: #241817;
+        color: white;
+        z-index: 9;
+        max-width: 90vw;
+        font-size: 13px;
+      }
+      .filters {
+        display: flex;
+        align-items: end;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .filters label {
+        display: grid;
+        gap: 5px;
+        font-size: 12px;
+      }
+      .list-link {
+        color: var(--red);
+        font-weight: 600;
+      }
+      .record-help {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 13px;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      @media (max-width: 900px) {
+        main {
+          padding: 24px;
+        }
+        .header-inner,
+        .preview-inner {
+          padding-left: 24px;
+          padding-right: 24px;
+        }
+        .descriptions {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .pair:nth-child(3n) {
+          border-right: 1px solid #f0f0f0;
+        }
+        .pair:nth-child(2n) {
+          border-right: 0;
+        }
+        .personal .pair,
+        .academic .pair {
+          border-bottom: 1px solid #f0f0f0;
+        }
+        .personal .pair:nth-child(7) {
+          border-bottom: 1px solid #f0f0f0;
+        }
+        .pair.span2 {
+          grid-column: span 1;
+          grid-template-columns: minmax(90px, 0.85fr) minmax(0, 1.6fr);
+        }
+        .personal .pair:last-child {
+          border-bottom: 0;
+        }
+        .pair dt,
+        .pair dd {
+          padding: 12px;
+        }
+        .audit-table {
+          min-width: 650px;
+        }
+      }
+      @media (max-width: 600px) {
+        main {
+          padding: 20px 16px;
+        }
+        .header-inner {
+          padding: 15px 16px;
+          min-height: 75px;
+        }
+        .header img {
+          max-width: 95%;
+          width: 350px;
+        }
+        .user {
+          display: none;
+        }
+        .nav span {
+          padding: 12px 17px;
+          font-size: 13px;
+        }
+        .preview-inner {
+          padding: 8px 16px;
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .preview label {
+          width: 100%;
+          justify-content: space-between;
+        }
+        .page-header h1 {
+          font-size: 25px;
+        }
+        .card-head,
+        .academic-record > summary {
+          padding: 15px 16px;
+        }
+        .card-body {
+          padding: 16px;
+        }
+        .descriptions {
+          grid-template-columns: 1fr;
+        }
+        .pair,
+        .pair.span2 {
+          grid-template-columns: 92px minmax(0, 1fr);
+          border-right: 0 !important;
+          grid-column: auto;
+        }
+        .personal .pair,
+        .academic .pair {
+          border-bottom: 1px solid #f0f0f0;
+        }
+        .personal .pair:last-child,
+        .academic .pair:last-child {
+          border-bottom: 0;
+        }
+        .summary-title {
+          gap: 4px 10px;
+        }
+        .summary-meta {
+          width: 100%;
+          font-size: 12px;
+        }
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+        .dialog-head,
+        .dialog-body,
+        .dialog-actions {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+        .section-label h2 {
+          font-size: 17px;
+        }
+        .file-actions {
+          gap: 10px;
+        }
+        .file-box-head {
+          padding: 9px 10px;
+        }
+        .file-kind {
+          margin-right: 5px;
+        }
+        .filters label {
+          width: 100%;
+        }
+        .filters input,
+        .filters select {
+          width: 100%;
+        }
+      }
+
+      .editor-dialog {
+        width: min(820px, calc(100vw - 32px));
+        height: min(850px, 90vh);
+        max-height: 90vh;
+        overflow: hidden;
+      }
+      .editor-dialog form {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+      }
+      .editor-dialog .dialog-head {
+        flex-shrink: 0;
+      }
+      .edit-context {
+        padding: 11px 24px;
+        background: #fffaf7;
+        border-bottom: 1px solid var(--line);
+        font-size: 12px;
+        color: var(--muted);
+        flex-shrink: 0;
+      }
+      .edit-tabs {
+        display: flex;
+        gap: 24px;
+        padding: 0 24px;
+        border-bottom: 1px solid var(--line);
+        background: white;
+        flex-shrink: 0;
+      }
+      .edit-tabs button {
+        border: 0;
+        border-radius: 0;
+        padding: 12px 2px;
+        color: var(--muted);
+        background: none;
+      }
+      .edit-tabs button.active {
+        color: var(--red);
+        box-shadow: inset 0 -2px var(--red);
+      }
+      .editor-scroll {
+        overflow-y: auto;
+        flex: 1;
+        min-height: 0;
+        padding: 22px 24px;
+      }
+      .editor-dialog .dialog-actions {
+        flex-shrink: 0;
+        position: static;
+      }
+      .editor-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px 20px;
+      }
+      .editor-fields label {
+        display: grid;
+        gap: 6px;
+        font-size: 13px;
+        align-content: start;
+      }
+      .editor-fields input,
+      .editor-fields select,
+      .editor-fields textarea {
+        width: 100%;
+        font: inherit;
+        padding: 7px 10px;
+        min-width: 0;
+        border: 1px solid #d9d9d9;
+        border-radius: 6px;
+        color: var(--ink);
+        background: white;
+      }
+      .editor-fields textarea {
+        resize: vertical;
+        min-height: 76px;
+      }
+      .editor-fields .full {
+        grid-column: 1/-1;
+      }
+      .editor-fields select:disabled {
+        background: #f5f5f5;
+        color: #888;
+        cursor: not-allowed;
+      }
+      .edit-record {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        margin-top: 18px;
+        overflow: hidden;
+      }
+      .edit-record:first-child {
+        margin-top: 0;
+      }
+      .edit-record-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #fffaf7;
+        border-bottom: 1px solid var(--line);
+      }
+      .edit-record-head h3 {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .edit-record-body {
+        padding: 18px 16px;
+      }
+      .edit-record .files-heading {
+        margin-top: 20px;
+        padding-top: 18px;
+      }
+      .edit-section-foot {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        margin: 20px 0 0;
+      }
+      .edit-section-foot small {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .edit-notice {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+      .form-error {
+        font-size: 12px;
+        color: var(--red);
+        padding: 9px 24px;
+        background: #fff2f0;
+        flex-shrink: 0;
+      }
+      .academic-record > .card-head {
+        font-size: 16px;
+        font-weight: 600;
+        justify-content: flex-start;
+      }
+      .academic-record .summary-meta {
+        font-size: 13px;
+        font-weight: 400;
+      }
+      .view-caption {
+        font-size: 12px;
+        color: var(--muted);
+        margin: 8px 0 0;
+      }
+      .audit-table td:last-child {
+        white-space: nowrap;
+      }
+      .editor-action-pair {
+        display: flex;
+        gap: 14px;
+      }
+      @media (max-width: 600px) {
+        .editor-dialog {
+          height: 92vh;
+          max-height: 92vh;
+        }
+        .editor-fields {
+          grid-template-columns: 1fr;
+        }
+        .editor-fields .full {
+          grid-column: auto;
+        }
+        .editor-scroll {
+          padding: 16px;
+        }
+        .edit-context,
+        .edit-tabs {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+        .edit-record-body {
+          padding: 16px 12px;
+        }
+        .edit-section-foot {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+        .edit-record-head {
+          padding: 12px;
+        }
+        .academic-record .card-head {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .editor-action-pair {
+          gap: 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div class="header-inner">
+        <img
+          src="data:image/png;base64,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"
+          alt="山东大学政治学与公共管理学院"
+        />
+        <div class="user">
+          全球校友数字化平台<b id="viewerName">超级管理员 · 演示</b>
+        </div>
+      </div>
+      <div class="nav">
+        <div class="nav-inner">
+          <span>校友服务</span><span>数据大屏</span
+          ><span class="active">校友管理</span><span>操作历史</span
+          ><span>院史共编</span>
+        </div>
+      </div>
+    </header>
+    <div class="preview">
+      <div class="preview-inner">
+        <span>设计预览 · 沿用现有详情页 · 以下为虚构示例数据</span
+        ><label
+          >预览视角<select id="role" aria-label="预览视角">
+            <option value="super">超级管理员</option>
+            <option value="undergraduate">本科管理员（含档案管理权限）</option>
+            <option value="self">校友本人</option>
+          </select></label
+        >
+      </div>
+    </div>
+
+    <main id="main"></main>
+    <dialog
+      id="editor"
+      class="dialog editor-dialog"
+      aria-labelledby="editorTitle"
+    >
+      <form id="alumniForm" novalidate>
+        <div class="dialog-head">
+          <h2 id="editorTitle">编辑校友</h2>
+          <button
+            type="button"
+            class="close"
+            data-close="editor"
+            aria-label="关闭编辑"
+          >
+            ×
+          </button>
+        </div>
+        <div class="edit-context" id="editContext"></div>
+        <div class="edit-tabs" role="tablist" aria-label="编辑分区">
+          <button
+            type="button"
+            role="tab"
+            id="personalTab"
+            aria-controls="personalPanel"
+            data-tab="personal"
+          >
+            个人信息</button
+          ><button
+            type="button"
+            role="tab"
+            id="recordsTab"
+            aria-controls="recordsPanel"
+            data-tab="records"
+          >
+            学籍与档案
+          </button>
+        </div>
+        <div class="editor-scroll" id="editorScroll">
+          <section
+            id="personalPanel"
+            role="tabpanel"
+            aria-labelledby="personalTab"
+          ></section>
+          <section
+            id="recordsPanel"
+            role="tabpanel"
+            aria-labelledby="recordsTab"
+          ></section>
+        </div>
+        <div class="form-error" id="formError" role="alert" hidden></div>
+        <div class="dialog-actions">
+          <button type="button" data-close="editor">取消</button
+          ><button type="submit" class="primary">保存全部修改</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog class="dialog" id="auditDetail" aria-labelledby="auditTitle">
+      <div class="dialog-head">
+        <h2 id="auditTitle">操作详情</h2>
+        <button
+          class="close"
+          data-close="auditDetail"
+          aria-label="关闭操作详情"
+        >
+          ×
+        </button>
+      </div>
+      <div id="auditBody" class="dialog-body"></div>
+      <div class="dialog-actions">
+        <button data-close="auditDetail">关闭</button>
+      </div>
+    </dialog>
+    <input
+      type="file"
+      id="fileInput"
+      accept=".pdf,.doc,.docx,.jpg,.jpeg,.png"
+      hidden
+    />
+    <div class="toast" id="toast" role="status" hidden></div>
+    <script>
+      const domains = {
+        undergraduate: "本科生",
+        academic_graduate: "学术学位研究生",
+        mpa: "MPA专业学位研究生",
+      };
+      const people = [
+        {
+          id: 1,
+          name: "张同学",
+          gender: "男",
+          mobile: "138 **** 0001",
+          email: "alumni@example.com",
+          industry: "公共管理",
+          unit: "示例公共服务单位",
+          position: "项目主管",
+          address: "示例通讯地址",
+          records: [
+            {
+              id: 11,
+              domain: "undergraduate",
+              level: "本科",
+              grade: "2015",
+              className: "行政管理一班",
+              cohort: "2019",
+              major: "行政管理",
+              mode: "全日制本科",
+              counselor: "陈老师（示例）",
+              mentor: "",
+              files: [],
+            },
+            {
+              id: 12,
+              domain: "academic_graduate",
+              level: "硕士",
+              grade: "2019",
+              className: "行政管理硕士班",
+              cohort: "2022",
+              major: "行政管理",
+              mode: "全日制研究生",
+              counselor: "",
+              mentor: "王老师（示例）",
+              files: [],
+            },
+            {
+              id: 13,
+              domain: "academic_graduate",
+              level: "博士",
+              grade: "2022",
+              className: "公共管理博士班",
+              cohort: "",
+              major: "公共管理",
+              mode: "全日制研究生",
+              counselor: "",
+              mentor: "李老师（示例）",
+              files: [],
+            },
+          ],
+        },
+        {
+          id: 2,
+          name: "李同学",
+          gender: "女",
+          mobile: "138 **** 0002",
+          email: "demo2@example.com",
+          industry: "公共服务",
+          unit: "示例事业单位",
+          position: "工作人员",
+          address: "",
+          records: [
+            {
+              id: 21,
+              domain: "mpa",
+              level: "硕士",
+              grade: "2025",
+              className: "MPA一班",
+              cohort: "",
+              major: "MPA",
+              mode: "非全日制研究生（含在职研究生）",
+              counselor: "",
+              mentor: "赵老师（示例）",
+              files: [],
+            },
+          ],
+        },
+        {
+          id: 3,
+          name: "王同学",
+          gender: "女",
+          mobile: "",
+          email: "",
+          industry: "",
+          unit: "",
+          position: "",
+          address: "",
+          records: [],
+        },
+      ];
+
+      const state = {
+        role: "super",
+        personId: 1,
+        screen: "detail",
+        logs: [],
+        draft: null,
+        tab: "personal",
+        upload: null,
+        newUrls: [],
+      };
+      const $ = (s) => document.querySelector(s);
+      const esc = (v) =>
+        String(v ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      const pair = (l, v, cls = "") =>
+        `<dl class="pair ${cls}"><dt>${l}</dt><dd>${esc(v || "-")}</dd></dl>`;
+      function canEdit() {
+        return state.role !== "self";
+      }
+      function records(p) {
+        return p.records.filter(
+          (r) => state.role !== "undergraduate" || r.domain === "undergraduate",
+        );
+      }
+      function visiblePeople() {
+        return people.filter((p) =>
+          state.role === "self"
+            ? p.id === 1
+            : state.role === "undergraduate"
+              ? records(p).length > 0
+              : true,
+        );
+      }
+      function person() {
+        return (
+          visiblePeople().find((p) => p.id === state.personId) ||
+          visiblePeople()[0]
+        );
+      }
+      function visibleLogs() {
+        return state.role === "self"
+          ? []
+          : state.logs.filter(
+              (l) =>
+                l.personId === person().id &&
+                (state.role === "super" ||
+                  l.domain === "undergraduate" ||
+                  l.domain === "shared"),
+            );
+      }
+      function render() {
+        const p = person();
+        state.personId = p.id;
+        $("#viewerName").textContent =
+          state.role === "super"
+            ? "超级管理员 · 演示"
+            : state.role === "self"
+              ? "张同学 · 本人视角"
+              : "本科管理员 · 演示";
+        $("#main").innerHTML = state.screen === "list" ? list() : detail(p);
+      }
+      function detail(p) {
+        return `<div class="page-header"><h1>校友详情</h1>${canEdit() ? '<button data-action="list">← 返回</button>' : ""}</div><section class="card personal-card" aria-label="校友档案"><div class="card-head"><h2>校友档案</h2></div><div class="card-body"><div class="descriptions personal">${pair("姓名", p.name)}${pair("性别", p.gender)}${pair("手机号", p.mobile)}${pair("邮箱", p.email)}${pair("行业", p.industry)}${pair("工作单位", p.unit)}${pair("职务", p.position)}${pair("通讯地址", p.address, "span2")}</div></div></section><section class="academic-section" aria-label="学籍信息"><div class="section-label"><h2>学籍信息</h2></div>${records(p).length ? records(p).map(academic).join("") : '<div class="card empty">暂无学籍信息</div>'}</section>${canEdit() ? history() : ""}`;
+      }
+      function academic(r) {
+        return `<section class="card academic-record" data-record="${r.id}" aria-label="${r.level}学籍"><div class="card-head"><h2>${r.level}学籍</h2><span class="summary-meta">${esc(r.grade)}级 · ${esc(r.major || "专业未填写")}</span></div><div class="card-body"><div class="descriptions academic">${pair("培养层次", r.level)}${pair("年级", r.grade)}${pair("班级", r.className)}${pair("届数", r.cohort)}${pair("专业", r.major)}${pair("培养方式", r.mode)}${pair("辅导员", r.counselor)}${pair("导师", r.mentor)}${pair("管理范围", domains[r.domain])}</div><h3 class="files-heading">学位档案与学籍档案</h3>${fileSection(r, "degree_archive", false)}${fileSection(r, "academic_record", false)}</div></section>`;
+      }
+      function fileSection(r, type, editing) {
+        const files = r.files.filter((f) => f.type === type);
+        const title = type === "degree_archive" ? "学位档案" : "学籍档案";
+        return `<section class="file-box" aria-label="${title}"><div class="file-box-head"><strong><span class="file-kind ${type === "academic_record" ? "green" : ""}">${title}</span>${files.length} 个文件</strong>${editing ? `<button type="button" class="link" data-upload="${r.id}" data-type="${type}">＋ 上传文件</button>` : ""}</div>${files.length ? files.map((f) => `<div class="file-row"><span>${esc(f.name)} <span class="muted">${(f.size / 1024).toFixed(1)} KB</span></span><div class="file-actions">${f.url ? `<button type="button" class="link" data-download="${f.id}" data-record-id="${r.id}" data-draft="${editing}">下载</button>` : '<span class="muted">示例文件</span>'}${editing ? `<button type="button" class="link danger" data-remove-file="${f.id}" data-record-id="${r.id}">移除</button>` : ""}</div></div>`).join("") : '<div class="file-empty">暂无文件</div>'}</section>`;
+      }
+      function history() {
+        const logs = visibleLogs();
+        return `<section class="card audit-card" aria-label="操作历史"><div class="card-head audit-head"><span class="history-mark" aria-hidden="true">◷</span><h2>操作历史 <span class="muted">共 ${logs.length} 条</span></h2></div>${
+          logs.length
+            ? `<div class="scroll"><table class="audit-table"><thead><tr><th>时间</th><th>操作人</th><th>管理范围</th><th>类型</th><th>操作</th></tr></thead><tbody>${[
+                ...logs,
+              ]
+                .reverse()
+                .map(
+                  (l) =>
+                    `<tr><td>${l.time}</td><td>${l.operator}</td><td><span class="tag">${domains[l.domain] || "个人信息"}</span></td><td><span class="tag action">${l.action}</span></td><td><button class="link" data-audit="${l.id}">详情</button></td></tr>`,
+                )
+                .join("")}</tbody></table></div>`
+            : '<div class="empty-history">暂无操作记录</div>'
+        }</section>`;
+      }
+      function list() {
+        return `<div class="page-header"><h1>校友管理</h1></div><div class="card"><div class="card-head"><h2>校友档案</h2></div><div class="scroll"><table class="audit-table"><thead><tr><th>姓名</th><th>性别</th><th>年级 / 专业</th><th>工作单位</th><th>操作</th></tr></thead><tbody>${visiblePeople()
+          .map(
+            (p) =>
+              `<tr><td>${esc(p.name)}</td><td>${p.gender}</td><td>${
+                records(p)
+                  .map((r) => `${esc(r.grade)}级${r.level} · ${esc(r.major)}`)
+                  .join("<br>") || "-"
+              }</td><td>${esc(p.unit || "-")}</td><td><div class="editor-action-pair"><button class="link" data-person="${p.id}">查看</button>${canEdit() ? `<button class="link" data-edit-person="${p.id}">编辑</button>` : ""}</div></td></tr>`,
+          )
+          .join("")}</tbody></table></div></div>`;
+      }
+      const personFields = {
+        name: "姓名",
+        gender: "性别",
+        mobile: "手机号",
+        email: "邮箱",
+        industry: "行业",
+        unit: "工作单位",
+        position: "职务",
+        address: "通讯地址",
+      };
+      const recordFields = {
+        domain: "培养类别",
+        level: "培养层次",
+        grade: "年级",
+        className: "班级",
+        cohort: "届数",
+        major: "专业",
+        mode: "培养方式",
+        counselor: "辅导员",
+        mentor: "导师",
+        remark: "管理员备注",
+      };
+      const industryOptions = [
+        "党政机关",
+        "事业单位",
+        "国有企业",
+        "民营企业",
+        "高校科研",
+        "金融",
+        "医疗卫生",
+        "社会组织",
+        "其他",
+      ];
+      function selectOptions(values, current, empty = true) {
+        return `${empty ? '<option value="">请选择</option>' : ""}${[...new Set([current, ...values].filter(Boolean))].map((v) => `<option value="${esc(v)}" ${v === current ? "selected" : ""}>${esc(v)}</option>`).join("")}`;
+      }
+      function control(label, value, attrs, kind = "input", options = []) {
+        const required = attrs.includes("data-required");
+        if (required) attrs += ' aria-required="true"';
+        const content =
+          kind === "textarea"
+            ? `<textarea ${attrs} rows="3" maxlength="255">${esc(value)}</textarea>`
+            : kind === "select"
+              ? `<select ${attrs}>${selectOptions(options, value, !required)}</select>`
+              : `<input ${attrs} value="${esc(value)}" maxlength="${label === "姓名" ? "100" : label === "年级" ? "50" : "255"}">`;
+        return `<label class="${kind === "textarea" ? "full" : ""}"><span>${label}${required ? '<span class="required" aria-hidden="true">*</span>' : ""}</span>${content}</label>`;
+      }
+      function renderPersonalForm() {
+        const p = state.draft;
+        $("#personalPanel").innerHTML =
+          `<div class="editor-fields">${control("姓名", p.name, 'data-person-field="name" data-required')}${control("性别", p.gender, 'data-person-field="gender"', "select", ["男", "女", "未填"])}${control("手机号", p.mobile, 'data-person-field="mobile"')}${control("邮箱", p.email, 'data-person-field="email"')}${control("行业", p.industry, 'data-person-field="industry"', "select", industryOptions)}${control("工作单位", p.unit, 'data-person-field="unit"')}${control("职务", p.position, 'data-person-field="position"')}${control("通讯地址", p.address, 'data-person-field="address"', "textarea")}</div>`;
+      }
+      function renderRecordsForm() {
+        const rows = records(state.draft);
+        $("#recordsPanel").innerHTML =
+          `${state.role === "undergraduate" ? '<p class="edit-notice">当前仅维护本科生范围内的学籍与档案。</p>' : ""}${
+            rows.length
+              ? rows
+                  .map((r) => {
+                    const isNew = !person().records.some((x) => x.id === r.id);
+                    const attr = (k) =>
+                      `data-record-field="${k}" data-record-id="${r.id}"`;
+                    const domainOpts = (
+                      state.role === "undergraduate"
+                        ? ["undergraduate"]
+                        : Object.keys(domains)
+                    )
+                      .map(
+                        (k) =>
+                          `<option value="${k}" ${r.domain === k ? "selected" : ""}>${domains[k]}</option>`,
+                      )
+                      .join("");
+                    return `<section class="edit-record" aria-label="${r.level}学籍表单" data-edit-record="${r.id}"><div class="edit-record-head"><h3>${r.level}学籍${isNew ? ' <span class="tag">新增</span>' : ""}</h3>${isNew ? `<button type="button" class="link danger" data-remove-new="${r.id}">移除本次新增</button>` : ""}</div><div class="edit-record-body"><div class="editor-fields"><label><span>培养类别<span class="required" aria-hidden="true">*</span></span><select ${attr("domain")} ${!isNew || state.role === "undergraduate" ? "disabled" : ""}>${domainOpts}</select></label>${control("培养层次", r.level, attr("level") + " data-required", "select", r.domain === "undergraduate" ? ["本科"] : r.domain === "mpa" ? ["硕士"] : ["硕士", "博士"])}${control("年级", r.grade, attr("grade") + " data-required")}${control("班级", r.className, attr("className"))}${control("届数", r.cohort, attr("cohort"))}${control("专业", r.major, attr("major"))}${control("培养方式", r.mode, attr("mode"), "select", ["全日制", "非全日制", "定向", "其他"])}${control("辅导员", r.counselor, attr("counselor"))}${control("导师", r.mentor, attr("mentor"))}${control("管理员备注", r.remark, attr("remark"), "textarea")}</div><h3 class="files-heading">学位档案与学籍档案</h3>${fileSection(r, "degree_archive", true)}${fileSection(r, "academic_record", true)}</div></section>`;
+                  })
+                  .join("")
+              : '<div class="empty">暂无学籍，请添加第一段学籍。</div>'
+          }<div class="edit-section-foot"><button type="button" data-action="add-draft">＋ 添加一段学籍</button><small>同一校友可添加多段本科、硕士或博士学籍。</small></div>`;
+      }
+      function switchTab(tab) {
+        state.tab = tab;
+        $("#personalPanel").hidden = tab !== "personal";
+        $("#recordsPanel").hidden = tab !== "records";
+        for (const t of ["personal", "records"]) {
+          const b = $("#" + t + "Tab");
+          b.classList.toggle("active", tab === t);
+          b.setAttribute("aria-selected", String(tab === t));
+        }
+        $("#editorScroll").scrollTop = 0;
+      }
+      function openEditor(id) {
+        if (!canEdit()) return;
+        const p = visiblePeople().find((x) => x.id === Number(id));
+        if (!p) return;
+        state.personId = p.id;
+        state.draft = structuredClone(p);
+        state.newUrls = [];
+        $("#editContext").textContent =
+          `${p.name} · 个人信息共用一份，各段学籍与档案分别维护。`;
+        $("#formError").hidden = true;
+        renderPersonalForm();
+        renderRecordsForm();
+        switchTab("personal");
+        $("#editor").showModal();
+      }
+      function cancelDraft() {
+        state.newUrls.forEach((u) => URL.revokeObjectURL(u));
+        state.newUrls = [];
+        state.draft = null;
+      }
+      $("#editor").addEventListener("cancel", () => cancelDraft());
+      $("#editor").addEventListener("close", () => {
+        if (state.draft) cancelDraft();
+      });
+      function updateDraft(e) {
+        const t = e.target;
+        if (!state.draft) return;
+        if (t.dataset.personField) state.draft[t.dataset.personField] = t.value;
+        if (t.dataset.recordField) {
+          const r = records(state.draft).find(
+            (x) => x.id === Number(t.dataset.recordId),
+          );
+          if (!r) return;
+          const k = t.dataset.recordField;
+          if (k === "domain") {
+            if (person().records.some((x) => x.id === r.id)) return;
+            if (state.role === "undergraduate" && t.value !== "undergraduate")
+              return;
+            r.domain = t.value;
+            r.level = r.domain === "undergraduate" ? "本科" : "硕士";
+            renderRecordsForm();
+            return;
+          }
+          r[k] = t.value;
+          if (k === "level") renderRecordsForm();
+        }
+      }
+      $("#alumniForm").addEventListener("input", updateDraft);
+      $("#alumniForm").addEventListener("change", updateDraft);
+      function addLog(domain, title, action, changes) {
+        state.logs.push({
+          id: Date.now() + Math.random(),
+          personId: person().id,
+          domain,
+          title,
+          action,
+          changes,
+          time: new Date().toLocaleString("zh-CN", {
+            timeZone: "Asia/Shanghai",
+            hour12: false,
+          }),
+          operator:
+            state.role === "super"
+              ? "超级管理员（演示）"
+              : "本科管理员（演示）",
+        });
+      }
+      function fail(message, tab, selector) {
+        switchTab(tab);
+        $("#formError").textContent = message;
+        $("#formError").hidden = false;
+        $(selector)?.focus();
+      }
+      $("#alumniForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (!state.draft || !canEdit()) return;
+        const draft = state.draft;
+        for (const k of Object.keys(personFields))
+          draft[k] = (draft[k] || "").trim();
+        if (!draft.name)
+          return fail(
+            "请输入姓名，不能只有空格。",
+            "personal",
+            '[data-person-field="name"]',
+          );
+        for (const r of records(draft)) {
+          for (const k of Object.keys(recordFields)) r[k] = (r[k] || "").trim();
+          if (!r.grade)
+            return fail(
+              "请填写每一段学籍的年级。",
+              "records",
+              `[data-record-id="${r.id}"][data-record-field="grade"]`,
+            );
+        }
+        const before = person();
+        const personalChanges = Object.keys(personFields)
+          .filter((k) => (before[k] || "") !== draft[k])
+          .map((k) => ({
+            field: personFields[k],
+            before: before[k] || "-",
+            after: draft[k] || "-",
+          }));
+        if (personalChanges.length)
+          addLog("shared", "个人信息", "修改", personalChanges);
+        for (const r of records(draft)) {
+          const prev = before.records.find((x) => x.id === r.id);
+          const changes = Object.keys(recordFields)
+            .filter((k) => (prev?.[k] || "") !== r[k])
+            .map((k) => ({
+              field: recordFields[k],
+              before:
+                k === "domain" ? domains[prev?.[k]] || "-" : prev?.[k] || "-",
+              after: k === "domain" ? domains[r[k]] : r[k] || "-",
+            }));
+          for (const type of ["degree_archive", "academic_record"]) {
+            const a = (prev?.files || [])
+              .filter((f) => f.type === type)
+              .map((f) => f.name)
+              .join("、");
+            const b = r.files
+              .filter((f) => f.type === type)
+              .map((f) => f.name)
+              .join("、");
+            if (a !== b)
+              changes.push({
+                field: type === "degree_archive" ? "学位档案" : "学籍档案",
+                before: a || "-",
+                after: b || "-",
+              });
+          }
+          if (changes.length)
+            addLog(
+              r.domain,
+              `${r.grade}级${r.level}学籍`,
+              prev ? "修改" : "新增",
+              changes,
+            );
+        }
+        const keptUrls = new Set(
+          draft.records.flatMap((r) => r.files.map((f) => f.url)),
+        );
+        before.records
+          .flatMap((r) => r.files)
+          .forEach((f) => {
+            if (f.url && !keptUrls.has(f.url)) URL.revokeObjectURL(f.url);
+          });
+        state.newUrls
+          .filter((u) => !keptUrls.has(u))
+          .forEach((u) => URL.revokeObjectURL(u));
+        people[people.indexOf(before)] = draft;
+        state.draft = null;
+        state.newUrls = [];
+        $("#editor").close();
+        render();
+        toast("全部修改已保存到本次预览，刷新后恢复示例。");
+      });
+      let toastTimer;
+      function toast(msg) {
+        $("#toast").textContent = msg;
+        $("#toast").hidden = false;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => ($("#toast").hidden = true), 3500);
+      }
+      $("#fileInput").addEventListener("change", (e) => {
+        const f = e.target.files[0];
+        e.target.value = "";
+        if (!f || !state.draft || !state.upload) return;
+        const r = records(state.draft).find(
+          (x) => x.id === state.upload.recordId,
+        );
+        if (!r) return;
+        if (!/\.(pdf|doc|docx|jpg|jpeg|png)$/i.test(f.name))
+          return toast("请选择 PDF、Word、JPG 或 PNG 文件。");
+        if (f.size > 50 * 1024 * 1024) return toast("单文件不能超过 50MB。");
+        const url = URL.createObjectURL(f);
+        state.newUrls.push(url);
+        r.files.push({
+          id: Date.now(),
+          name: f.name,
+          size: f.size,
+          type: state.upload.type,
+          url,
+        });
+        renderRecordsForm();
+        toast("文件已加入草稿，保存全部修改后生效。");
+      });
+      $("#role").addEventListener("change", (e) => {
+        document.querySelectorAll("dialog[open]").forEach((d) => d.close());
+        cancelDraft();
+        state.role = e.target.value;
+        state.personId = 1;
+        state.screen = "detail";
+        render();
+      });
+      document.addEventListener("click", (e) => {
+        const b = e.target.closest("button");
+        if (!b) return;
+        if (b.dataset.close) {
+          $("#" + b.dataset.close).close();
+          return;
+        }
+        if (b.dataset.tab) {
+          switchTab(b.dataset.tab);
+          return;
+        }
+        if (b.dataset.action === "list") {
+          state.screen = "list";
+          render();
+          return;
+        }
+        if (b.dataset.person) {
+          state.personId = Number(b.dataset.person);
+          state.screen = "detail";
+          render();
+          return;
+        }
+        if (b.dataset.editPerson) {
+          openEditor(b.dataset.editPerson);
+          return;
+        }
+        if (b.dataset.action === "add-draft" && state.draft) {
+          const domain =
+            state.role === "undergraduate"
+              ? "undergraduate"
+              : "academic_graduate";
+          state.draft.records.push({
+            id: Date.now(),
+            domain,
+            level: domain === "undergraduate" ? "本科" : "硕士",
+            grade: "",
+            className: "",
+            cohort: "",
+            major: "",
+            mode: "",
+            counselor: "",
+            mentor: "",
+            remark: "",
+            files: [],
+          });
+          renderRecordsForm();
+          $("#editorScroll").scrollTop = $("#editorScroll").scrollHeight;
+          return;
+        }
+        if (b.dataset.removeNew && state.draft) {
+          const id = Number(b.dataset.removeNew);
+          if (person().records.some((r) => r.id === id)) return;
+          state.draft.records = state.draft.records.filter((r) => r.id !== id);
+          renderRecordsForm();
+          return;
+        }
+        if (b.dataset.upload && state.draft) {
+          state.upload = {
+            recordId: Number(b.dataset.upload),
+            type: b.dataset.type,
+          };
+          $("#fileInput").click();
+          return;
+        }
+        if (b.dataset.removeFile && state.draft) {
+          const r = records(state.draft).find(
+            (x) => x.id === Number(b.dataset.recordId),
+          );
+          if (r) {
+            r.files = r.files.filter(
+              (f) => f.id !== Number(b.dataset.removeFile),
+            );
+            renderRecordsForm();
+          }
+          return;
+        }
+        if (b.dataset.download) {
+          const p = b.dataset.draft === "true" ? state.draft : person();
+          const r = records(p).find((x) => x.id === Number(b.dataset.recordId)),
+            f = r?.files.find((x) => x.id === Number(b.dataset.download));
+          if (!f?.url) return;
+          const a = document.createElement("a");
+          a.href = f.url;
+          a.download = f.name;
+          a.click();
+          return;
+        }
+        if (b.dataset.audit) {
+          const log = visibleLogs().find(
+            (l) => String(l.id) === b.dataset.audit,
+          );
+          if (!log) return;
+          $("#auditBody").innerHTML =
+            `<p style="margin-bottom:16px">${esc(log.title)} · ${esc(log.action)}</p><table class="diff-table"><thead><tr><th>字段</th><th>修改前</th><th>修改后</th></tr></thead><tbody>${log.changes.map((c) => `<tr><td>${esc(c.field)}</td><td>${esc(c.before)}</td><td>${esc(c.after)}</td></tr>`).join("")}</tbody></table>`;
+          $("#auditDetail").showModal();
+        }
+      });
+      const query = new URLSearchParams(location.search);
+      if (query.get("screen") === "list") state.screen = "list";
+      render();
+      if (query.get("edit") === "1" && canEdit()) {
+        state.screen = "list";
+        render();
+        openEditor(1);
+      }
+    </script>
+  </body>
+</html>
