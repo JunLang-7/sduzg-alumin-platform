@@ -227,7 +227,7 @@ func (s *fakeAlumniStore) Save(_ context.Context, id uint64, input do.AlumniSave
 	if len(input.Enrollments) > 0 && len(enrollments) == 0 {
 		enrollments = enrollmentsFromInput(id, input.Enrollments)
 	}
-	return &do.AlumniSaveResult{Record: do.AlumniRecord{Profile: profile, Enrollments: enrollments}}, nil
+	return &do.AlumniSaveResult{Visible: true, Record: &do.AlumniRecord{Profile: profile, Enrollments: enrollments}}, nil
 }
 
 func enrollmentsFromInput(alumniID uint64, inputs []do.AlumniEnrollmentInput) []*model.AlumniEnrollment {
