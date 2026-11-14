@@ -153,6 +153,9 @@ func TestAlumniServiceUpdateWritesEnrollmentAuditForChangedSegment(t *testing.T)
 	if len(event.Changes) != 1 || event.Changes[0].FieldName != "major" {
 		t.Fatalf("unexpected enrollment audit changes: %+v", event.Changes)
 	}
+	if len(event.RequiredDataDomainIDs) != 0 {
+		t.Fatalf("same-domain update must not require extra domains, got %v", event.RequiredDataDomainIDs)
+	}
 }
 
 func TestAlumniServiceDeleteWritesDeleteAudit(t *testing.T) {

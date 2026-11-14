@@ -130,6 +130,83 @@ func TestUpdateHandlerMapsEnrollmentLifecycleErrors(t *testing.T) {
 	}
 }
 
+func TestCreateHandlerRejectsIncompatibleTrainingLevelAndCategory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewAlumniHandler(service.NewAlumniService(stubCreateStore{}, nil, stubLifecycleDomains{}))
+	operator := common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}
+	engine := gin.New()
+	engine.POST("/admin/alumni", withAdminAccess(operator, h.Create))
+
+	payload, err := json.Marshal(map[string]any{
+		"name": "新增组合校验",
+		"enrollments": []map[string]any{
+			{"data_domain_id": 2, "training_level": "doctor", "grade": "2020"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/admin/alumni", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (%s)", rec.Code, rec.Body.String())
+	}
+	body := decodeBody(t, rec)
+	if body["code"] != float64(40000) {
+		t.Fatalf("code = %v, want 40000", body["code"])
+	}
+}
+
+// stubCreateStore 只用于新增组合校验：请求在服务层被拒绝，不应触达仓储。
+type stubCreateStore struct{}
+
+func (stubCreateStore) List(context.Context, do.AlumniListQuery) ([]do.AlumniRecord, int64, error) {
+	return nil, 0, nil
+}
+func (stubCreateStore) FindOnly(context.Context, do.AlumniListQuery) ([]do.AlumniRecord, error) {
+	return nil, nil
+}
+func (stubCreateStore) ListAll(context.Context, do.AlumniListQuery) ([]do.AlumniExportRow, error) {
+	return nil, nil
+}
+func (stubCreateStore) CountActive(context.Context) (int64, error) { return 0, nil }
+func (stubCreateStore) GetDetail(context.Context, uint64, []uint64) (*do.AlumniRecord, error) {
+	return nil, common.ErrAlumniNotFound
+}
+func (stubCreateStore) GetPersonalProfile(context.Context, uint64) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+func (stubCreateStore) GetEnrollment(context.Context, uint64, uint64, []uint64) (*model.AlumniEnrollment, error) {
+	return nil, common.ErrEnrollmentNotFound
+}
+func (stubCreateStore) Create(context.Context, do.AlumniCreateInput, uint64) (*do.AlumniRecord, error) {
+	return nil, common.ErrInvalidRequest
+}
+func (stubCreateStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint64) ([]uint64, error) {
+	return nil, nil
+}
+func (stubCreateStore) Save(context.Context, uint64, do.AlumniSaveInput, uint64, []uint64) (*do.AlumniSaveResult, error) {
+	return nil, common.ErrAlumniNotFound
+}
+func (stubCreateStore) Delete(context.Context, uint64, uint64, []uint64) error { return nil }
+func (stubCreateStore) UpdateEditableFields(context.Context, uint64, uint64, do.AlumniEditableProfile) error {
+	return nil
+}
+func (stubCreateStore) FindExistingByDedupKey(context.Context, []do.AlumniDedupKey) (map[string]bool, error) {
+	return make(map[string]bool), nil
+}
+func (stubCreateStore) FindByMobile(context.Context, string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+func (stubCreateStore) FindByEmail(context.Context, string) (*model.AlumniProfile, error) {
+	return nil, common.ErrAlumniNotFound
+}
+func (stubCreateStore) UpdateMobile(context.Context, uint64, string) error { return nil }
+func (stubCreateStore) UpdateEmail(context.Context, uint64, string) error  { return nil }
+
 func TestUpdateHandlerReturnsNullDataWhenAlumniLeavesScope(t *testing.T) {
 	store := &lifecycleStore{saveResult: &do.AlumniSaveResult{
 		Visible: false,

@@ -245,6 +245,14 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 				),
 			),
 		))
+		// 跨类别更正事件携带新旧两侧字段值，要求查询者同时拥有声明的全部数据域，
+		// 仅持有单侧权限时不展示该事件，避免泄露另一类别资料。
+		db = db.Where(gorm.Expr(
+			"(JSON_EXTRACT(?, '$.required_data_domain_ids') IS NULL OR JSON_CONTAINS(CAST(? AS JSON), JSON_EXTRACT(?, '$.required_data_domain_ids')))",
+			operationLogQuery.Detail,
+			string(domainJSON),
+			operationLogQuery.Detail,
+		))
 	}
 	return db
 }

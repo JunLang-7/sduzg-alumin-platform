@@ -135,7 +135,7 @@ func (h *AlumniHandler) Detail(c *gin.Context) {
 //	@Produce		json
 //	@Param			request	body		dto.AdminAlumniCreateRequest	true	"档案字段；name 与 grade 必填"
 //	@Success		201		{object}	response.Body{data=dto.AlumniDetail}
-//	@Failure		400		{object}	response.Body	"参数不正确或数据域无效"
+//	@Failure		400		{object}	response.Body	"参数不正确、数据域无效，或培养层次与培养类别不匹配"
 //	@Failure		403		{object}	response.Body	"权限不足"
 //	@Failure		503		{object}	response.Body	"数据库或数据域不可用"
 //	@Security		BearerAuth
@@ -166,6 +166,8 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrInvalidTrainingLevel):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次无效，请选择本科、硕士或博士")
+	case errors.Is(err, common.ErrEnrollmentCategoryMismatch):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次与培养类别不匹配")
 	case errors.Is(err, common.ErrInvalidDataDomain):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "数据域无效")
 	case errors.Is(err, common.ErrDataDomainUnavailable):

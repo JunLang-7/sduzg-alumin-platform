@@ -461,7 +461,9 @@ export function AlumniManagementPage() {
       errors.name = '请输入姓名';
     }
     const activeDrafts = drafts.filter((draft) => !draft.deleted);
-    if (activeDrafts.length === 0) {
+    // 编辑已有档案时，前端只看到当前管理员可见的学籍，无法判断是否还有隐藏学籍；
+    // “至少保留一段有效学籍”由服务端按全量有效学籍校验，避免误拦删除最后一段可见学籍的场景。
+    if (!editing && activeDrafts.length === 0) {
       errors['enrollments.required'] = '至少需要保留一段有效学籍';
     }
     activeDrafts.forEach((draft) => {
@@ -566,8 +568,11 @@ export function AlumniManagementPage() {
       resetEditor();
       await loadData(query);
     } catch (error) {
-      const err = error as Error;
-      const conflict = /409|已被其他管理员|重新加载/.test(`${err.message}`);
+      const err = error as Error & { status?: number };
+      // 服务端的“至少保留一段有效学籍”也是 409，但应直接提示原因，而不是引导重新加载。
+      const lastEnrollment = /至少保留一段有效学籍/.test(err.message);
+      const conflict =
+        !lastEnrollment && (err.status === 409 || /409|已被其他管理员|重新加载/.test(err.message));
       if (conflict) {
         Modal.confirm({
           title: '保存冲突',

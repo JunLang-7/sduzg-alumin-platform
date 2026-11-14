@@ -336,6 +336,9 @@ func TestAlumniServiceCategoryCorrectionAuditUsesTargetDomainOnly(t *testing.T) 
 	if len(event.DataDomainIDs) != 1 || event.DataDomainIDs[0] != 3 {
 		t.Fatalf("cross-domain correction audit scope = %v, want only the target domain", event.DataDomainIDs)
 	}
+	if len(event.RequiredDataDomainIDs) != 2 || event.RequiredDataDomainIDs[0] != 2 || event.RequiredDataDomainIDs[1] != 3 {
+		t.Fatalf("cross-domain correction must require both domains, got %v", event.RequiredDataDomainIDs)
+	}
 	var domainChange *AuditChange
 	for index := range event.Changes {
 		if event.Changes[index].FieldName == "data_domain_id" {

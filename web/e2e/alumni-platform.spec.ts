@@ -394,8 +394,17 @@ test('管理员可独立删除、撤销并更正学籍培养类别', async ({ pa
     await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
     await editDialog.getByTestId('enrollment-delete-0').click();
     await page.getByRole('button', { name: '标记删除' }).click();
+    const lastSave = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'PUT' &&
+        /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
+    );
     await editDialog.getByRole('button', { name: '保存全部修改' }).click();
-    await expect(page.getByText('至少需要保留一段有效学籍')).toBeVisible();
+    // 服务端拒绝删除最后一段有效学籍，弹窗保持打开且不落库。
+    expect((await lastSave).status()).toBe(409);
+    await expect(
+      page.locator('.ant-message').getByText('至少保留一段有效学籍', { exact: true }),
+    ).toBeVisible();
     await expect(editDialog).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(editDialog).toBeHidden();
