@@ -60,7 +60,7 @@
                         }
                     },
                     "400": {
-                        "description": "参数不正确或数据域无效",
+                        "description": "参数不正确、数据域无效，或培养层次与培养类别不匹配",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }
