@@ -320,7 +320,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "保存全部修改：个人共享字段、提交的已有学籍与本次新增学籍、文件草稿确认和移除在同一事务内完成。version 不匹配返回 409。",
+                "description": "保存全部修改：个人共享字段、提交的已有学籍、本次新增学籍、培养类别更正、显式软删除与文件变更在同一事务内完成。version 不匹配返回 409；删除最后一段有效学籍返回 409。若保存后操作者不再有可访问学籍，返回 data 为 null 的成功响应。",
                 "consumes": [
                     "application/json"
                 ],
@@ -369,7 +369,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "参数不正确",
+                        "description": "参数不正确，或培养层次与培养类别不匹配",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }
@@ -382,6 +382,12 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "对应校友不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Body"
+                        }
+                    },
+                    "409": {
+                        "description": "版本冲突或至少保留一段有效学籍",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }
@@ -4465,6 +4471,9 @@ const docTemplate = `{
                 },
                 "data_domain_id": {
                     "type": "integer"
+                },
+                "deleted": {
+                    "type": "boolean"
                 },
                 "grade": {
                     "type": "string"

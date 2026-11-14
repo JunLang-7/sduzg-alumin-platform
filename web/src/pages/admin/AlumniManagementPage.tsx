@@ -51,6 +51,11 @@ import type {
 } from '../../types/alumni';
 import { EXPLICIT_TRAINING_LEVELS, TRAINING_LEVEL_LABELS } from '../../types/alumni';
 import { draftFilesToActivate } from '../../utils/alumniFiles';
+import {
+  domainsForTrainingLevel,
+  isTrainingLevelDomainCode,
+  resolveDomainForLevel,
+} from '../../utils/alumniEnrollment';
 import { canManageFiles, canReadSensitive } from '../../utils/access';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
@@ -81,6 +86,8 @@ interface DraftEnrollment {
   files: AlumniFileItem[];
   removedFileIds: number[];
   uploadedDraftIds: number[];
+  /** 已保存学籍的删除标记：保存全部修改后才真正软删除。 */
+  deleted: boolean;
 }
 
 function levelLabel(level?: string): string {
@@ -217,6 +224,7 @@ export function AlumniManagementPage() {
         files: filesByEnrollment.get(enrollment.id) ?? [],
         removedFileIds: [],
         uploadedDraftIds: [],
+        deleted: false,
       }));
     },
     [],
@@ -234,6 +242,7 @@ export function AlumniManagementPage() {
         files: [],
         removedFileIds: [],
         uploadedDraftIds: [],
+        deleted: false,
       },
     ]);
     setModalOpen(true);
@@ -338,12 +347,44 @@ export function AlumniManagementPage() {
         files: [],
         removedFileIds: [],
         uploadedDraftIds: [],
+        deleted: false,
       },
     ]);
   };
 
   const removeEnrollmentDraft = (key: string) => {
     setDrafts((prev) => prev.filter((draft) => draft.key !== key));
+  };
+
+  // 已有学籍只能在保存全部修改后软删除；编辑期间可撤销标记。
+  const toggleEnrollmentDeleted = (key: string, deleted: boolean) => {
+    setDrafts((prev) =>
+      prev.map((draft) =>
+        draft.key === key
+          ? {
+              ...draft,
+              deleted,
+              // 删除学籍时不再处理附件变更，撤销后由管理员重新决定。
+              removedFileIds: deleted ? [] : draft.removedFileIds,
+            }
+          : draft,
+      ),
+    );
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((fieldKey) => {
+        if (fieldKey.startsWith(`${key}.`)) delete next[fieldKey];
+      });
+      return next;
+    });
+  };
+
+  const handleLevelChange = (draft: DraftEnrollment, level: TrainingLevel) => {
+    const resolved = resolveDomainForLevel(domains, level, draft.data_domain_id);
+    updateDraft(draft.key, { training_level: level, data_domain_id: resolved.domainID });
+    if (resolved.needsChoice) {
+      message.info('该层次对应多个培养类别，请选择正确的类别');
+    }
   };
 
   const handleUpload = async (draft: DraftEnrollment, fileType: AlumniFileType, file: File) => {
@@ -419,10 +460,11 @@ export function AlumniManagementPage() {
     if (!values.name || !String(values.name).trim()) {
       errors.name = '请输入姓名';
     }
-    if (drafts.length === 0) {
-      errors['enrollments.required'] = '至少需要一段学籍';
+    const activeDrafts = drafts.filter((draft) => !draft.deleted);
+    if (activeDrafts.length === 0) {
+      errors['enrollments.required'] = '至少需要保留一段有效学籍';
     }
-    drafts.forEach((draft) => {
+    activeDrafts.forEach((draft) => {
       if (!draft.grade.trim()) {
         errors[`${draft.key}.grade`] = '请输入年级';
       }
@@ -433,6 +475,15 @@ export function AlumniManagementPage() {
         errors[`${draft.key}.training_level`] = '请选择培养层次';
       } else if (!draft.id && !EXPLICIT_TRAINING_LEVELS.includes(draft.training_level)) {
         errors[`${draft.key}.training_level`] = '新增学籍需明确选择本科、硕士或博士';
+      } else if (draft.data_domain_id) {
+        const domain = domains.find((item) => item.id === draft.data_domain_id);
+        if (
+          domain &&
+          draft.training_level !== 'unverified' &&
+          !isTrainingLevelDomainCode(draft.training_level, domain.code)
+        ) {
+          errors[`${draft.key}.data_domain_id`] = '培养类别与培养层次不匹配';
+        }
       }
     });
     return errors;
@@ -455,22 +506,35 @@ export function AlumniManagementPage() {
     }
     setFieldErrors({});
 
-    const enrollments: AlumniEnrollmentInput[] = drafts.map((draft) => ({
-      ...(draft.id ? { id: draft.id } : {}),
-      ...(draft.version ? { version: draft.version } : {}),
-      data_domain_id: draft.data_domain_id as number,
-      training_level: draft.training_level as TrainingLevel,
-      grade: draft.grade.trim(),
-      class_name: draft.class_name,
-      cohort: draft.cohort,
-      counselor: draft.counselor,
-      mentor: draft.mentor,
-      major: draft.major,
-      training_mode: draft.training_mode,
-      remark: draft.remark,
-      activate_file_ids: draftFilesToActivate(draft.files, draft.uploadedDraftIds),
-      remove_file_ids: draft.removedFileIds,
-    }));
+    const enrollments: AlumniEnrollmentInput[] = drafts.map((draft) => {
+      if (draft.deleted) {
+        // 删除只提交明确选中的这一段，其余字段与附件变更留空。
+        return {
+          id: draft.id,
+          version: draft.version,
+          deleted: true,
+          data_domain_id: draft.data_domain_id ?? 0,
+          training_level: draft.training_level || 'unverified',
+          grade: draft.grade,
+        };
+      }
+      return {
+        ...(draft.id ? { id: draft.id } : {}),
+        ...(draft.version ? { version: draft.version } : {}),
+        data_domain_id: draft.data_domain_id as number,
+        training_level: draft.training_level as TrainingLevel,
+        grade: draft.grade.trim(),
+        class_name: draft.class_name,
+        cohort: draft.cohort,
+        counselor: draft.counselor,
+        mentor: draft.mentor,
+        major: draft.major,
+        training_mode: draft.training_mode,
+        remark: draft.remark,
+        activate_file_ids: draftFilesToActivate(draft.files, draft.uploadedDraftIds),
+        remove_file_ids: draft.removedFileIds,
+      };
+    });
     const payload: AlumniProfilePayload = {
       ...(editing ? { version: editing.version } : {}),
       name: String(values.name).trim(),
@@ -487,8 +551,13 @@ export function AlumniManagementPage() {
     setSaving(true);
     try {
       if (editing) {
-        await alumniApi.update(editing.id, payload);
-        message.success('校友档案已保存');
+        const saved = await alumniApi.update(editing.id, payload);
+        if (saved) {
+          message.success('校友档案已保存');
+        } else {
+          // 删除自己最后可维护的一段后不再拥有该校友，属于保存成功。
+          message.success('修改已保存；该校友已不在你可维护的范围内，已返回列表');
+        }
       } else {
         await alumniApi.create(payload);
         message.success('校友档案已新增');
@@ -792,16 +861,27 @@ export function AlumniManagementPage() {
 
   const renderEnrollmentEditor = (draft: DraftEnrollment, index: number) => {
     const canUpload = Boolean(draft.id);
+    const locked = draft.deleted;
+    const levelDomains = domainsForTrainingLevel(domains, draft.training_level);
+    // 已有学籍的历史类别可能不在当前层次的合法组合内，仍需展示当前值供管理员核对。
+    const domainOptions = domains
+      .filter(
+        (domain) =>
+          levelDomains.some((item) => item.id === domain.id) || domain.id === draft.data_domain_id,
+      )
+      .map((domain) => ({ label: domain.name, value: domain.id }));
+    const noDomainForLevel = Boolean(draft.training_level) && !locked && levelDomains.length === 0;
     return (
       <Card
         key={draft.key}
         size="small"
-        className="enrollment-editor"
+        className={locked ? 'enrollment-editor enrollment-editor--deleted' : 'enrollment-editor'}
         title={
           <Space>
             <span>
               {levelLabel(draft.training_level || undefined)}学籍{' '}
               {draft.id ? '' : <Tag color="green">新增</Tag>}
+              {locked ? <Tag color="red">待删除</Tag> : null}
             </span>
             <span className="text-secondary">
               {draft.grade ? `${draft.grade}级` : '年级未填写'}
@@ -809,25 +889,63 @@ export function AlumniManagementPage() {
           </Space>
         }
         extra={
-          draft.id ? null : (
+          draft.id ? (
+            locked ? (
+              <Button
+                type="link"
+                icon={<UndoOutlined />}
+                onClick={() => toggleEnrollmentDeleted(draft.key, false)}
+                data-testid={`enrollment-undo-delete-${index}`}
+              >
+                撤销删除
+              </Button>
+            ) : (
+              <Popconfirm
+                title="删除这段学籍"
+                description="保存全部修改后软删除该段学籍；个人身份、账号、其他学籍和附件都会保留。"
+                okText="标记删除"
+                cancelText="取消"
+                onConfirm={() => toggleEnrollmentDeleted(draft.key, true)}
+              >
+                <Button
+                  type="link"
+                  danger
+                  icon={<DeleteOutlined />}
+                  data-testid={`enrollment-delete-${index}`}
+                >
+                  删除此段
+                </Button>
+              </Popconfirm>
+            )
+          ) : (
             <Button type="link" danger onClick={() => removeEnrollmentDraft(draft.key)}>
               移除本次新增
             </Button>
           )
         }
       >
+        {locked ? (
+          <div className="empty-hint">
+            该段学籍已标记删除：保存全部修改后才会生效，取消、关闭或保存失败都不会删除。附件随该段保留，
+            但不再出现在查看页、下载和统计中。
+          </div>
+        ) : null}
         <div className="modal-grid">
           <Form.Item
             label="培养类别"
             required
             validateStatus={fieldErrors[`${draft.key}.data_domain_id`] ? 'error' : undefined}
-            help={fieldErrors[`${draft.key}.data_domain_id`]}
+            help={
+              fieldErrors[`${draft.key}.data_domain_id`] ??
+              (noDomainForLevel ? '当前权限内没有与所选层次匹配的培养类别' : undefined)
+            }
           >
             <Select
               value={draft.data_domain_id}
-              disabled={Boolean(draft.id)}
+              disabled={locked}
               onChange={(value) => updateDraft(draft.key, { data_domain_id: value })}
-              options={domains.map((domain) => ({ label: domain.name, value: domain.id }))}
+              options={domainOptions}
+              data-testid={`enrollment-domain-${index}`}
             />
           </Form.Item>
           <Form.Item
@@ -838,7 +956,8 @@ export function AlumniManagementPage() {
           >
             <Select
               value={draft.training_level || undefined}
-              onChange={(value: TrainingLevel) => updateDraft(draft.key, { training_level: value })}
+              disabled={locked}
+              onChange={(value: TrainingLevel) => handleLevelChange(draft, value)}
               options={
                 draft.id
                   ? Object.entries(TRAINING_LEVEL_LABELS).map(([value, label]) => ({
@@ -862,6 +981,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.grade}
               maxLength={50}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { grade: event.target.value })}
               data-testid={`enrollment-grade-${index}`}
             />
@@ -870,6 +990,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.class_name || ''}
               maxLength={100}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { class_name: event.target.value })}
             />
           </Form.Item>
@@ -877,6 +998,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.cohort || ''}
               maxLength={50}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { cohort: event.target.value })}
             />
           </Form.Item>
@@ -884,6 +1006,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.major || ''}
               maxLength={100}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { major: event.target.value })}
             />
           </Form.Item>
@@ -891,6 +1014,7 @@ export function AlumniManagementPage() {
             <Select
               allowClear
               value={draft.training_mode}
+              disabled={locked}
               onChange={(value) => updateDraft(draft.key, { training_mode: value })}
               options={trainingModeOptions.map((value) => ({ label: value, value }))}
             />
@@ -899,6 +1023,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.counselor || ''}
               maxLength={100}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { counselor: event.target.value })}
             />
           </Form.Item>
@@ -906,6 +1031,7 @@ export function AlumniManagementPage() {
             <Input
               value={draft.mentor || ''}
               maxLength={100}
+              disabled={locked}
               onChange={(event) => updateDraft(draft.key, { mentor: event.target.value })}
             />
           </Form.Item>
@@ -914,10 +1040,11 @@ export function AlumniManagementPage() {
           <Input.TextArea
             rows={2}
             value={draft.remark || ''}
+            disabled={locked}
             onChange={(event) => updateDraft(draft.key, { remark: event.target.value })}
           />
         </Form.Item>
-        {filesManageable ? (
+        {filesManageable && !locked ? (
           <>
             <h4>学位档案与学籍档案</h4>
             {!canUpload && (
@@ -1129,6 +1256,14 @@ export function AlumniManagementPage() {
                 label: '学籍与档案',
                 children: (
                   <div className="enrollment-editor-list">
+                    {fieldErrors['enrollments.required'] ? (
+                      <Alert
+                        type="error"
+                        showIcon
+                        message={fieldErrors['enrollments.required']}
+                        data-testid="enrollment-required-error"
+                      />
+                    ) : null}
                     {drafts.map((draft, index) => renderEnrollmentEditor(draft, index))}
                     <Button
                       type="dashed"
@@ -1139,7 +1274,8 @@ export function AlumniManagementPage() {
                       添加一段学籍
                     </Button>
                     <div className="empty-hint">
-                      同一校友可添加多段本科、硕士或博士学籍；未提交的学籍不会被删除。
+                      同一校友可添加多段本科、硕士或博士学籍；已有学籍可标记删除，保存全部修改后才生效，
+                      至少保留一段有效学籍。未提交的学籍不会被删除。
                     </div>
                   </div>
                 ),

@@ -180,15 +180,16 @@ func (h *AlumniHandler) Create(c *gin.Context) {
 // Update 按 ID 更新校友档案。
 //
 //	@Summary		更新校友档案
-//	@Description	保存全部修改：个人共享字段、提交的已有学籍与本次新增学籍、文件草稿确认和移除在同一事务内完成。version 不匹配返回 409。
+//	@Description	保存全部修改：个人共享字段、提交的已有学籍、本次新增学籍、培养类别更正、显式软删除与文件变更在同一事务内完成。version 不匹配返回 409；删除最后一段有效学籍返回 409。若保存后操作者不再有可访问学籍，返回 data 为 null 的成功响应。
 //	@Tags			校友档案查询与管理
 //	@Accept			json
 //	@Produce		json
 //	@Param			id		path		integer							true	"校友档案 ID"
 //	@Param			request	body		dto.AdminAlumniUpdateRequest	true	"档案字段；name 与 grade 必填"
 //	@Success		200		{object}	response.Body{data=dto.AlumniDetail}
-//	@Failure		400		{object}	response.Body	"参数不正确"
+//	@Failure		400		{object}	response.Body	"参数不正确，或培养层次与培养类别不匹配"
 //	@Failure		403		{object}	response.Body	"权限不足，或档案不在可访问数据域内"
+//	@Failure		409		{object}	response.Body	"版本冲突或至少保留一段有效学籍"
 //	@Failure		404		{object}	response.Body	"对应校友不存在"
 //	@Failure		503		{object}	response.Body	"数据库不可用"
 //	@Security		BearerAuth
@@ -214,6 +215,7 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 
 	result, err := h.alumni.Update(c.Request.Context(), *access, id, req)
 	if err == nil {
+		// result 为 nil 表示保存成功但操作者已无可访问学籍，data 返回 null。
 		response.Success(c, result)
 		return
 	}
@@ -225,8 +227,12 @@ func (h *AlumniHandler) Update(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid request")
 	case errors.Is(err, common.ErrInvalidTrainingLevel):
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次无效")
-	case errors.Is(err, common.ErrEnrollmentDomainFixed):
-		response.Fail(c, http.StatusConflict, response.CodeConflict, "已有学籍的培养类别不能通过编辑修改")
+	case errors.Is(err, common.ErrEnrollmentCategoryMismatch):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "培养层次与培养类别不匹配")
+	case errors.Is(err, common.ErrLastEnrollment):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "至少保留一段有效学籍")
+	case errors.Is(err, common.ErrInvalidDataDomain):
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "目标培养类别不可用")
 	case errors.Is(err, common.ErrVersionConflict):
 		response.Fail(c, http.StatusConflict, response.CodeConflict, "数据已被其他管理员修改，请重新加载后再保存")
 	case errors.Is(err, common.ErrAlumniMultiEnrollment):

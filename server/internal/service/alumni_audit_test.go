@@ -125,7 +125,7 @@ func TestAlumniServiceUpdateWritesEnrollmentAuditForChangedSegment(t *testing.T)
 		updateResult:      after,
 	}
 	// 保存后的学籍由 Save 返回，这里让 fake 返回更新后的学籍。
-	store.saveResult = &do.AlumniSaveResult{Record: do.AlumniRecord{Profile: after, Enrollments: []*model.AlumniEnrollment{&updated}}}
+	store.saveResult = &do.AlumniSaveResult{Visible: true, Record: &do.AlumniRecord{Profile: after, Enrollments: []*model.AlumniEnrollment{&updated}}}
 	users := &fakeUserStore{usersByID: map[uint64]*model.User{7: auditOperatorUser()}}
 	writer := &captureAuditWriter{}
 
@@ -217,7 +217,8 @@ func TestAlumniServiceFileOnlySaveWritesScopedAuditAfterSuccess(t *testing.T) {
 			profile := &model.AlumniProfile{ID: 9, Name: "张三", Version: 1}
 			enrollment := auditEnrollment(11, 9)
 			store := &fakeAlumniStore{detail: profile, detailEnrollments: []*model.AlumniEnrollment{enrollment}, saveResult: &do.AlumniSaveResult{
-				Record: do.AlumniRecord{Profile: profile, Enrollments: []*model.AlumniEnrollment{enrollment}},
+				Visible: true,
+				Record:  &do.AlumniRecord{Profile: profile, Enrollments: []*model.AlumniEnrollment{enrollment}},
 				FileChanges: []do.AlumniFileChange{
 					{EnrollmentID: 11, FileID: 42, FileType: common.FileTypeDegreeArchive, OriginalName: "学位证明.pdf"},
 					{EnrollmentID: 11, FileID: 43, FileType: common.FileTypeAcademicRecord, OriginalName: "旧学籍.pdf", Removed: true},

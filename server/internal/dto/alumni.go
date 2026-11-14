@@ -117,9 +117,12 @@ func (r AlumniProfileUpdateRequest) ToProfile() do.AlumniEditableProfile {
 
 // AlumniEnrollmentPayload 是编辑弹窗中单段学籍的提交内容。
 // id 为空表示本次新增；已有学籍必须提交 version。
+// deleted 为 true 表示显式软删除该段学籍，此时只使用 id 与 version，
+// 其余字段与文件变更必须留空。
 type AlumniEnrollmentPayload struct {
 	ID              *uint64  `json:"id"`
 	Version         *uint32  `json:"version"`
+	Deleted         bool     `json:"deleted"`
 	DataDomainID    uint64   `json:"data_domain_id"`
 	TrainingLevel   string   `json:"training_level"`
 	Grade           string   `json:"grade"`
@@ -136,6 +139,7 @@ type AlumniEnrollmentPayload struct {
 
 func (p AlumniEnrollmentPayload) ToInput() do.AlumniEnrollmentInput {
 	input := do.AlumniEnrollmentInput{
+		Deleted:         p.Deleted,
 		DataDomainID:    p.DataDomainID,
 		TrainingLevel:   p.TrainingLevel,
 		Grade:           p.Grade,

@@ -12,6 +12,14 @@ export const TRAINING_LEVEL_LABELS: Record<TrainingLevel, string> = {
 /** 新增学籍时只允许明确选择三种层次，待核验仅用于历史数据。 */
 export const EXPLICIT_TRAINING_LEVELS: TrainingLevel[] = ['undergraduate', 'master', 'doctor'];
 
+/** 培养层次与培养类别（数据域编码）的合法组合，与服务端校验保持一致。 */
+export const TRAINING_LEVEL_DOMAIN_CODES: Record<TrainingLevel, string[]> = {
+  undergraduate: ['undergraduate'],
+  master: ['academic_graduate', 'mpa'],
+  doctor: ['academic_graduate'],
+  unverified: ['undergraduate', 'academic_graduate', 'mpa'],
+};
+
 export interface AlumniEnrollment {
   id: number;
   data_domain_id: number;
@@ -33,6 +41,8 @@ export interface AlumniEnrollment {
 export interface AlumniEnrollmentInput {
   id?: number;
   version?: number;
+  /** 显式软删除该段学籍；为 true 时只提交 id 与 version。 */
+  deleted?: boolean;
   data_domain_id: number;
   training_level: TrainingLevel;
   grade: string;

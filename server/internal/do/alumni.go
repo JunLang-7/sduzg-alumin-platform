@@ -59,9 +59,12 @@ type AlumniPersonalInput struct {
 
 // AlumniEnrollmentInput 是一次保存中提交的单段学籍。
 // ID 为 0 表示新增；ID 非 0 时必须同时提交当前 version 用于并发冲突检查。
+// Deleted 为 true 时表示显式软删除该段学籍，此时只使用 ID 与 Version，
+// 其余字段与文件变更必须留空，避免误删附件或覆盖其他管理员刚保存的数据。
 type AlumniEnrollmentInput struct {
 	ID              uint64
 	Version         uint32
+	Deleted         bool
 	DataDomainID    uint64
 	TrainingLevel   string
 	Grade           string
@@ -91,10 +94,14 @@ type AlumniCreateInput struct {
 	Status      string
 }
 
-// AlumniSaveResult 是保存成功后的完整详情与被移除文件的 MinIO 对象键。
+// AlumniSaveResult 是保存成功后的档案详情与被移除文件的 MinIO 对象键。
 // 对象清理在数据库事务提交后执行，避免事务回滚时误删正式附件。
+// Visible 为 false 表示保存后操作者已没有任何可访问学籍（例如删除了自己唯一
+// 可维护的一段），此时 Record 仍带个人档案，但 Enrollments 为空；调用方应把
+// 本次保存视为成功并让前端返回列表，而不是按详情不可读报错。
 type AlumniSaveResult struct {
-	Record            AlumniRecord
+	Record            *AlumniRecord
+	Visible           bool
 	RemovedObjectKeys []string
 	FileChanges       []AlumniFileChange
 }
