@@ -12,7 +12,7 @@ const TableNameOperationLog = "operation_logs"
 
 // OperationLog operation logs
 type OperationLog struct {
-	ID           uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true" json:"id"`
+	ID           uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true;index:idx_logs_created_id,priority:2" json:"id"`
 	OperatorID   uint64    `gorm:"column:operator_id;type:bigint unsigned;not null;index:idx_logs_operator_id,priority:1;comment:operator user id" json:"operator_id"` // operator user id
 	OperatorRole string    `gorm:"column:operator_role;type:varchar(32);not null;comment:operator role" json:"operator_role"`                                          // operator role
 	Action       string    `gorm:"column:action;type:varchar(100);not null;index:idx_logs_action,priority:1;comment:action" json:"action"`                             // action
@@ -21,7 +21,7 @@ type OperationLog struct {
 	Detail       *string   `gorm:"column:detail;type:json;comment:detail" json:"detail"`                                                                               // detail
 	IPAddress    *string   `gorm:"column:ip_address;type:varchar(64);comment:ip address" json:"ip_address"`                                                            // ip address
 	UserAgent    *string   `gorm:"column:user_agent;type:varchar(512);comment:user agent" json:"user_agent"`                                                           // user agent
-	CreatedAt    time.Time `gorm:"column:created_at;type:datetime;not null;index:idx_logs_created_at,priority:1;default:CURRENT_TIMESTAMP" json:"created_at"`
+	CreatedAt    time.Time `gorm:"column:created_at;type:datetime;not null;index:idx_logs_created_at,priority:1;index:idx_logs_created_id,priority:1;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 // TableName OperationLog's table name

@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -14,157 +16,245 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// fakeAlumniStore 是服务层测试使用的最小内存仓储。
+// 个人档案与学籍段分离后，列表/详情返回 do.AlumniRecord；测试通过 items/detail
+// 与对应的 enrollments 字段构造数据。
 type fakeAlumniStore struct {
-	profile         *model.AlumniProfile
-	findErr         error
+	profile   *model.AlumniProfile
+	findErr   error
+	updateErr error
+
 	query           do.AlumniListQuery
 	items           []*model.AlumniProfile
+	itemEnrollments map[uint64][]*model.AlumniEnrollment
 	total           int64
 	err             error
-	detailID        uint64
-	getDomainIDs    []uint64
-	detail          *model.AlumniProfile
-	detailErr       error
-	createProfile   *model.AlumniProfile
-	createResult    *model.AlumniProfile
-	createErr       error
+
+	detailID          uint64
+	getDomainIDs      []uint64
+	detail            *model.AlumniProfile
+	detailEnrollments []*model.AlumniEnrollment
+	detailErr         error
+
+	createInput       do.AlumniCreateInput
+	createResult      *model.AlumniProfile
+	createEnrollments []*model.AlumniEnrollment
+	createErr         error
+
+	saveID        uint64
+	saveUserID    uint64
+	saveInput     do.AlumniSaveInput
+	saveDomainIDs []uint64
+	saveResult    *do.AlumniSaveResult
+	saveErr       error
+
 	updateResult    *model.AlumniProfile
 	updateID        uint64
 	updateUserID    uint64
 	updateProfile   do.AlumniEditableProfile
-	adminUpdate     do.AlumniUpdateProfile
 	updateDomainIDs []uint64
-	updateErr       error
+
 	deleteID        uint64
 	deleteUserID    uint64
 	deleteDomainIDs []uint64
 	deleteErr       error
-	batchProfiles   []do.AlumniCreateProfile
+
+	batchInputs     []do.AlumniCreateInput
 	batchOperatorID uint64
+	batchIDs        []uint64
 	batchErr        error
-	existing        map[string]bool
+
+	existing map[string]bool
+
+	updatedID uint64
+	updatedMB string
+	updatedEM string
 }
 
-func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
-	s.query = query
-	return s.items, s.total, s.err
-}
-
-func (s *fakeAlumniStore) ListAll(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	s.query = query
-	return s.items, s.err
-}
-
-func (s *fakeAlumniStore) GetByID(_ context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error) {
-	s.detailID = id
-	s.getDomainIDs = slices.Clone(dataDomainIDs)
-	return s.detail, s.detailErr
-}
-
-func (s *fakeAlumniStore) Create(_ context.Context, profile *do.AlumniCreateProfile, operatorID uint64) (*model.AlumniProfile, error) {
-	dataDomainID := uint64(0)
-	if profile.DataDomainID != nil {
-		dataDomainID = *profile.DataDomainID
-	}
-	s.createProfile = &model.AlumniProfile{
-		DataDomainID:   dataDomainID,
-		Name:           profile.Name,
-		Grade:          profile.Grade,
-		ClassName:      profile.ClassName,
-		Cohort:         profile.Cohort,
-		Counselor:      profile.Counselor,
-		Mentor:         profile.Mentor,
-		Major:          profile.Major,
-		TrainingMode:   profile.TrainingMode,
-		Industry:       profile.Industry,
-		WorkUnit:       profile.WorkUnit,
-		Position:       profile.Position,
-		MailingAddress: profile.MailingAddress,
-		Gender:         profile.Gender,
-		Mobile:         profile.Mobile,
-		Remark:         profile.Remark,
-		Status:         profile.Status,
-		CreatedBy:      &operatorID,
-		UpdatedBy:      &operatorID,
-	}
-	if s.createResult != nil || s.createErr != nil {
-		return s.createResult, s.createErr
-	}
-	return s.createProfile, nil
-}
-
-func (s *fakeAlumniStore) Update(_ context.Context, id uint64, updaterID uint64, profile do.AlumniUpdateProfile, dataDomainIDs []uint64) error {
-	s.updateID = id
-	s.updateUserID = updaterID
-	s.adminUpdate = profile
-	s.updateDomainIDs = slices.Clone(dataDomainIDs)
-	if s.updateResult != nil {
-		s.detail = s.updateResult
-	}
-	return s.updateErr
-}
-
-func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
-	s.updateID = id
-	s.updateUserID = updaterID
-	s.updateProfile = profile
-	if s.updateResult != nil {
-		s.detail = s.updateResult
-	}
-	return s.updateErr
-}
-
-func (s *fakeAlumniStore) BatchCreate(ctx context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) error {
-	_, err := s.BatchCreateAndReturnProfiles(ctx, profiles, operatorID)
-	return err
-}
-
-func (s *fakeAlumniStore) BatchCreateAndReturnProfiles(_ context.Context, profiles []do.AlumniCreateProfile, operatorID uint64) ([]*model.AlumniProfile, error) {
-	s.batchProfiles = slices.Clone(profiles)
-	s.batchOperatorID = operatorID
-	if s.batchErr != nil {
-		return nil, s.batchErr
-	}
-	created := make([]*model.AlumniProfile, 0, len(profiles))
-	for i, profile := range profiles {
-		id := uint64(i + 1)
-		dataDomainID := uint64(0)
-		if profile.DataDomainID != nil {
-			dataDomainID = *profile.DataDomainID
+func (s *fakeAlumniStore) recordsFor(profiles []*model.AlumniProfile) []do.AlumniRecord {
+	records := make([]do.AlumniRecord, 0, len(profiles))
+	for _, profile := range profiles {
+		if profile == nil {
+			continue
 		}
-		created = append(created, &model.AlumniProfile{
-			ID:             id,
-			DataDomainID:   dataDomainID,
-			Name:           profile.Name,
-			Grade:          profile.Grade,
-			ClassName:      profile.ClassName,
-			Cohort:         profile.Cohort,
-			Major:          profile.Major,
-			TrainingMode:   profile.TrainingMode,
-			WorkUnit:       profile.WorkUnit,
-			Position:       profile.Position,
-			MailingAddress: profile.MailingAddress,
-			Mobile:         profile.Mobile,
-			Email:          profile.Email,
-		})
+		enrollments := s.itemEnrollments[profile.ID]
+		if enrollments == nil {
+			enrollments = []*model.AlumniEnrollment{}
+		}
+		records = append(records, do.AlumniRecord{Profile: profile, Enrollments: enrollments})
 	}
-	return created, nil
+	return records
+}
+
+func (s *fakeAlumniStore) List(_ context.Context, query do.AlumniListQuery) ([]do.AlumniRecord, int64, error) {
+	s.query = query
+	return s.recordsFor(s.items), s.total, s.err
+}
+
+func (s *fakeAlumniStore) ListAll(_ context.Context, query do.AlumniListQuery) ([]do.AlumniExportRow, error) {
+	s.query = query
+	rows := make([]do.AlumniExportRow, 0, len(s.items))
+	for _, profile := range s.items {
+		if profile == nil {
+			continue
+		}
+		enrollments := s.itemEnrollments[profile.ID]
+		for _, enrollment := range enrollments {
+			rows = append(rows, do.AlumniExportRow{Profile: profile, Enrollment: enrollment})
+		}
+	}
+	return rows, s.err
+}
+
+func (s *fakeAlumniStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]do.AlumniRecord, error) {
+	s.query = query
+	return s.recordsFor(s.items), s.err
 }
 
 func (s *fakeAlumniStore) CountActive(_ context.Context) (int64, error) {
 	return int64(len(s.items)), s.err
 }
 
-func (s *fakeAlumniStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	s.query = query
-	return s.items, s.err
+func (s *fakeAlumniStore) GetDetail(_ context.Context, id uint64, dataDomainIDs []uint64) (*do.AlumniRecord, error) {
+	s.detailID = id
+	s.getDomainIDs = slices.Clone(dataDomainIDs)
+	if s.detailErr != nil {
+		return nil, s.detailErr
+	}
+	if s.detail == nil {
+		if s.updateResult != nil && s.updateResult.ID == id {
+			return &do.AlumniRecord{Profile: s.updateResult, Enrollments: s.detailEnrollments}, nil
+		}
+		return nil, common.ErrAlumniNotFound
+	}
+	profile := s.detail
+	if s.updateID == id && s.updateResult != nil {
+		profile = s.updateResult
+	}
+	return &do.AlumniRecord{Profile: profile, Enrollments: s.detailEnrollments}, nil
 }
 
-func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	if s.existing != nil {
-		return s.existing, nil
+func (s *fakeAlumniStore) GetPersonalProfile(_ context.Context, id uint64) (*model.AlumniProfile, error) {
+	s.detailID = id
+	if s.detailErr != nil {
+		return nil, s.detailErr
 	}
-	return make(map[string]bool), nil
+	if s.updateID == id && s.updateResult != nil {
+		return s.updateResult, nil
+	}
+	if s.detail != nil && s.detail.ID == id {
+		return s.detail, nil
+	}
+	if s.profile != nil && s.profile.ID == id {
+		return s.profile, nil
+	}
+	return nil, common.ErrAlumniNotFound
+}
+
+func (s *fakeAlumniStore) GetEnrollment(_ context.Context, alumniID uint64, enrollmentID uint64, dataDomainIDs []uint64) (*model.AlumniEnrollment, error) {
+	s.detailID = alumniID
+	s.getDomainIDs = slices.Clone(dataDomainIDs)
+	for _, enrollment := range s.detailEnrollments {
+		if enrollment.ID == enrollmentID && enrollment.AlumniID == alumniID {
+			return enrollment, nil
+		}
+	}
+	return nil, common.ErrEnrollmentNotFound
+}
+
+func (s *fakeAlumniStore) Create(_ context.Context, input do.AlumniCreateInput, operatorID uint64) (*do.AlumniRecord, error) {
+	s.createInput = input
+	s.batchOperatorID = operatorID
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
+	profile := s.createResult
+	if profile == nil {
+		profile = &model.AlumniProfile{
+			ID:        1,
+			Name:      input.Personal.Name,
+			Gender:    input.Personal.Gender,
+			Mobile:    input.Personal.Mobile,
+			Email:     input.Personal.Email,
+			Industry:  input.Personal.Industry,
+			WorkUnit:  input.Personal.WorkUnit,
+			Position:  input.Personal.Position,
+			Status:    common.AlumniStatusActive,
+			Version:   1,
+			CreatedBy: &operatorID,
+			UpdatedBy: &operatorID,
+		}
+	}
+	s.createEnrollments = enrollmentsFromInput(profile.ID, input.Enrollments)
+	return &do.AlumniRecord{Profile: profile, Enrollments: s.createEnrollments}, nil
+}
+
+func (s *fakeAlumniStore) BatchCreate(_ context.Context, inputs []do.AlumniCreateInput, operatorID uint64) ([]uint64, error) {
+	s.batchInputs = append([]do.AlumniCreateInput(nil), inputs...)
+	s.batchOperatorID = operatorID
+	if s.batchErr != nil {
+		return nil, s.batchErr
+	}
+	if s.batchIDs != nil {
+		return s.batchIDs, nil
+	}
+	ids := make([]uint64, 0, len(inputs))
+	for i := range inputs {
+		ids = append(ids, uint64(i+1))
+	}
+	return ids, nil
+}
+
+func (s *fakeAlumniStore) Save(_ context.Context, id uint64, input do.AlumniSaveInput, operatorID uint64, dataDomainIDs []uint64) (*do.AlumniSaveResult, error) {
+	s.saveID = id
+	s.saveUserID = operatorID
+	s.saveInput = input
+	s.saveDomainIDs = slices.Clone(dataDomainIDs)
+	if s.saveErr != nil {
+		return nil, s.saveErr
+	}
+	if s.saveResult != nil {
+		return s.saveResult, nil
+	}
+	profile := s.updateResult
+	if profile == nil {
+		profile = s.detail
+	}
+	if profile == nil {
+		profile = &model.AlumniProfile{ID: id, Name: input.Personal.Name, Status: common.AlumniStatusActive, Version: input.Version + 1}
+	}
+	enrollments := s.detailEnrollments
+	if len(input.Enrollments) > 0 && len(enrollments) == 0 {
+		enrollments = enrollmentsFromInput(id, input.Enrollments)
+	}
+	return &do.AlumniSaveResult{Record: do.AlumniRecord{Profile: profile, Enrollments: enrollments}}, nil
+}
+
+func enrollmentsFromInput(alumniID uint64, inputs []do.AlumniEnrollmentInput) []*model.AlumniEnrollment {
+	enrollments := make([]*model.AlumniEnrollment, 0, len(inputs))
+	for i, input := range inputs {
+		id := input.ID
+		if id == 0 {
+			id = uint64(i + 1)
+		}
+		enrollments = append(enrollments, &model.AlumniEnrollment{
+			ID:            id,
+			AlumniID:      alumniID,
+			DataDomainID:  input.DataDomainID,
+			TrainingLevel: input.TrainingLevel,
+			Grade:         input.Grade,
+			ClassName:     input.ClassName,
+			Cohort:        input.Cohort,
+			Counselor:     input.Counselor,
+			Mentor:        input.Mentor,
+			Major:         input.Major,
+			TrainingMode:  input.TrainingMode,
+			Remark:        input.Remark,
+			Status:        common.AlumniStatusActive,
+			Version:       1,
+		})
+	}
+	return enrollments
 }
 
 func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error {
@@ -174,12 +264,46 @@ func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64,
 	return s.deleteErr
 }
 
+func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
+	s.updateID = id
+	s.updateUserID = updaterID
+	s.updateProfile = profile
+	return s.updateErr
+}
+
+func (s *fakeAlumniStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
+	if s.existing != nil {
+		return s.existing, nil
+	}
+	return make(map[string]bool), nil
+}
+
+func (s *fakeAlumniStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return s.profile, s.findErr
+}
+
+func (s *fakeAlumniStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
+	return s.profile, s.findErr
+}
+
+func (s *fakeAlumniStore) UpdateMobile(_ context.Context, id uint64, mobile string) error {
+	s.updatedID = id
+	s.updatedMB = mobile
+	return s.updateErr
+}
+
+func (s *fakeAlumniStore) UpdateEmail(_ context.Context, id uint64, email string) error {
+	s.updatedID = id
+	s.updatedEM = email
+	return s.updateErr
+}
+
 func buildAlumniImportWorkbook(t *testing.T, rows [][]string) *bytes.Buffer {
 	t.Helper()
 
 	f := excelize.NewFile()
 	defer f.Close()
-	for column, header := range alumniColumnHeaders {
+	for column, header := range alumniImportColumnHeaders {
 		cell, err := excelize.CoordinatesToCellName(column+1, 1)
 		if err != nil {
 			t.Fatalf("header cell: %v", err)
@@ -207,12 +331,16 @@ func buildAlumniImportWorkbook(t *testing.T, rows [][]string) *bytes.Buffer {
 	return &data
 }
 
+func importRow(name, level, grade, domain string) []string {
+	return []string{name, level, grade, "", "", "", "", "", "", "", "", "", "", "", "", "", domain}
+}
+
 func TestAlumniServiceImportPartiallySucceedsWhenRowContainsUnauthorizedSensitiveFields(t *testing.T) {
 	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil)
+	svc := NewAlumniService(store, nil, testDataDomainStore())
 	workbook := buildAlumniImportWorkbook(t, [][]string{
-		{"敏感行", "2020级", "", "", "", "", "", "", "", "", "", "", "", "13800000000"},
-		{"正常行", "2020级"},
+		{"敏感行", "硕士", "2020级", "", "", "", "", "", "", "", "", "", "", "", "13800000000", "", "mpa"},
+		{"正常行", "硕士", "2020级", "", "", "", "", "", "", "", "", "", "", "", "", "", "mpa"},
 	})
 
 	result, err := svc.Import(context.Background(), common.AccessContext{
@@ -229,165 +357,179 @@ func TestAlumniServiceImportPartiallySucceedsWhenRowContainsUnauthorizedSensitiv
 	if rowError := result.Errors[0]; rowError.Row != 2 || rowError.Name != "敏感行" || rowError.Message != "无权导入敏感字段" {
 		t.Fatalf("unexpected row error: %+v", rowError)
 	}
-	if len(store.batchProfiles) != 1 || store.batchProfiles[0].Name != "正常行" {
-		t.Fatalf("expected only valid row to be imported, got %+v", store.batchProfiles)
+	if len(store.batchInputs) != 1 || store.batchInputs[0].Personal.Name != "正常行" {
+		t.Fatalf("expected only valid row to be imported, got %+v", store.batchInputs)
 	}
 }
 
 func TestAlumniServiceCreateNormalizesAndMapsDetail(t *testing.T) {
 	className := " 2020级MPA周末班 "
-	emptyMentor := " "
-	workUnit := " 山东大学 "
+	grade := " 2020级 "
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 
 	detail, err := svc.Create(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, dto.AdminAlumniCreateRequest{
-		Name:      " 张三 ",
-		Grade:     " 2020级 ",
-		ClassName: &className,
-		Mentor:    &emptyMentor,
-		WorkUnit:  &workUnit,
+		Name: " 张三 ",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID:  3,
+			TrainingLevel: common.TrainingLevelMaster,
+			Grade:         grade,
+			ClassName:     &className,
+			Mentor:        new(string),
+		}},
 	})
 	if err != nil {
 		t.Fatalf("expected create success, got %v", err)
 	}
-	if store.createProfile == nil {
-		t.Fatal("expected create profile to be recorded")
+	if store.createInput.Personal.Name != "张三" {
+		t.Fatalf("expected trimmed name, got %q", store.createInput.Personal.Name)
 	}
-	if store.createProfile.Name != "张三" || store.createProfile.Grade != "2020级" {
-		t.Fatalf("expected trimmed required fields, got %+v", store.createProfile)
+	if len(store.createInput.Enrollments) != 1 {
+		t.Fatalf("expected one enrollment, got %+v", store.createInput.Enrollments)
 	}
-	if store.createProfile.ClassName == nil || *store.createProfile.ClassName != "2020级MPA周末班" {
-		t.Fatalf("expected trimmed class name, got %+v", store.createProfile.ClassName)
+	enrollment := store.createInput.Enrollments[0]
+	if enrollment.Grade != "2020级" || enrollment.ClassName == nil || *enrollment.ClassName != "2020级MPA周末班" {
+		t.Fatalf("unexpected normalized enrollment: %+v", enrollment)
 	}
-	if store.createProfile.Mentor != nil {
-		t.Fatalf("expected blank mentor to be nil, got %+v", store.createProfile.Mentor)
+	if enrollment.Mentor != nil {
+		t.Fatalf("expected blank mentor to be nil, got %+v", enrollment.Mentor)
 	}
-	if store.createProfile.WorkUnit == nil || *store.createProfile.WorkUnit != "山东大学" {
-		t.Fatalf("expected trimmed work unit, got %+v", store.createProfile.WorkUnit)
-	}
-	if store.createProfile.CreatedBy == nil || *store.createProfile.CreatedBy != 7 {
-		t.Fatalf("expected creator id 7, got %+v", store.createProfile.CreatedBy)
-	}
-	if store.createProfile.UpdatedBy == nil || *store.createProfile.UpdatedBy != 7 {
-		t.Fatalf("expected updater id 7, got %+v", store.createProfile.UpdatedBy)
-	}
-	if store.createProfile.Status != common.AlumniStatusActive {
-		t.Fatalf("expected active status, got %q", store.createProfile.Status)
-	}
-	if detail.Name != "张三" || detail.Grade != "2020级" || detail.WorkUnit == nil || *detail.WorkUnit != "山东大学" {
+	if detail.Name != "张三" || len(detail.Enrollments) != 1 || detail.Enrollments[0].TrainingLevel != common.TrainingLevelMaster {
 		t.Fatalf("unexpected created detail: %+v", detail)
 	}
 }
 
-func TestAlumniServiceCreateRejectsMissingRequiredFields(t *testing.T) {
+func TestAlumniServiceCreateRejectsMissingRequiredFieldsAndLevel(t *testing.T) {
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
 
 	_, err := svc.Create(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, dto.AdminAlumniCreateRequest{
-		Name:  " ",
-		Grade: "2020级",
+		Name: " ",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
 	})
 	if err != common.ErrInvalidRequest {
-		t.Fatalf("expected invalid request, got %v", err)
+		t.Fatalf("expected invalid request for blank name, got %v", err)
+	}
+
+	_, err = svc.Create(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, dto.AdminAlumniCreateRequest{
+		Name: "张三",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID: 3, TrainingLevel: common.TrainingLevelUnverified, Grade: "2020级",
+		}},
+	})
+	if err != common.ErrInvalidTrainingLevel {
+		t.Fatalf("expected unverified level to be rejected for new enrollment, got %v", err)
 	}
 }
 
-func TestAlumniServiceUpdateNormalizesAndMapsDetail(t *testing.T) {
+func TestAlumniServiceUpdateNormalizesAndSavesAll(t *testing.T) {
 	className := " 2020级MPA周末班 "
-	normalizedClassName := "2020级MPA周末班"
 	remark := " 管理端备注 "
-	normalizedRemark := "管理端备注"
 	updatedAt := time.Date(2026, 4, 30, 9, 0, 0, 0, time.UTC)
 	store := &fakeAlumniStore{
-		updateResult: &model.AlumniProfile{
-			ID:        9,
-			Name:      "张三",
-			Grade:     "2020级",
-			ClassName: &normalizedClassName,
-			Remark:    &normalizedRemark,
-			Status:    "active",
-			UpdatedAt: updatedAt,
-		},
+		detail: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 3},
+		detailEnrollments: []*model.AlumniEnrollment{{
+			ID: 11, AlumniID: 9, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+			Status: common.AlumniStatusActive, Version: 2,
+		}},
+		updateResult: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 4, UpdatedAt: updatedAt},
 	}
 	svc := NewAlumniService(store, nil)
 
 	detail, err := svc.Update(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9, dto.AdminAlumniUpdateRequest{
-		Name:      " 张三 ",
-		Grade:     " 2020级 ",
-		ClassName: &className,
-		Remark:    &remark,
+		Version: 3,
+		Name:    " 张三 ",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			ID:            new(uint64(11)),
+			Version:       new(uint32(2)),
+			DataDomainID:  3,
+			TrainingLevel: common.TrainingLevelMaster,
+			Grade:         "2020级",
+			ClassName:     &className,
+			Remark:        &remark,
+		}},
 	})
 	if err != nil {
 		t.Fatalf("expected update success, got %v", err)
 	}
-	if store.adminUpdate.Name != "张三" || store.adminUpdate.Grade != "2020级" {
-		t.Fatalf("expected trimmed required fields, got %+v", store.adminUpdate)
+	if store.saveID != 9 || store.saveUserID != 7 || store.saveInput.Version != 3 {
+		t.Fatalf("unexpected save target: %+v", store.saveInput)
 	}
-	if store.adminUpdate.ClassName == nil || *store.adminUpdate.ClassName != "2020级MPA周末班" {
-		t.Fatalf("expected trimmed class name, got %+v", store.adminUpdate.ClassName)
+	if len(store.saveInput.Enrollments) != 1 {
+		t.Fatalf("expected one saved enrollment, got %+v", store.saveInput.Enrollments)
 	}
-	if store.adminUpdate.Remark == nil || *store.adminUpdate.Remark != "管理端备注" {
-		t.Fatalf("expected trimmed remark, got %+v", store.adminUpdate.Remark)
+	saved := store.saveInput.Enrollments[0]
+	if saved.ClassName == nil || *saved.ClassName != "2020级MPA周末班" || saved.Remark == nil || *saved.Remark != "管理端备注" {
+		t.Fatalf("unexpected normalized enrollment: %+v", saved)
 	}
-	if store.updateID != 9 || store.updateUserID != 7 {
-		t.Fatalf("unexpected update target: alumni=%d user=%d", store.updateID, store.updateUserID)
-	}
-	if detail.ID != 9 || detail.Name != "张三" || detail.ClassName == nil || *detail.ClassName != "2020级MPA周末班" {
+	if detail.ID != 9 || !detail.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected updated detail: %+v", detail)
-	}
-	if !detail.UpdatedAt.Equal(updatedAt) {
-		t.Fatalf("unexpected updated time: %+v", detail.UpdatedAt)
 	}
 }
 
-func TestAlumniServiceUpdatePreservesEmptyOptionalFields(t *testing.T) {
-	className := " "
-	remark := ""
+func TestAlumniServiceUpdateRejectsVersionConflictBeforeWriting(t *testing.T) {
 	store := &fakeAlumniStore{
-		updateResult: &model.AlumniProfile{
-			ID:     9,
-			Name:   "张三",
-			Grade:  "2020级",
-			Status: common.AlumniStatusActive,
-		},
+		detail: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 3},
+		detailEnrollments: []*model.AlumniEnrollment{{
+			ID: 11, AlumniID: 9, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+			Status: common.AlumniStatusActive, Version: 2,
+		}},
+		saveErr: common.ErrVersionConflict,
 	}
 	svc := NewAlumniService(store, nil)
 
 	_, err := svc.Update(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9, dto.AdminAlumniUpdateRequest{
-		Name:      "张三",
-		Grade:     "2020级",
-		ClassName: &className,
-		Remark:    &remark,
+		Version: 2,
+		Name:    "张三",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			ID: new(uint64(11)), Version: new(uint32(2)), DataDomainID: 3,
+			TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
 	})
-	if err != nil {
-		t.Fatalf("expected update success, got %v", err)
+	if err != common.ErrVersionConflict {
+		t.Fatalf("expected version conflict, got %v", err)
 	}
-	if store.adminUpdate.ClassName == nil || *store.adminUpdate.ClassName != "" {
-		t.Fatalf("expected blank class name to be preserved, got %+v", store.adminUpdate.ClassName)
+}
+
+func TestAlumniServiceUpdateRejectsHiddenEnrollmentID(t *testing.T) {
+	store := &fakeAlumniStore{
+		detail: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 1},
+		detailEnrollments: []*model.AlumniEnrollment{{
+			ID: 11, AlumniID: 9, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+			Status: common.AlumniStatusActive, Version: 1,
+		}},
 	}
-	if store.adminUpdate.Remark == nil || *store.adminUpdate.Remark != "" {
-		t.Fatalf("expected blank remark to be preserved, got %+v", store.adminUpdate.Remark)
+	svc := NewAlumniService(store, nil)
+
+	_, err := svc.Update(context.Background(), common.AccessContext{
+		UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{3},
+	}, 9, dto.AdminAlumniUpdateRequest{
+		Version: 1,
+		Name:    "张三",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			ID: new(uint64(99)), Version: new(uint32(1)), DataDomainID: 4,
+			TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
+	})
+	if err != common.ErrEnrollmentNotFound {
+		t.Fatalf("expected hidden enrollment id to be rejected, got %v", err)
 	}
 }
 
 func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	workUnit := "山东大学"
 	position := "主任"
-	mentor := "王老师"
 	gender := "女"
+	email := "zhangsan@example.com"
 	updatedAt := time.Date(2026, 4, 29, 9, 0, 0, 0, time.UTC)
 	store := &fakeAlumniStore{
-		items: []*model.AlumniProfile{
-			{
-				ID:        9,
-				Name:      "张三",
-				Grade:     "2020级",
-				Mentor:    &mentor,
-				WorkUnit:  &workUnit,
-				Position:  &position,
-				Gender:    &gender,
-				UpdatedAt: updatedAt,
-			},
+		items: []*model.AlumniProfile{{
+			ID: 9, Name: "张三", Gender: &gender, Email: &email,
+			WorkUnit: &workUnit, Position: &position, Version: 2, UpdatedAt: updatedAt,
+		}},
+		itemEnrollments: map[uint64][]*model.AlumniEnrollment{
+			9: {{ID: 11, AlumniID: 9, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级", Major: new(string)}},
 		},
 		total: 12,
 	}
@@ -413,16 +555,16 @@ func TestAlumniServiceListNormalizesAndMapsItems(t *testing.T) {
 	if len(pager.Items) != 1 {
 		t.Fatalf("expected 1 item, got %d", len(pager.Items))
 	}
-	if pager.Items[0].ID != 9 || pager.Items[0].Name != "张三" || pager.Items[0].WorkUnit == nil || *pager.Items[0].WorkUnit != workUnit {
-		t.Fatalf("unexpected alumni item: %+v", pager.Items[0])
+	item := pager.Items[0]
+	if item.ID != 9 || item.Name != "张三" || item.WorkUnit == nil || *item.WorkUnit != workUnit {
+		t.Fatalf("unexpected alumni item: %+v", item)
 	}
-	if pager.Items[0].Mentor == nil || *pager.Items[0].Mentor != mentor || pager.Items[0].Gender == nil || *pager.Items[0].Gender != gender {
-		t.Fatalf("expected mentor and gender to be mapped, got %+v", pager.Items[0])
+	if len(item.Enrollments) != 1 || item.Enrollments[0].TrainingLevel != common.TrainingLevelMaster {
+		t.Fatalf("expected enrollment summary to be mapped, got %+v", item.Enrollments)
 	}
 }
 
 func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
-	counselor := "李老师"
 	mentor := "王老师"
 	mailingAddress := "济南市"
 	createdAt := time.Date(2026, 4, 28, 9, 0, 0, 0, time.UTC)
@@ -430,16 +572,13 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	alumniID := uint64(9)
 	store := &fakeAlumniStore{
 		detail: &model.AlumniProfile{
-			ID:             alumniID,
-			Name:           "张三",
-			Grade:          "2020级",
-			Counselor:      &counselor,
-			Mentor:         &mentor,
-			MailingAddress: &mailingAddress,
-			Status:         "active",
-			CreatedAt:      createdAt,
-			UpdatedAt:      updatedAt,
+			ID: alumniID, Name: "张三", MailingAddress: &mailingAddress,
+			Status: "active", Version: 1, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		},
+		detailEnrollments: []*model.AlumniEnrollment{{
+			ID: 11, AlumniID: alumniID, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster,
+			Grade: "2020级", Mentor: &mentor, Status: common.AlumniStatusActive, Version: 1,
+		}},
 	}
 	svc := NewAlumniService(store, nil)
 
@@ -450,8 +589,14 @@ func TestAlumniServiceGetByIDMapsDetail(t *testing.T) {
 	if store.detailID != alumniID {
 		t.Fatalf("expected detail id %d, got %d", alumniID, store.detailID)
 	}
-	if detail.ID != alumniID || detail.Name != "张三" || detail.Counselor == nil || *detail.Counselor != counselor {
+	if detail.ID != alumniID || detail.Name != "张三" || len(detail.Enrollments) != 1 {
 		t.Fatalf("unexpected alumni detail: %+v", detail)
+	}
+	if detail.Enrollments[0].Mentor == nil || *detail.Enrollments[0].Mentor != mentor {
+		t.Fatalf("expected mentor mapped from enrollment, got %+v", detail.Enrollments[0])
+	}
+	if detail.Enrollments[0].Remark != nil {
+		t.Fatalf("alumni viewer must not see admin remark, got %+v", detail.Enrollments[0].Remark)
 	}
 	if !detail.CreatedAt.Equal(createdAt) || !detail.UpdatedAt.Equal(updatedAt) {
 		t.Fatalf("unexpected detail times: %+v", detail)
@@ -467,14 +612,8 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 	viewerAlumniID := uint64(5)
 	store := &fakeAlumniStore{
 		detail: &model.AlumniProfile{
-			ID:             alumniID,
-			Name:           "张三",
-			Grade:          "2020级",
-			Mobile:         &mobile,
-			WorkUnit:       &workUnit,
-			Position:       &position,
-			MailingAddress: &mailingAddress,
-			Status:         "active",
+			ID: alumniID, Name: "张三", Mobile: &mobile, WorkUnit: &workUnit,
+			Position: &position, MailingAddress: &mailingAddress, Status: "active",
 		},
 	}
 	svc := NewAlumniService(store, nil)
@@ -483,124 +622,62 @@ func TestAlumniServiceGetByIDMasksSensitiveFieldsForAlumniViewingOthers(t *testi
 	if err != nil {
 		t.Fatalf("expected detail success, got %v", err)
 	}
-	if detail.Mobile != nil {
-		t.Fatalf("expected mobile to be nil, got %v", *detail.Mobile)
-	}
-	if detail.WorkUnit != nil {
-		t.Fatalf("expected work unit to be nil, got %v", *detail.WorkUnit)
-	}
-	if detail.Position != nil {
-		t.Fatalf("expected position to be nil, got %v", *detail.Position)
-	}
-	if detail.MailingAddress != nil {
-		t.Fatalf("expected mailing_address to be nil, got %v", *detail.MailingAddress)
+	if detail.Mobile != nil || detail.WorkUnit != nil || detail.Position != nil || detail.MailingAddress != nil {
+		t.Fatalf("expected sensitive fields to be masked, got %+v", detail)
 	}
 }
 
-func TestAlumniServiceGetByIDShowsAllFieldsForAlumniViewingSelf(t *testing.T) {
+func TestAlumniServiceGetByIDShowsAllFieldsForSelfAndAdmin(t *testing.T) {
 	mobile := "13800000000"
 	position := "主任"
 	mailingAddress := "济南市"
 	alumniID := uint64(9)
-	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{
-			ID:             alumniID,
-			Name:           "张三",
-			Grade:          "2020级",
-			Mobile:         &mobile,
-			Position:       &position,
-			MailingAddress: &mailingAddress,
-			Status:         "active",
-		},
+	newStore := func() *fakeAlumniStore {
+		return &fakeAlumniStore{detail: &model.AlumniProfile{
+			ID: alumniID, Name: "张三", Mobile: &mobile, Position: &position,
+			MailingAddress: &mailingAddress, Status: "active",
+		}}
 	}
-	svc := NewAlumniService(store, nil)
 
-	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleAlumni, AlumniID: &alumniID})
+	selfDetail, err := NewAlumniService(newStore(), nil).GetByID(context.Background(), alumniID,
+		common.AccessContext{Role: common.RoleAlumni, AlumniID: &alumniID})
 	if err != nil {
-		t.Fatalf("expected detail success, got %v", err)
+		t.Fatalf("expected self detail success, got %v", err)
 	}
-	if detail.Mobile == nil || *detail.Mobile != mobile {
-		t.Fatalf("expected mobile %q, got %v", mobile, detail.Mobile)
+	if selfDetail.Mobile == nil || *selfDetail.Mobile != mobile || selfDetail.MailingAddress == nil {
+		t.Fatalf("expected self to see own sensitive fields, got %+v", selfDetail)
 	}
-	if detail.Position == nil || *detail.Position != position {
-		t.Fatalf("expected position %q, got %v", position, detail.Position)
-	}
-	if detail.MailingAddress == nil || *detail.MailingAddress != mailingAddress {
-		t.Fatalf("expected mailing_address %q, got %v", mailingAddress, detail.MailingAddress)
-	}
-}
 
-func TestAlumniServiceGetByIDShowsAllFieldsForAdmin(t *testing.T) {
-	mobile := "13800000000"
-	position := "主任"
-	mailingAddress := "济南市"
-	alumniID := uint64(9)
-	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{
-			ID:             alumniID,
-			Name:           "张三",
-			Grade:          "2020级",
-			Mobile:         &mobile,
-			Position:       &position,
-			MailingAddress: &mailingAddress,
-			Status:         "active",
-		},
-	}
-	svc := NewAlumniService(store, nil)
-
-	detail, err := svc.GetByID(context.Background(), alumniID, common.AccessContext{Role: common.RoleSuperAdmin})
+	adminDetail, err := NewAlumniService(newStore(), nil).GetByID(context.Background(), alumniID,
+		common.AccessContext{Role: common.RoleSuperAdmin})
 	if err != nil {
-		t.Fatalf("expected detail success, got %v", err)
+		t.Fatalf("expected admin detail success, got %v", err)
 	}
-	if detail.Mobile == nil || *detail.Mobile != mobile {
-		t.Fatalf("expected mobile %q, got %v", mobile, detail.Mobile)
-	}
-	if detail.Position == nil || *detail.Position != position {
-		t.Fatalf("expected position %q, got %v", position, detail.Position)
-	}
-	if detail.MailingAddress == nil || *detail.MailingAddress != mailingAddress {
-		t.Fatalf("expected mailing_address %q, got %v", mailingAddress, detail.MailingAddress)
+	if adminDetail.Mobile == nil || adminDetail.Position == nil || adminDetail.MailingAddress == nil {
+		t.Fatalf("expected admin to see sensitive fields, got %+v", adminDetail)
 	}
 }
 
 func TestAlumniServiceGetMeUsesBoundAlumniID(t *testing.T) {
 	alumniID := uint64(9)
-	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{
-			ID:     alumniID,
-			Name:   "张三",
-			Grade:  "2020级",
-			Status: "active",
-		},
-	}
+	store := &fakeAlumniStore{detail: &model.AlumniProfile{ID: alumniID, Name: "张三", Status: "active"}}
 	svc := NewAlumniService(store, nil)
 
 	detail, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni, AlumniID: &alumniID})
 	if err != nil {
 		t.Fatalf("expected me success, got %v", err)
 	}
-	if store.detailID != alumniID {
-		t.Fatalf("expected detail id %d, got %d", alumniID, store.detailID)
-	}
-	if detail.ID != alumniID {
-		t.Fatalf("unexpected alumni detail: %+v", detail)
+	if store.detailID != alumniID || detail.ID != alumniID {
+		t.Fatalf("unexpected alumni detail: id=%d detail=%+v", store.detailID, detail)
 	}
 }
 
-func TestAlumniServiceGetMeRejectsNonAlumniAccess(t *testing.T) {
+func TestAlumniServiceGetMeRejectsNonAlumniAndUnboundAccess(t *testing.T) {
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
-
-	_, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAdmin})
-	if err != common.ErrPermissionDenied {
+	if _, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAdmin}); err != common.ErrPermissionDenied {
 		t.Fatalf("expected permission denied, got %v", err)
 	}
-}
-
-func TestAlumniServiceGetMeRejectsUnboundAlumniAccess(t *testing.T) {
-	svc := NewAlumniService(&fakeAlumniStore{}, nil)
-
-	_, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni})
-	if err != common.ErrAlumniProfileUnbound {
+	if _, err := svc.GetMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni}); err != common.ErrAlumniProfileUnbound {
 		t.Fatalf("expected alumni profile unbound, got %v", err)
 	}
 }
@@ -610,14 +687,7 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 	workUnit := " 山东大学 "
 	position := "主任"
 	mobile := " 13800000000 "
-	store := &fakeAlumniStore{
-		detail: &model.AlumniProfile{
-			ID:     alumniID,
-			Name:   "张三",
-			Grade:  "2020级",
-			Status: "active",
-		},
-	}
+	store := &fakeAlumniStore{detail: &model.AlumniProfile{ID: alumniID, Name: "张三", Status: "active"}}
 	svc := NewAlumniService(store, nil)
 
 	_, err := svc.UpdateMe(context.Background(), common.AccessContext{UserID: 3, Role: common.RoleAlumni, AlumniID: &alumniID}, dto.AlumniProfileUpdateRequest{
@@ -645,39 +715,32 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 	}
 }
 
-func TestAlumniServiceDeleteSuccess(t *testing.T) {
+func TestAlumniServiceDeleteSuccessAndErrors(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
-
-	err := svc.Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9)
-	if err != nil {
+	if err := svc.Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != nil {
 		t.Fatalf("expected delete success, got %v", err)
 	}
 	if store.deleteID != 9 || store.deleteUserID != 7 {
 		t.Fatalf("unexpected delete target: alumni=%d user=%d", store.deleteID, store.deleteUserID)
 	}
-}
 
-func TestAlumniServiceDeleteReturnsNotFound(t *testing.T) {
-	store := &fakeAlumniStore{deleteErr: common.ErrAlumniNotFound}
-	svc := NewAlumniService(store, nil)
-
-	err := svc.Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9)
-	if err != common.ErrAlumniNotFound {
+	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniNotFound}, nil).
+		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniNotFound {
 		t.Fatalf("expected alumni not found, got %v", err)
+	}
+	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniMultiEnrollment}, nil).
+		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniMultiEnrollment {
+		t.Fatalf("expected multi-enrollment rejection, got %v", err)
 	}
 }
 
 func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
 	store := &fakeAlumniStore{total: 1}
 	svc := NewAlumniService(store, nil)
-	viewer := common.AccessContext{
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{2},
-	}
+	viewer := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}
 
-	_, err := svc.List(context.Background(), dto.AlumniListRequest{Keyword: "张三"}, viewer)
-	if err != nil {
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{Keyword: "张三"}, viewer); err != nil {
 		t.Fatalf("expected scoped list success, got %v", err)
 	}
 	if !slices.Equal(store.query.DataDomainIDs, []uint64{2}) {
@@ -687,14 +750,10 @@ func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
 		t.Fatal("expected sensitive fields to remain unavailable")
 	}
 
-	_, err = svc.List(context.Background(), dto.AlumniListRequest{Position: "主任"}, viewer)
-	if err != common.ErrPermissionDenied {
-		t.Fatalf("expected sensitive position filter to be rejected, got %v", err)
-	}
-
-	_, err = svc.List(context.Background(), dto.AlumniListRequest{WorkUnit: "山东大学"}, viewer)
-	if err != common.ErrPermissionDenied {
-		t.Fatalf("expected sensitive work-unit filter to be rejected, got %v", err)
+	for _, req := range []dto.AlumniListRequest{{Position: "主任"}, {WorkUnit: "山东大学"}, {Mobile: "13800000000"}} {
+		if _, err := svc.List(context.Background(), req, viewer); err != common.ErrPermissionDenied {
+			t.Fatalf("expected sensitive filter %+v to be rejected, got %v", req, err)
+		}
 	}
 }
 
@@ -702,10 +761,7 @@ func TestAlumniServiceListHonorsRequestedDataDomain(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil)
 	requestedDomainID := uint64(3)
-	viewer := common.AccessContext{
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{2, 3},
-	}
+	viewer := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2, 3}}
 
 	if _, err := svc.List(context.Background(), dto.AlumniListRequest{DataDomainID: &requestedDomainID}, viewer); err != nil {
 		t.Fatalf("expected requested domain list success, got %v", err)
@@ -722,8 +778,7 @@ func TestAlumniServiceListHonorsRequestedDataDomain(t *testing.T) {
 
 func TestAlumniServiceListRejectsAdminWithoutDataDomain(t *testing.T) {
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
-	_, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{Role: common.RoleAdmin})
-	if err != common.ErrPermissionDenied {
+	if _, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{Role: common.RoleAdmin}); err != common.ErrPermissionDenied {
 		t.Fatalf("expected empty data-domain scope to be rejected, got %v", err)
 	}
 }
@@ -735,22 +790,13 @@ func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 	position := "主任"
 	store := &fakeAlumniStore{
 		items: []*model.AlumniProfile{{
-			ID:       9,
-			Name:     "张三",
-			Grade:    "2020级",
-			Mobile:   &mobile,
-			Email:    &email,
-			WorkUnit: &workUnit,
-			Position: &position,
+			ID: 9, Name: "张三", Mobile: &mobile, Email: &email, WorkUnit: &workUnit, Position: &position,
 		}},
 		total: 1,
 	}
 	svc := NewAlumniService(store, nil)
 
-	pager, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{1},
-	})
+	pager, err := svc.List(context.Background(), dto.AlumniListRequest{}, common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{1}})
 	if err != nil {
 		t.Fatalf("expected list success, got %v", err)
 	}
@@ -762,8 +808,12 @@ func TestAlumniServiceListMasksSensitiveFieldsWithoutPermission(t *testing.T) {
 
 func TestAlumniServiceDetailUpdateAndDeletePassDomainScope(t *testing.T) {
 	store := &fakeAlumniStore{
-		detail:       &model.AlumniProfile{ID: 9, Name: "张三", Grade: "2020级", Status: common.AlumniStatusActive},
-		updateResult: &model.AlumniProfile{ID: 9, Name: "张三", Grade: "2020级", Status: common.AlumniStatusActive},
+		detail: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 1},
+		detailEnrollments: []*model.AlumniEnrollment{{
+			ID: 11, AlumniID: 9, DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+			Status: common.AlumniStatusActive, Version: 1,
+		}},
+		updateResult: &model.AlumniProfile{ID: 9, Name: "张三", Status: common.AlumniStatusActive, Version: 2},
 	}
 	svc := NewAlumniService(store, nil)
 	viewer := common.AccessContext{UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{1, 3}}
@@ -775,11 +825,17 @@ func TestAlumniServiceDetailUpdateAndDeletePassDomainScope(t *testing.T) {
 		t.Fatalf("expected detail domain scope, got %v", store.getDomainIDs)
 	}
 
-	if _, err := svc.Update(context.Background(), viewer, 9, dto.AdminAlumniUpdateRequest{Name: "张三", Grade: "2020级"}); err != nil {
+	if _, err := svc.Update(context.Background(), viewer, 9, dto.AdminAlumniUpdateRequest{
+		Version: 1, Name: "张三",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			ID: new(uint64(11)), Version: new(uint32(1)), DataDomainID: 3,
+			TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
+	}); err != nil {
 		t.Fatalf("expected update success, got %v", err)
 	}
-	if !slices.Equal(store.updateDomainIDs, []uint64{1, 3}) {
-		t.Fatalf("expected update domain scope, got %v", store.updateDomainIDs)
+	if !slices.Equal(store.saveDomainIDs, []uint64{1, 3}) {
+		t.Fatalf("expected update domain scope, got %v", store.saveDomainIDs)
 	}
 
 	if err := svc.Delete(context.Background(), viewer, 9); err != nil {
@@ -798,66 +854,53 @@ func TestAlumniServiceCreateEnforcesOperatorDomainAndSensitiveWritePermission(t 
 	svc := NewAlumniService(store, nil)
 
 	_, err := svc.Create(context.Background(), common.AccessContext{
-		UserID:    7,
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{allowedDomainID},
+		UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{allowedDomainID},
 	}, dto.AdminAlumniCreateRequest{
-		DataDomainID: &forbiddenDomainID,
-		Name:         "张三",
-		Grade:        "2020级",
+		Name: "张三",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID: forbiddenDomainID, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("expected single-domain create success, got %v", err)
 	}
-	if store.createProfile.DataDomainID != allowedDomainID {
-		t.Fatalf("expected forced domain %d, got %d", allowedDomainID, store.createProfile.DataDomainID)
+	if got := store.createInput.Enrollments[0].DataDomainID; got != allowedDomainID {
+		t.Fatalf("expected forced domain %d, got %d", allowedDomainID, got)
 	}
 
 	_, err = svc.Create(context.Background(), common.AccessContext{
-		UserID:    8,
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{1, 2},
+		UserID: 8, Role: common.RoleAdmin, DomainIDs: []uint64{1, 2},
 	}, dto.AdminAlumniCreateRequest{
-		DataDomainID: &forbiddenDomainID,
-		Name:         "李四",
-		Grade:        "2020级",
-		WorkUnit:     &workUnit,
+		Name: "李四", WorkUnit: &workUnit,
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID: forbiddenDomainID, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
 	})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive write to be rejected, got %v", err)
 	}
 
 	_, err = svc.Create(context.Background(), common.AccessContext{
-		UserID:      8,
-		Role:        common.RoleAdmin,
-		DomainIDs:   []uint64{1, 2},
-		Permissions: map[string]bool{common.PermissionAlumniSensitiveRead: true},
+		UserID: 8, Role: common.RoleAdmin, DomainIDs: []uint64{1, 2},
 	}, dto.AdminAlumniCreateRequest{
-		DataDomainID: &forbiddenDomainID,
-		Name:         "王五",
-		Grade:        "2020级",
+		Name: "王五",
+		Enrollments: []dto.AlumniEnrollmentPayload{{
+			DataDomainID: forbiddenDomainID, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级",
+		}},
 	})
 	if err != nil {
 		t.Fatalf("expected multi-domain create in allowed domain, got %v", err)
 	}
-	if store.createProfile.DataDomainID != forbiddenDomainID {
-		t.Fatalf("expected selected allowed domain %d, got %d", forbiddenDomainID, store.createProfile.DataDomainID)
+	if got := store.createInput.Enrollments[0].DataDomainID; got != forbiddenDomainID {
+		t.Fatalf("expected selected allowed domain %d, got %d", forbiddenDomainID, got)
 	}
 }
 
 func TestAlumniServiceRejectsSensitiveUpdateWithoutPermission(t *testing.T) {
 	workUnit := "山东大学"
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
-
-	_, err := svc.Update(context.Background(), common.AccessContext{
-		UserID:    7,
-		Role:      common.RoleAdmin,
-		DomainIDs: []uint64{1},
-	}, 9, dto.AdminAlumniUpdateRequest{
-		Name:     "张三",
-		Grade:    "2020级",
-		WorkUnit: &workUnit,
-	})
+	_, err := svc.Update(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleAdmin, DomainIDs: []uint64{1}},
+		9, dto.AdminAlumniUpdateRequest{Name: "张三", WorkUnit: &workUnit})
 	if err != common.ErrPermissionDenied {
 		t.Fatalf("expected sensitive update to be rejected, got %v", err)
 	}
@@ -867,10 +910,10 @@ func TestAlumniServiceRejectsAlumniAsAdminOperator(t *testing.T) {
 	svc := NewAlumniService(&fakeAlumniStore{}, nil)
 	operator := common.AccessContext{UserID: 7, Role: common.RoleAlumni}
 
-	if _, err := svc.Create(context.Background(), operator, dto.AdminAlumniCreateRequest{Name: "张三", Grade: "2020级"}); err != common.ErrPermissionDenied {
+	if _, err := svc.Create(context.Background(), operator, dto.AdminAlumniCreateRequest{Name: "张三"}); err != common.ErrPermissionDenied {
 		t.Fatalf("expected create to reject alumni operator, got %v", err)
 	}
-	if _, err := svc.Update(context.Background(), operator, 9, dto.AdminAlumniUpdateRequest{Name: "张三", Grade: "2020级"}); err != common.ErrPermissionDenied {
+	if _, err := svc.Update(context.Background(), operator, 9, dto.AdminAlumniUpdateRequest{Name: "张三"}); err != common.ErrPermissionDenied {
 		t.Fatalf("expected update to reject alumni operator, got %v", err)
 	}
 	if err := svc.Delete(context.Background(), operator, 9); err != common.ErrPermissionDenied {
@@ -878,18 +921,69 @@ func TestAlumniServiceRejectsAlumniAsAdminOperator(t *testing.T) {
 	}
 }
 
-func (s *fakeAlumniStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return s.profile, s.findErr
+func TestAlumniServiceImportKeepsRowsAsIndependentPeople(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, testDataDomainStore())
+	workbook := buildAlumniImportWorkbook(t, [][]string{
+		{"张同学", "本科", "2015", "", "", "", "", "行政管理", "", "", "", "", "", "", "13800000001", "", "undergraduate"},
+		{"张同学", "硕士", "2019", "", "", "", "", "行政管理", "", "", "", "", "", "", "13800000001", "", "academic_graduate"},
+	})
+	result, err := svc.Import(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, nil, workbook)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Total != 2 || result.Success != 2 || len(result.Errors) != 0 {
+		t.Fatalf("unexpected import result: %+v", result)
+	}
+	if len(store.batchInputs) != 2 || len(store.batchInputs[0].Enrollments) != 1 || len(store.batchInputs[1].Enrollments) != 1 {
+		t.Fatalf("expected independent people, each with an initial enrollment, got %+v", store.batchInputs)
+	}
 }
 
-func (s *fakeAlumniStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return s.profile, s.findErr
+func TestAlumniServiceImportRejectsDuplicateEnrollment(t *testing.T) {
+	store := &fakeAlumniStore{}
+	svc := NewAlumniService(store, nil, testDataDomainStore())
+	workbook := buildAlumniImportWorkbook(t, [][]string{
+		importRow("张同学", "硕士", "2019", "mpa"),
+		importRow("张同学", "硕士", "2019", "mpa"),
+	})
+	result, err := svc.Import(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, nil, workbook)
+	if err != nil {
+		t.Fatalf("Import() error = %v", err)
+	}
+	if result.Success != 1 || len(result.Errors) != 1 || result.Errors[0].Row != 3 {
+		t.Fatalf("unexpected duplicate import result: %+v", result)
+	}
+	if len(store.batchInputs) != 1 || len(store.batchInputs[0].Enrollments) != 1 {
+		t.Fatalf("expected only one enrollment to be imported, got %+v", store.batchInputs)
+	}
 }
 
-func (s *fakeAlumniStore) UpdateMobile(_ context.Context, _ uint64, _ string) error {
-	return s.updateErr
-}
-
-func (s *fakeAlumniStore) UpdateEmail(_ context.Context, _ uint64, _ string) error {
-	return s.updateErr
+func TestAlumniServiceSaveEnforcesFilePermission(t *testing.T) {
+	for _, action := range []string{"activate", "remove", "personal"} {
+		for _, role := range []string{"", common.RoleAlumni, common.RoleAdmin, common.RoleSuperAdmin} {
+			for _, allowed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/%t", action, role, allowed), func(t *testing.T) {
+					store := &fakeAlumniStore{detail: &model.AlumniProfile{ID: 9, Name: "张三", Version: 1}, detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()}}
+					operator := common.AccessContext{UserID: 7, Role: role, DomainIDs: []uint64{2}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
+					enrollment := dto.AlumniEnrollmentPayload{ID: new(uint64(11)), Version: new(uint32(1)), DataDomainID: 2, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级"}
+					if action == "activate" {
+						enrollment.ActivateFileIDs = []uint64{42}
+					}
+					if action == "remove" {
+						enrollment.RemoveFileIDs = []uint64{42}
+					}
+					_, err := NewAlumniService(store, nil).Update(context.Background(), operator, 9, dto.AdminAlumniUpdateRequest{Version: 1, Name: "张三", Enrollments: []dto.AlumniEnrollmentPayload{enrollment}})
+					canSave := role == common.RoleSuperAdmin || (role == common.RoleAdmin && (allowed || action == "personal"))
+					if canSave {
+						if err != nil || store.saveID != 9 {
+							t.Fatalf("authorized save failed: %v", err)
+						}
+					} else if !errors.Is(err, common.ErrPermissionDenied) || store.saveID != 0 {
+						t.Fatalf("unauthorized save: err=%v, wrote=%d", err, store.saveID)
+					}
+				})
+			}
+		}
+	}
 }

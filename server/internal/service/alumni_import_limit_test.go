@@ -82,7 +82,7 @@ func TestReadImportWorkbookRowsStopsAtRowLimitOnSparseWorkbook(t *testing.T) {
 
 // 导入接口对超限文件返回可识别的业务错误，而不是通用内部错误。
 func TestImportRejectsSparseWorkbookOverRowLimit(t *testing.T) {
-	_, err := importAsSuperAdmin(NewAlumniService(&fakeAlumniStore{}, nil), buildSparseWorkbook(t))
+	_, err := importAsSuperAdmin(NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()), buildSparseWorkbook(t))
 	if !errors.Is(err, common.ErrImportRowLimit) {
 		t.Fatalf("expected row limit error from Import, got %v", err)
 	}

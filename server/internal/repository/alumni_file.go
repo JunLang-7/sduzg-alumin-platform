@@ -7,19 +7,19 @@ import (
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
-	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
 	"gorm.io/gorm"
 )
 
-// AlumniFileStore 校友档案文件仓库接口。
+// AlumniFileStore 校友学籍档案文件仓库接口。
 type AlumniFileStore interface {
 	Create(ctx context.Context, record *model.AlumniFile) (*model.AlumniFile, error)
-	ListByAlumniID(ctx context.Context, alumniID uint64) ([]*model.AlumniFile, error)
+	ListByEnrollmentID(ctx context.Context, enrollmentID uint64, includeDrafts bool) ([]*model.AlumniFile, error)
+	ListByEnrollmentIDs(ctx context.Context, enrollmentIDs []uint64, includeDrafts bool) ([]*model.AlumniFile, error)
 	GetByID(ctx context.Context, id uint64) (*model.AlumniFile, error)
 	GetByIDAnyStatus(ctx context.Context, id uint64) (*model.AlumniFile, error)
-	MarkActive(ctx context.Context, id uint64, fileSize uint64) error
-	SoftDelete(ctx context.Context, id uint64) error
-	SoftDeleteByAlumniIDAndType(ctx context.Context, alumniID uint64, fileType string) error
+	MarkDraft(ctx context.Context, id uint64, fileSize uint64) error
+	DeleteDraft(ctx context.Context, id, enrollmentID, operatorID uint64) error
+	SoftDeleteByEnrollmentIDAndType(ctx context.Context, enrollmentID uint64, fileType string) error
 	SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error
 }
 
@@ -45,33 +45,43 @@ func (r *AlumniFileRepository) Create(ctx context.Context, record *model.AlumniF
 	return record, nil
 }
 
-// ListByAlumniID 查询某校友的所有活跃文件。
-func (r *AlumniFileRepository) ListByAlumniID(ctx context.Context, alumniID uint64) ([]*model.AlumniFile, error) {
+// ListByEnrollmentID 查询某学籍段的所有文件（默认只含正式文件）。
+func (r *AlumniFileRepository) ListByEnrollmentID(ctx context.Context, enrollmentID uint64, includeDrafts bool) ([]*model.AlumniFile, error) {
+	return r.ListByEnrollmentIDs(ctx, []uint64{enrollmentID}, includeDrafts)
+}
+
+// ListByEnrollmentIDs 批量查询多个学籍段的文件。
+func (r *AlumniFileRepository) ListByEnrollmentIDs(ctx context.Context, enrollmentIDs []uint64, includeDrafts bool) ([]*model.AlumniFile, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
+	if len(enrollmentIDs) == 0 {
+		return nil, nil
+	}
 
-	qs := query.Use(r.db).AlumniFile
+	statuses := []string{common.FileStatusActive}
+	if includeDrafts {
+		statuses = append(statuses, common.FileStatusDraft, common.FileStatusPending)
+	}
 	var items []*model.AlumniFile
 	if err := r.db.WithContext(ctx).
-		Where(qs.AlumniID.Eq(alumniID), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
-		Order(qs.CreatedAt.Desc()).
+		Where("enrollment_id IN ? AND status IN ? AND deleted_at IS NULL", enrollmentIDs, statuses).
+		Order("id ASC").
 		Find(&items).Error; err != nil {
 		return nil, err
 	}
 	return items, nil
 }
 
-// GetByID 根据 ID 获取单条文件记录（仅活跃记录）。
+// GetByID 根据 ID 获取单条文件记录（仅正式文件）。
 func (r *AlumniFileRepository) GetByID(ctx context.Context, id uint64) (*model.AlumniFile, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
 	var item model.AlumniFile
 	err := r.db.WithContext(ctx).
-		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
+		Where("id = ? AND status = ? AND deleted_at IS NULL", id, common.FileStatusActive).
 		First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, common.ErrFileNotFound
@@ -82,16 +92,15 @@ func (r *AlumniFileRepository) GetByID(ctx context.Context, id uint64) (*model.A
 	return &item, nil
 }
 
-// GetByIDAnyStatus 根据 ID 获取文件记录（不限制 status），用于确认 pending 上传。
+// GetByIDAnyStatus 根据 ID 获取文件记录（不限制 status），用于确认上传草稿。
 func (r *AlumniFileRepository) GetByIDAnyStatus(ctx context.Context, id uint64) (*model.AlumniFile, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
 	var item model.AlumniFile
 	err := r.db.WithContext(ctx).
-		Where(qs.ID.Eq(id), qs.DeletedAt.IsNull()).
+		Where("id = ? AND deleted_at IS NULL", id).
 		First(&item).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, common.ErrFileNotFound
@@ -102,19 +111,18 @@ func (r *AlumniFileRepository) GetByIDAnyStatus(ctx context.Context, id uint64) 
 	return &item, nil
 }
 
-// MarkActive 将文件记录标记为 active 并更新文件大小（确认直传完成后调用）。
-func (r *AlumniFileRepository) MarkActive(ctx context.Context, id uint64, fileSize uint64) error {
+// MarkDraft 将直传完成的 pending 文件标记为隔离草稿，保存全部修改时才转正式文件。
+func (r *AlumniFileRepository) MarkDraft(ctx context.Context, id uint64, fileSize uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
 	result := r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusPending), qs.DeletedAt.IsNull()).
+		Where("id = ? AND status = ? AND deleted_at IS NULL", id, common.FileStatusPending).
 		Updates(map[string]any{
-			qs.Status.ColumnName().String():   common.FileStatusActive,
-			qs.FileSize.ColumnName().String(): fileSize,
+			"status":    common.FileStatusDraft,
+			"file_size": fileSize,
 		})
 	if result.Error != nil {
 		return result.Error
@@ -125,19 +133,19 @@ func (r *AlumniFileRepository) MarkActive(ctx context.Context, id uint64, fileSi
 	return nil
 }
 
-// SoftDelete 软删除单条文件记录。
-func (r *AlumniFileRepository) SoftDelete(ctx context.Context, id uint64) error {
+// DeleteDraft 原子清理本人尚未保存的文件；并发保存转为 active 后不能再删除。
+func (r *AlumniFileRepository) DeleteDraft(ctx context.Context, id, enrollmentID, operatorID uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
 	result := r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where(qs.ID.Eq(id), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
+		Where("id = ? AND enrollment_id = ? AND uploaded_by = ? AND status IN ? AND deleted_at IS NULL",
+			id, enrollmentID, operatorID, []string{common.FileStatusPending, common.FileStatusDraft}).
 		Updates(map[string]any{
-			qs.Status.ColumnName().String():    common.FileStatusDeleted,
-			qs.DeletedAt.ColumnName().String(): time.Now(),
+			"status":     common.FileStatusDeleted,
+			"deleted_at": time.Now(),
 		})
 	if result.Error != nil {
 		return result.Error
@@ -148,34 +156,36 @@ func (r *AlumniFileRepository) SoftDelete(ctx context.Context, id uint64) error 
 	return nil
 }
 
-// SoftDeleteByAlumniIDAndType 软删除指定校友的某类型所有活跃文件（文件替换策略使用）。
-func (r *AlumniFileRepository) SoftDeleteByAlumniIDAndType(ctx context.Context, alumniID uint64, fileType string) error {
+// SoftDeleteByEnrollmentIDAndType 软删除指定学籍某类型的所有活跃文件。
+func (r *AlumniFileRepository) SoftDeleteByEnrollmentIDAndType(ctx context.Context, enrollmentID uint64, fileType string) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where(qs.AlumniID.Eq(alumniID), qs.FileType.Eq(fileType), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
+		Where("enrollment_id = ? AND file_type = ? AND status IN ? AND deleted_at IS NULL", enrollmentID, fileType, []string{common.FileStatusActive, common.FileStatusDraft}).
 		Updates(map[string]any{
-			qs.Status.ColumnName().String():    common.FileStatusDeleted,
-			qs.DeletedAt.ColumnName().String(): time.Now(),
+			"status":     common.FileStatusDeleted,
+			"deleted_at": time.Now(),
 		}).Error
 }
 
-// SoftDeleteByAlumniID 级联软删除某校友的所有文件记录（校友删除时调用）。
+// SoftDeleteByAlumniID 级联软删除某校友所有学籍段的文件记录（整人删除时调用）。
 func (r *AlumniFileRepository) SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
 
-	qs := query.Use(r.db).AlumniFile
+	subQuery := r.db.WithContext(ctx).
+		Model(&model.AlumniEnrollment{}).
+		Select("id").
+		Where("alumni_id = ?", alumniID)
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where(qs.AlumniID.Eq(alumniID), qs.Status.Eq(common.FileStatusActive), qs.DeletedAt.IsNull()).
+		Where("enrollment_id IN (?) AND status IN ? AND deleted_at IS NULL", subQuery, []string{common.FileStatusActive, common.FileStatusDraft, common.FileStatusPending}).
 		Updates(map[string]any{
-			qs.Status.ColumnName().String():    common.FileStatusDeleted,
-			qs.DeletedAt.ColumnName().String(): time.Now(),
+			"status":     common.FileStatusDeleted,
+			"deleted_at": time.Now(),
 		}).Error
 }

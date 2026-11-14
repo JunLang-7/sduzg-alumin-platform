@@ -25,7 +25,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "管理员在已授权数据域内新增档案。写入敏感字段需要 alumni.sensitive.read 功能权限。",
+                "description": "管理员在已授权数据域内新增档案，同时创建个人主档案与至少一段初始学籍。写入敏感字段需要 alumni.sensitive.read 功能权限。",
                 "consumes": [
                     "application/json"
                 ],
@@ -320,7 +320,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "管理员在已授权数据域内更新档案。指针字段为空时不修改，传入空字符串则清空。",
+                "description": "保存全部修改：个人共享字段、提交的已有学籍与本次新增学籍、文件草稿确认和移除在同一事务内完成。version 不匹配返回 409。",
                 "consumes": [
                     "application/json"
                 ],
@@ -456,71 +456,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/alumni/{id}/files": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "description": "按类型分组返回该校友的档案文件。需要 alumni.files.manage 功能权限，该权限与敏感字段权限互相独立。",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "校友档案文件"
-                ],
-                "summary": "档案文件列表",
-                "parameters": [
-                    {
-                        "type": "integer",
-                        "description": "校友档案 ID",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "allOf": [
-                                {
-                                    "$ref": "#/definitions/response.Body"
-                                },
-                                {
-                                    "type": "object",
-                                    "properties": {
-                                        "data": {
-                                            "$ref": "#/definitions/dto.AlumniFileListResponse"
-                                        }
-                                    }
-                                }
-                            ]
-                        }
-                    },
-                    "403": {
-                        "description": "权限不足",
-                        "schema": {
-                            "$ref": "#/definitions/response.Body"
-                        }
-                    },
-                    "404": {
-                        "description": "对应校友不存在",
-                        "schema": {
-                            "$ref": "#/definitions/response.Body"
-                        }
-                    },
-                    "503": {
-                        "description": "存储或数据库不可用",
-                        "schema": {
-                            "$ref": "#/definitions/response.Body"
-                        }
-                    }
-                }
-            }
-        },
-        "/admin/alumni/{id}/files/upload-url": {
+        "/admin/alumni/{id}/enrollments/{enrollmentId}/files/upload-url": {
             "post": {
                 "security": [
                     {
@@ -543,6 +479,13 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "校友档案 ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "学籍段 ID",
+                        "name": "enrollmentId",
                         "in": "path",
                         "required": true
                     },
@@ -614,26 +557,33 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/alumni/{id}/files/{fileId}": {
+        "/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId}": {
             "delete": {
                 "security": [
                     {
                         "BearerAuth": []
                     }
                 ],
-                "description": "同时删除对象存储中的对象与文件记录。需要 alumni.files.manage 功能权限。",
+                "description": "仅删除 pending/draft 状态的草稿文件，用于取消编辑时清理；正式附件必须通过保存全部修改移除。需要 alumni.files.manage 功能权限。",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "校友档案文件"
                 ],
-                "summary": "删除档案文件",
+                "summary": "删除未保存的档案草稿",
                 "parameters": [
                     {
                         "type": "integer",
                         "description": "校友档案 ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "学籍段 ID",
+                        "name": "enrollmentId",
                         "in": "path",
                         "required": true
                     },
@@ -676,6 +626,12 @@ const docTemplate = `{
                             "$ref": "#/definitions/response.Body"
                         }
                     },
+                    "409": {
+                        "description": "正式附件不能通过草稿删除接口移除",
+                        "schema": {
+                            "$ref": "#/definitions/response.Body"
+                        }
+                    },
                     "503": {
                         "description": "数据库不可用",
                         "schema": {
@@ -685,7 +641,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/alumni/{id}/files/{fileId}/confirm": {
+        "/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId}/confirm": {
             "post": {
                 "security": [
                     {
@@ -705,6 +661,13 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "校友档案 ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "学籍段 ID",
+                        "name": "enrollmentId",
                         "in": "path",
                         "required": true
                     },
@@ -762,7 +725,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/alumni/{id}/files/{fileId}/download": {
+        "/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId}/download": {
             "get": {
                 "security": [
                     {
@@ -782,6 +745,13 @@ const docTemplate = `{
                         "type": "integer",
                         "description": "校友档案 ID",
                         "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "学籍段 ID",
+                        "name": "enrollmentId",
                         "in": "path",
                         "required": true
                     },
@@ -820,6 +790,76 @@ const docTemplate = `{
                     },
                     "404": {
                         "description": "文件不存在",
+                        "schema": {
+                            "$ref": "#/definitions/response.Body"
+                        }
+                    },
+                    "503": {
+                        "description": "存储或数据库不可用",
+                        "schema": {
+                            "$ref": "#/definitions/response.Body"
+                        }
+                    }
+                }
+            }
+        },
+        "/admin/alumni/{id}/files": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "按学籍段与类型分组返回当前查看者可访问的档案文件；include_draft=true 时包含未保存草稿。需要 alumni.files.manage 功能权限，该权限与敏感字段权限互相独立。",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "校友档案文件"
+                ],
+                "summary": "档案文件列表",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "校友档案 ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "是否包含未保存的草稿文件，管理端编辑弹窗使用",
+                        "name": "include_draft",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/response.Body"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/dto.AlumniFileListResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "403": {
+                        "description": "权限不足",
+                        "schema": {
+                            "$ref": "#/definitions/response.Body"
+                        }
+                    },
+                    "404": {
+                        "description": "对应校友不存在",
                         "schema": {
                             "$ref": "#/definitions/response.Body"
                         }
@@ -1219,6 +1259,12 @@ const docTemplate = `{
                         "type": "string",
                         "description": "培养方式",
                         "name": "training_mode",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "培养层次：undergraduate/master/doctor/unverified",
+                        "name": "training_level",
                         "in": "query"
                     },
                     {
@@ -4051,41 +4097,27 @@ const docTemplate = `{
         "dto.AdminAlumniCreateRequest": {
             "type": "object",
             "required": [
-                "grade",
+                "enrollments",
                 "name"
             ],
             "properties": {
-                "class_name": {
-                    "type": "string"
-                },
-                "cohort": {
-                    "type": "string"
-                },
-                "counselor": {
-                    "type": "string"
-                },
-                "data_domain_id": {
-                    "type": "integer"
-                },
                 "email": {
                     "type": "string"
                 },
-                "gender": {
-                    "type": "string"
+                "enrollments": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniEnrollmentPayload"
+                    }
                 },
-                "grade": {
+                "gender": {
                     "type": "string"
                 },
                 "industry": {
                     "type": "string"
                 },
                 "mailing_address": {
-                    "type": "string"
-                },
-                "major": {
-                    "type": "string"
-                },
-                "mentor": {
                     "type": "string"
                 },
                 "mobile": {
@@ -4095,12 +4127,6 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "position": {
-                    "type": "string"
-                },
-                "remark": {
-                    "type": "string"
-                },
-                "training_mode": {
                     "type": "string"
                 },
                 "work_unit": {
@@ -4111,38 +4137,25 @@ const docTemplate = `{
         "dto.AdminAlumniUpdateRequest": {
             "type": "object",
             "required": [
-                "grade",
                 "name"
             ],
             "properties": {
-                "class_name": {
-                    "type": "string"
-                },
-                "cohort": {
-                    "type": "string"
-                },
-                "counselor": {
-                    "type": "string"
-                },
                 "email": {
                     "type": "string"
                 },
-                "gender": {
-                    "type": "string"
+                "enrollments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniEnrollmentPayload"
+                    }
                 },
-                "grade": {
+                "gender": {
                     "type": "string"
                 },
                 "industry": {
                     "type": "string"
                 },
                 "mailing_address": {
-                    "type": "string"
-                },
-                "major": {
-                    "type": "string"
-                },
-                "mentor": {
                     "type": "string"
                 },
                 "mobile": {
@@ -4154,11 +4167,8 @@ const docTemplate = `{
                 "position": {
                     "type": "string"
                 },
-                "remark": {
-                    "type": "string"
-                },
-                "training_mode": {
-                    "type": "string"
+                "version": {
+                    "type": "integer"
                 },
                 "work_unit": {
                     "type": "string"
@@ -4318,6 +4328,56 @@ const docTemplate = `{
         "dto.AlumniDetail": {
             "type": "object",
             "properties": {
+                "created_at": {
+                    "type": "string"
+                },
+                "email": {
+                    "type": "string"
+                },
+                "enrollments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniEnrollmentDetail"
+                    }
+                },
+                "gender": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "industry": {
+                    "type": "string"
+                },
+                "mailing_address": {
+                    "type": "string"
+                },
+                "mobile": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "position": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                },
+                "work_unit": {
+                    "type": "string"
+                }
+            }
+        },
+        "dto.AlumniEnrollmentDetail": {
+            "type": "object",
+            "properties": {
                 "class_name": {
                     "type": "string"
                 },
@@ -4333,10 +4393,7 @@ const docTemplate = `{
                 "data_domain_id": {
                     "type": "integer"
                 },
-                "email": {
-                    "type": "string"
-                },
-                "gender": {
+                "data_domain_name": {
                     "type": "string"
                 },
                 "grade": {
@@ -4345,28 +4402,16 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "industry": {
-                    "type": "string"
-                },
-                "mailing_address": {
-                    "type": "string"
-                },
                 "major": {
                     "type": "string"
                 },
                 "mentor": {
                     "type": "string"
                 },
-                "mobile": {
+                "remark": {
                     "type": "string"
                 },
-                "name": {
-                    "type": "string"
-                },
-                "position": {
-                    "type": "string"
-                },
-                "status": {
+                "training_level": {
                     "type": "string"
                 },
                 "training_mode": {
@@ -4375,7 +4420,118 @@ const docTemplate = `{
                 "updated_at": {
                     "type": "string"
                 },
-                "work_unit": {
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.AlumniEnrollmentFileGroup": {
+            "type": "object",
+            "properties": {
+                "academic_record": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniFileItem"
+                    }
+                },
+                "degree_archive": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniFileItem"
+                    }
+                },
+                "enrollment_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.AlumniEnrollmentPayload": {
+            "type": "object",
+            "properties": {
+                "activate_file_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "class_name": {
+                    "type": "string"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "counselor": {
+                    "type": "string"
+                },
+                "data_domain_id": {
+                    "type": "integer"
+                },
+                "grade": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "major": {
+                    "type": "string"
+                },
+                "mentor": {
+                    "type": "string"
+                },
+                "remark": {
+                    "type": "string"
+                },
+                "remove_file_ids": {
+                    "type": "array",
+                    "items": {
+                        "type": "integer"
+                    }
+                },
+                "training_level": {
+                    "type": "string"
+                },
+                "training_mode": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "dto.AlumniEnrollmentSummary": {
+            "type": "object",
+            "properties": {
+                "class_name": {
+                    "type": "string"
+                },
+                "cohort": {
+                    "type": "string"
+                },
+                "counselor": {
+                    "type": "string"
+                },
+                "data_domain_id": {
+                    "type": "integer"
+                },
+                "data_domain_name": {
+                    "type": "string"
+                },
+                "grade": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "major": {
+                    "type": "string"
+                },
+                "mentor": {
+                    "type": "string"
+                },
+                "training_level": {
+                    "type": "string"
+                },
+                "training_mode": {
                     "type": "string"
                 }
             }
@@ -4400,6 +4556,9 @@ const docTemplate = `{
                 "created_at": {
                     "type": "string"
                 },
+                "enrollment_id": {
+                    "type": "integer"
+                },
                 "file_size": {
                     "type": "integer"
                 },
@@ -4414,25 +4573,22 @@ const docTemplate = `{
                 },
                 "original_name": {
                     "type": "string"
+                },
+                "status": {
+                    "type": "string"
                 }
             }
         },
         "dto.AlumniFileListResponse": {
             "type": "object",
             "properties": {
-                "academic_record": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/dto.AlumniFileItem"
-                    }
-                },
                 "alumni_id": {
                     "type": "integer"
                 },
-                "degree_archive": {
+                "enrollments": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/dto.AlumniFileItem"
+                        "$ref": "#/definitions/dto.AlumniEnrollmentFileGroup"
                     }
                 }
             }
@@ -4443,6 +4599,9 @@ const docTemplate = `{
                 "alumni_id": {
                     "type": "integer"
                 },
+                "enrollment_id": {
+                    "type": "integer"
+                },
                 "file_size": {
                     "type": "integer"
                 },
@@ -4456,6 +4615,9 @@ const docTemplate = `{
                     "type": "string"
                 },
                 "original_name": {
+                    "type": "string"
+                },
+                "status": {
                     "type": "string"
                 }
             }
@@ -4482,6 +4644,9 @@ const docTemplate = `{
         "dto.AlumniFileUploadURLResponse": {
             "type": "object",
             "properties": {
+                "enrollment_id": {
+                    "type": "integer"
+                },
                 "expires_in": {
                     "type": "integer"
                 },
@@ -4513,37 +4678,22 @@ const docTemplate = `{
         "dto.AlumniListItem": {
             "type": "object",
             "properties": {
-                "class_name": {
-                    "type": "string"
-                },
-                "cohort": {
-                    "type": "string"
-                },
-                "counselor": {
-                    "type": "string"
-                },
-                "data_domain_id": {
-                    "type": "integer"
-                },
                 "email": {
                     "type": "string"
                 },
-                "gender": {
-                    "type": "string"
+                "enrollments": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/dto.AlumniEnrollmentSummary"
+                    }
                 },
-                "grade": {
+                "gender": {
                     "type": "string"
                 },
                 "id": {
                     "type": "integer"
                 },
                 "industry": {
-                    "type": "string"
-                },
-                "major": {
-                    "type": "string"
-                },
-                "mentor": {
                     "type": "string"
                 },
                 "mobile": {
@@ -4555,11 +4705,11 @@ const docTemplate = `{
                 "position": {
                     "type": "string"
                 },
-                "training_mode": {
-                    "type": "string"
-                },
                 "updated_at": {
                     "type": "string"
+                },
+                "version": {
+                    "type": "integer"
                 },
                 "work_unit": {
                     "type": "string"
@@ -4708,6 +4858,12 @@ const docTemplate = `{
                     }
                 },
                 "created_at": {
+                    "type": "string"
+                },
+                "enrollment_id": {
+                    "type": "integer"
+                },
+                "enrollment_label": {
                     "type": "string"
                 },
                 "id": {

@@ -203,11 +203,13 @@ func New(deps Dependencies) *gin.Engine {
 
 			// 管理校友文件（仅存储启用时注册）
 			if alumniFileHandler != nil {
+				// 文件绑定具体学籍段：上传/下载/删除都显式定位到 :enrollmentId，
+				// 服务端按该学籍数据域与 alumni.files.manage 权限校验。
 				admin.GET("/alumni/:id/files", alumniFileHandler.ListFiles)
-				admin.POST("/alumni/:id/files/upload-url", alumniFileHandler.RequestUpload)
-				admin.POST("/alumni/:id/files/:fileId/confirm", alumniFileHandler.ConfirmUpload)
-				admin.GET("/alumni/:id/files/:fileId/download", alumniFileHandler.DownloadURL)
-				admin.DELETE("/alumni/:id/files/:fileId", alumniFileHandler.Delete)
+				admin.POST("/alumni/:id/enrollments/:enrollmentId/files/upload-url", alumniFileHandler.RequestUpload)
+				admin.POST("/alumni/:id/enrollments/:enrollmentId/files/:fileId/confirm", alumniFileHandler.ConfirmUpload)
+				admin.GET("/alumni/:id/enrollments/:enrollmentId/files/:fileId/download", alumniFileHandler.DownloadURL)
+				admin.DELETE("/alumni/:id/enrollments/:enrollmentId/files/:fileId", alumniFileHandler.Delete)
 			}
 
 			// 数据大屏

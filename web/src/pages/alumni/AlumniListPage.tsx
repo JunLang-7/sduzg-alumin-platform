@@ -7,7 +7,8 @@ import { alumniApi } from '../../api/alumni';
 import { PageHeader } from '../../components/PageHeader';
 import { useAuthStore } from '../../store/authStore';
 import type { DataDomain } from '../../types/auth';
-import type { AlumniProfile, AlumniQuery } from '../../types/alumni';
+import type { AlumniListItem, AlumniQuery, TrainingLevel } from '../../types/alumni';
+import { TRAINING_LEVEL_LABELS } from '../../types/alumni';
 import { canReadSensitive } from '../../utils/access';
 import { industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
@@ -23,7 +24,7 @@ export function AlumniListPage() {
   const [searchParams] = useSearchParams();
   const urlKeyword = searchParams.get('keyword') || undefined;
   const [loading, setLoading] = useState(false);
-  const [items, setItems] = useState<AlumniProfile[]>([]);
+  const [items, setItems] = useState<AlumniListItem[]>([]);
   const [query, setQuery] = useState<AlumniQuery>({
     page: 1,
     page_size: defaultPageSize,
@@ -54,7 +55,7 @@ export function AlumniListPage() {
     setQuery((prev) => ({ ...prev, page: 1, keyword: urlKeyword }));
   }, [form, urlKeyword]);
 
-  const columns = useMemo<ColumnsType<AlumniProfile>>(
+  const columns = useMemo<ColumnsType<AlumniListItem>>(
     () => [
       {
         title: '姓名',
@@ -63,37 +64,25 @@ export function AlumniListPage() {
         width: 120,
       },
       {
-        title: '年级',
-        dataIndex: 'grade',
-        width: 110,
-      },
-      {
-        title: '培养类别',
-        dataIndex: 'data_domain_id',
-        width: 170,
-        render: (value: number) => (
-          <Tag>{domains.find((domain) => domain.id === value)?.name || '-'}</Tag>
+        title: '学籍',
+        dataIndex: 'enrollments',
+        width: 340,
+        render: (_value, record) => (
+          <Space direction="vertical" size={2}>
+            {(record.enrollments || []).map((enrollment) => (
+              <Tag
+                key={enrollment.id}
+                color={enrollment.training_level === 'unverified' ? 'orange' : 'blue'}
+              >
+                {enrollment.grade ? `${enrollment.grade}级` : '年级待补'} ·{' '}
+                {TRAINING_LEVEL_LABELS[enrollment.training_level as TrainingLevel] || '待核验'}
+                {enrollment.data_domain_name ? ` · ${enrollment.data_domain_name}` : ''}
+                {enrollment.major ? ` · ${enrollment.major}` : ''}
+              </Tag>
+            ))}
+            {(!record.enrollments || record.enrollments.length === 0) && <span>-</span>}
+          </Space>
         ),
-      },
-      {
-        title: '班级',
-        dataIndex: 'class_name',
-        width: 180,
-      },
-      {
-        title: '届数',
-        dataIndex: 'cohort',
-        width: 110,
-      },
-      {
-        title: '专业',
-        dataIndex: 'major',
-        width: 140,
-      },
-      {
-        title: '培养方式',
-        dataIndex: 'training_mode',
-        width: 120,
       },
       {
         title: '行业',
@@ -131,7 +120,7 @@ export function AlumniListPage() {
         ),
       },
     ],
-    [domains, navigate, sensitiveReadable],
+    [navigate, sensitiveReadable],
   );
 
   const handleSearch = (values: AlumniQuery) => {
@@ -171,6 +160,17 @@ export function AlumniListPage() {
           <Form.Item name="cohort">
             <Input allowClear placeholder="届数" />
           </Form.Item>
+          <Form.Item name="training_level">
+            <Select
+              allowClear
+              placeholder="培养层次"
+              style={{ width: 120 }}
+              options={Object.entries(TRAINING_LEVEL_LABELS).map(([value, label]) => ({
+                value,
+                label,
+              }))}
+            />
+          </Form.Item>
           <Form.Item name="data_domain_id">
             <Select
               allowClear
@@ -206,7 +206,7 @@ export function AlumniListPage() {
         </Form>
       </Card>
       <Card className="tool-card">
-        <Table<AlumniProfile>
+        <Table<AlumniListItem>
           rowKey="id"
           loading={loading}
           columns={columns}

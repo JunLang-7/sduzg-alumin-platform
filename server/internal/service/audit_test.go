@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,11 +38,12 @@ func (s *fakeAuditStore) GetByID(_ context.Context, id uint64, query do.AuditQue
 type fakeAuditAlumniStore struct {
 	*fakeAlumniStore
 	profile      *model.AlumniProfile
+	enrollments  []*model.AlumniEnrollment
 	getDomainIDs []uint64
 	err          error
 }
 
-func (s *fakeAuditAlumniStore) GetByID(_ context.Context, id uint64, dataDomainIDs []uint64) (*model.AlumniProfile, error) {
+func (s *fakeAuditAlumniStore) GetDetail(_ context.Context, id uint64, dataDomainIDs []uint64) (*do.AlumniRecord, error) {
 	s.getDomainIDs = append([]uint64(nil), dataDomainIDs...)
 	if s.err != nil {
 		return nil, s.err
@@ -49,7 +51,7 @@ func (s *fakeAuditAlumniStore) GetByID(_ context.Context, id uint64, dataDomainI
 	if s.profile == nil || s.profile.ID != id {
 		return nil, common.ErrAlumniNotFound
 	}
-	return s.profile, nil
+	return &do.AlumniRecord{Profile: s.profile, Enrollments: s.enrollments}, nil
 }
 
 func TestMapAuditChangeMasksSensitiveValues(t *testing.T) {
@@ -309,7 +311,6 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 		profile: &model.AlumniProfile{
 			ID:             401,
 			Name:           "周七",
-			Grade:          "2020级",
 			Mobile:         &mobile,
 			Email:          &email,
 			WorkUnit:       &workUnit,
@@ -387,5 +388,30 @@ func TestAuditServiceAllowsSuperAdminHistoryAcrossDomains(t *testing.T) {
 	}
 	if store.listQuery.RestrictToDataDomains {
 		t.Fatal("super admin history should not be restricted to assigned domains")
+	}
+}
+
+func TestAuditServiceFileChangesRespectFilePermission(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		store := &fakeAuditStore{detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, TargetType: auditTargetAlumni, TargetID: new(uint64(9)), Detail: new(`{"changes":[{"field_name":"degree_archive","old_value":"旧学位.pdf","new_value":"新学位.pdf"},{"field_name":"academic_record","new_value":"学籍.pdf"}]}`)}}
+		access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{3}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
+		item, err := NewAuditService(store).Detail(context.Background(), access, 19)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(item.Changes) != 2 {
+			t.Fatalf("missing file changes: %+v", item)
+		}
+		if allowed {
+			if item.Changes[0].OldValue != "旧学位.pdf" || item.Changes[0].NewValue != "新学位.pdf" {
+				t.Fatalf("lost authorized file names: %+v", item.Changes)
+			}
+		} else {
+			for _, change := range item.Changes {
+				if strings.Contains(change.OldValue+change.NewValue+change.CurrentValue, ".pdf") {
+					t.Fatalf("file name leaked without permission: %+v", change)
+				}
+			}
+		}
 	}
 }

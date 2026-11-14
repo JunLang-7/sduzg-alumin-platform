@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { SearchOutlined } from '@ant-design/icons';
 import { Input, Modal, Spin } from 'antd';
-import type { AlumniProfile } from '../../types/alumni';
+import type { DashboardAlumni } from './dashboardAlumni';
 
 interface DistributionAlumniModalProps {
   open: boolean;
   loading: boolean;
   title: string;
-  items: AlumniProfile[];
+  items: DashboardAlumni[];
   sensitiveReadable: boolean;
   onClose: () => void;
-  onSelect: (profile: AlumniProfile) => void;
+  onSelect: (profile: DashboardAlumni) => void;
 }
 
 function displayValue(value?: string) {

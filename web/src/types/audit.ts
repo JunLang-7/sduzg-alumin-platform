@@ -36,6 +36,8 @@ export interface AuditOperation {
   target_type: string;
   target_name: string;
   target_meta?: string;
+  enrollment_id?: number;
+  enrollment_label?: string;
   management_scope: string;
   action: AuditAction | string;
   source: string;

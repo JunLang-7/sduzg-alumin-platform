@@ -45,10 +45,6 @@ type AuditEntry struct {
 	OperatorName            *string   `gorm:"column:operator_name"`
 	OperatorAccount         *string   `gorm:"column:operator_account"`
 	TargetName              *string   `gorm:"column:target_name"`
-	TargetGrade             *string   `gorm:"column:target_grade"`
-	TargetClass             *string   `gorm:"column:target_class"`
-	TargetCohort            *string   `gorm:"column:target_cohort"`
-	TargetDomainName        *string   `gorm:"column:target_domain_name"`
 }
 
 // AuditStore 提供操作历史的只读查询能力。
@@ -140,11 +136,7 @@ func (r *AuditRepository) detailQuery(ctx context.Context) *gorm.DB {
 			logs.created_at,
 			COALESCE(NULLIF(users.real_name, ''), users.account) AS operator_name,
 			users.account AS operator_account,
-			alumni_profiles.name AS target_name,
-			alumni_profiles.grade AS target_grade,
-			alumni_profiles.class_name AS target_class,
-			alumni_profiles.cohort AS target_cohort,
-			data_domains.name AS target_domain_name`)
+			alumni_profiles.name AS target_name`)
 }
 
 // listQuery 只提取列表展示所需的 detail 标量字段，不 SELECT 整块 detail。
@@ -172,19 +164,14 @@ func (r *AuditRepository) listQuery(ctx context.Context) *gorm.DB {
 			JSON_UNQUOTE(JSON_EXTRACT(logs.detail, '$.status')) AS detail_status,
 			COALESCE(NULLIF(users.real_name, ''), users.account) AS operator_name,
 			users.account AS operator_account,
-			alumni_profiles.name AS target_name,
-			alumni_profiles.grade AS target_grade,
-			alumni_profiles.class_name AS target_class,
-			alumni_profiles.cohort AS target_cohort,
-			data_domains.name AS target_domain_name`)
+			alumni_profiles.name AS target_name`)
 }
 
 func (r *AuditRepository) scopeQuery(ctx context.Context) *gorm.DB {
 	return r.db.WithContext(ctx).
 		Table("operation_logs AS logs").
 		Joins("LEFT JOIN users ON users.id = logs.operator_id").
-		Joins("LEFT JOIN alumni_profiles ON logs.target_type = ? AND alumni_profiles.id = logs.target_id", auditTargetAlumni).
-		Joins("LEFT JOIN data_domains ON data_domains.id = alumni_profiles.data_domain_id")
+		Joins("LEFT JOIN alumni_profiles ON logs.target_type = ? AND alumni_profiles.id = logs.target_id", auditTargetAlumni)
 }
 
 // applyAuditSortIndex 给列表查询加上索引提示，引导 MySQL 走 (created_at, id)
@@ -205,8 +192,6 @@ func applyAuditSortIndex(db *gorm.DB) *gorm.DB {
 
 func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 	operationLogQuery := querypkg.Use(db).OperationLog.As("logs")
-	alumniProfileQuery := querypkg.Use(db).AlumniProfile
-	dataDomainQuery := querypkg.Use(db).DataDomain
 
 	db = db.Where(operationLogQuery.TargetType.In(auditTargetAlumni, auditTargetBatch))
 	if auditQuery.StartAt != nil {
@@ -225,37 +210,38 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 		)
 	}
 	if auditQuery.ManagementScope != "" {
-		db = db.Where(clause.Or(
-			clause.And(
-				operationLogQuery.TargetType.Eq(auditTargetAlumni),
-				dataDomainQuery.Name.Eq(auditQuery.ManagementScope),
+		db = db.Where(
+			gorm.Expr(
+				"JSON_UNQUOTE(JSON_EXTRACT(?, '$.management_scope')) = ?",
+				operationLogQuery.Detail,
+				auditQuery.ManagementScope,
 			),
-			clause.And(
-				operationLogQuery.TargetType.Neq(auditTargetAlumni),
-				gorm.Expr(
-					"JSON_UNQUOTE(JSON_EXTRACT(?, '$.management_scope')) = ?",
-					operationLogQuery.Detail,
-					auditQuery.ManagementScope,
-				),
-			),
-		))
+		)
 	}
 	if auditQuery.RestrictToDataDomains {
 		if len(auditQuery.DataDomainIDs) == 0 {
 			return db.Where("1 = 0")
 		}
 		domainJSON, _ := json.Marshal(auditQuery.DataDomainIDs)
+		// 新日志与迁移后的旧日志都在 detail.data_domain_ids 中声明归属数据域；
+		// 缺失该字段的少数历史事件（如校友本人早期自助修改）按该校友当前可访问学籍
+		// 保守兜底，仍要求至少一段在授权范围内。
 		db = db.Where(clause.Or(
-			clause.And(
-				operationLogQuery.TargetType.Eq(auditTargetAlumni),
-				alumniProfileQuery.DataDomainID.In(auditQuery.DataDomainIDs...),
+			gorm.Expr(
+				"JSON_OVERLAPS(JSON_EXTRACT(?, '$.data_domain_ids'), CAST(? AS JSON))",
+				operationLogQuery.Detail,
+				string(domainJSON),
 			),
 			clause.And(
-				operationLogQuery.TargetType.Eq(auditTargetBatch),
+				operationLogQuery.TargetType.Eq(auditTargetAlumni),
 				gorm.Expr(
-					"JSON_OVERLAPS(JSON_EXTRACT(?, '$.data_domain_ids'), CAST(? AS JSON))",
+					"JSON_EXTRACT(?, '$.data_domain_ids') IS NULL",
 					operationLogQuery.Detail,
-					string(domainJSON),
+				),
+				gorm.Expr(
+					"EXISTS (SELECT 1 FROM alumni_enrollments AS ae WHERE ae.alumni_id = logs.target_id AND ae.status = ? AND ae.deleted_at IS NULL AND ae.data_domain_id IN ?)",
+					common.AlumniStatusActive,
+					auditQuery.DataDomainIDs,
 				),
 			),
 		))

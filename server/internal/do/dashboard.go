@@ -6,13 +6,14 @@ import (
 )
 
 const (
-	DashboardDistributionDimensionGrade        = "grade"
-	DashboardDistributionDimensionClassName    = "class_name"
-	DashboardDistributionDimensionCohort       = "cohort"
-	DashboardDistributionDimensionGender       = "gender"
-	DashboardDistributionDimensionMajor        = "major"
-	DashboardDistributionDimensionTrainingMode = "training_mode"
-	DashboardDistributionDimensionIndustry     = "industry"
+	DashboardDistributionDimensionGrade         = "grade"
+	DashboardDistributionDimensionClassName     = "class_name"
+	DashboardDistributionDimensionCohort        = "cohort"
+	DashboardDistributionDimensionGender        = "gender"
+	DashboardDistributionDimensionMajor         = "major"
+	DashboardDistributionDimensionTrainingMode  = "training_mode"
+	DashboardDistributionDimensionTrainingLevel = "training_level"
+	DashboardDistributionDimensionIndustry      = "industry"
 )
 
 type DashboardOverviewStats struct {
@@ -44,6 +45,7 @@ func (q DashboardDistributionQuery) Valid() bool {
 		DashboardDistributionDimensionGender,
 		DashboardDistributionDimensionMajor,
 		DashboardDistributionDimensionTrainingMode,
+		DashboardDistributionDimensionTrainingLevel,
 		DashboardDistributionDimensionIndustry:
 		return true
 	default:

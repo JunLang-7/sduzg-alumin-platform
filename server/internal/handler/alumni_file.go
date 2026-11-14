@@ -13,6 +13,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// parseEnrollmentID 解析路由中的学籍段 ID。
+func parseEnrollmentID(c *gin.Context) (uint64, bool) {
+	enrollmentID, err := strconv.ParseUint(c.Param("enrollmentId"), 10, 64)
+	if err != nil || enrollmentID == 0 {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid enrollment id")
+		return 0, false
+	}
+	return enrollmentID, true
+}
+
 // AlumniFileHandler 校友档案文件处理器。
 type AlumniFileHandler struct {
 	fileService *service.AlumniFileService
@@ -31,8 +41,9 @@ func NewAlumniFileHandler(fileService *service.AlumniFileService) *AlumniFileHan
 //	@Tags			校友档案文件
 //	@Accept			json
 //	@Produce		json
-//	@Param			id		path		integer							true	"校友档案 ID"
-//	@Param			request	body		dto.AlumniFileUploadURLRequest	true	"文件类型与元信息"
+//	@Param			id				path		integer							true	"校友档案 ID"
+//	@Param			enrollmentId	path		integer							true	"学籍段 ID"
+//	@Param			request			body		dto.AlumniFileUploadURLRequest	true	"文件类型与元信息"
 //	@Success		200		{object}	response.Body{data=dto.AlumniFileUploadURLResponse}
 //	@Failure		400		{object}	response.Body	"校友 ID 无效，或 file_type、original_name、mime_type 缺失"
 //	@Failure		403		{object}	response.Body	"权限不足，或档案不在可访问数据域内"
@@ -41,7 +52,7 @@ func NewAlumniFileHandler(fileService *service.AlumniFileService) *AlumniFileHan
 //	@Failure		415		{object}	response.Body	"不支持的文件类型，仅允许 PDF、Word、JPG、PNG"
 //	@Failure		503		{object}	response.Body	"存储或数据库不可用"
 //	@Security		BearerAuth
-//	@Router			/admin/alumni/{id}/files/upload-url [post]
+//	@Router			/admin/alumni/{id}/enrollments/{enrollmentId}/files/upload-url [post]
 func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -61,7 +72,12 @@ func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 		return
 	}
 
-	result, err := h.fileService.GenerateUploadURL(c.Request.Context(), *access, alumniID, req.FileType, req.OriginalName, req.MimeType)
+	enrollmentID, ok := parseEnrollmentID(c)
+	if !ok {
+		return
+	}
+
+	result, err := h.fileService.GenerateUploadURL(c.Request.Context(), *access, alumniID, enrollmentID, req.FileType, req.OriginalName, req.MimeType)
 	if err == nil {
 		response.JSON(c, http.StatusOK, response.CodeSuccess, "success", result)
 		return
@@ -77,15 +93,16 @@ func (h *AlumniFileHandler) RequestUpload(c *gin.Context) {
 //	@Description	校验对象存储中的对象存在后，将文件记录标记为 active。需要 alumni.files.manage 功能权限。
 //	@Tags			校友档案文件
 //	@Produce		json
-//	@Param			id		path		integer	true	"校友档案 ID"
-//	@Param			fileId	path		integer	true	"文件记录 ID"
-//	@Success		200		{object}	response.Body{data=dto.AlumniFileUploadResponse}
+//	@Param			id				path		integer	true	"校友档案 ID"
+//	@Param			enrollmentId	path		integer	true	"学籍段 ID"
+//	@Param			fileId			path		integer	true	"文件记录 ID"
+//	@Success		200				{object}	response.Body{data=dto.AlumniFileUploadResponse}
 //	@Failure		403		{object}	response.Body	"权限不足"
 //	@Failure		404		{object}	response.Body	"文件记录不存在或未完成上传，或对应校友不存在"
 //	@Failure		413		{object}	response.Body	"文件大小超过限制（最大 50MB）"
 //	@Failure		503		{object}	response.Body	"存储或数据库不可用"
 //	@Security		BearerAuth
-//	@Router			/admin/alumni/{id}/files/{fileId}/confirm [post]
+//	@Router			/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId}/confirm [post]
 func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -105,7 +122,12 @@ func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 		return
 	}
 
-	result, err := h.fileService.ConfirmUpload(c.Request.Context(), *access, alumniID, fileID)
+	enrollmentID, ok := parseEnrollmentID(c)
+	if !ok {
+		return
+	}
+
+	result, err := h.fileService.ConfirmUpload(c.Request.Context(), *access, alumniID, enrollmentID, fileID)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -114,8 +136,8 @@ func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 	switch {
 	case errors.Is(err, common.ErrFileNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeFileNotFound, "文件记录不存在或未完成上传")
-	case errors.Is(err, common.ErrAlumniNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
+	case errors.Is(err, common.ErrAlumniNotFound), errors.Is(err, common.ErrEnrollmentNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友或学籍不存在")
 	case errors.Is(err, common.ErrFileTooLarge):
 		response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeFileTooLarge, "文件大小超过限制（最大 50MB）")
 	case errors.Is(err, common.ErrStorageUnavailable):
@@ -132,11 +154,12 @@ func (h *AlumniFileHandler) ConfirmUpload(c *gin.Context) {
 // ListFiles 查看文件列表 GET /admin/alumni/:id/files（管理员专用）
 //
 //	@Summary		档案文件列表
-//	@Description	按类型分组返回该校友的档案文件。需要 alumni.files.manage 功能权限，该权限与敏感字段权限互相独立。
+//	@Description	按学籍段与类型分组返回当前查看者可访问的档案文件；include_draft=true 时包含未保存草稿。需要 alumni.files.manage 功能权限，该权限与敏感字段权限互相独立。
 //	@Tags			校友档案文件
 //	@Produce		json
-//	@Param			id	path		integer	true	"校友档案 ID"
-//	@Success		200	{object}	response.Body{data=dto.AlumniFileListResponse}
+//	@Param			id				path		integer	true	"校友档案 ID"
+//	@Param			include_draft	query		boolean	false	"是否包含未保存的草稿文件，管理端编辑弹窗使用"
+//	@Success		200				{object}	response.Body{data=dto.AlumniFileListResponse}
 //	@Failure		403	{object}	response.Body	"权限不足"
 //	@Failure		404	{object}	response.Body	"对应校友不存在"
 //	@Failure		503	{object}	response.Body	"存储或数据库不可用"
@@ -155,7 +178,8 @@ func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
 		return
 	}
 
-	result, err := h.fileService.ListFiles(c.Request.Context(), *access, alumniID)
+	includeDrafts := c.Query("include_draft") == "true"
+	result, err := h.fileService.ListFiles(c.Request.Context(), *access, alumniID, includeDrafts)
 	if err == nil {
 		response.Success(c, result)
 		return
@@ -170,14 +194,15 @@ func (h *AlumniFileHandler) ListFiles(c *gin.Context) {
 //	@Description	返回预签名 GET 地址，客户端直连对象存储下载，文件流不经过 API 服务。需要 alumni.files.manage 功能权限。
 //	@Tags			校友档案文件
 //	@Produce		json
-//	@Param			id		path		integer	true	"校友档案 ID"
-//	@Param			fileId	path		integer	true	"文件记录 ID"
-//	@Success		200		{object}	response.Body{data=dto.AlumniFileDownloadURLResponse}
+//	@Param			id				path		integer	true	"校友档案 ID"
+//	@Param			enrollmentId	path		integer	true	"学籍段 ID"
+//	@Param			fileId			path		integer	true	"文件记录 ID"
+//	@Success		200				{object}	response.Body{data=dto.AlumniFileDownloadURLResponse}
 //	@Failure		403		{object}	response.Body	"权限不足"
 //	@Failure		404		{object}	response.Body	"文件不存在"
 //	@Failure		503		{object}	response.Body	"存储或数据库不可用"
 //	@Security		BearerAuth
-//	@Router			/admin/alumni/{id}/files/{fileId}/download [get]
+//	@Router			/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId}/download [get]
 func (h *AlumniFileHandler) DownloadURL(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -197,7 +222,12 @@ func (h *AlumniFileHandler) DownloadURL(c *gin.Context) {
 		return
 	}
 
-	result, err := h.fileService.GenerateDownloadURL(c.Request.Context(), *access, alumniID, fileID)
+	enrollmentID, ok := parseEnrollmentID(c)
+	if !ok {
+		return
+	}
+
+	result, err := h.fileService.GenerateDownloadURL(c.Request.Context(), *access, alumniID, enrollmentID, fileID)
 	if err != nil {
 		if errors.Is(err, common.ErrFileNotFound) || errors.Is(err, common.ErrAlumniNotFound) {
 			response.Fail(c, http.StatusNotFound, response.CodeFileNotFound, "文件不存在")
@@ -222,20 +252,22 @@ func (h *AlumniFileHandler) DownloadURL(c *gin.Context) {
 	response.Success(c, result)
 }
 
-// Delete 删除文件 DELETE /admin/alumni/:id/files/:fileId
+// Delete 删除尚未保存的草稿文件 DELETE /admin/alumni/:id/enrollments/:enrollmentId/files/:fileId
 //
-//	@Summary		删除档案文件
-//	@Description	同时删除对象存储中的对象与文件记录。需要 alumni.files.manage 功能权限。
+//	@Summary		删除未保存的档案草稿
+//	@Description	仅删除 pending/draft 状态的草稿文件，用于取消编辑时清理；正式附件必须通过保存全部修改移除。需要 alumni.files.manage 功能权限。
 //	@Tags			校友档案文件
 //	@Produce		json
-//	@Param			id		path		integer	true	"校友档案 ID"
-//	@Param			fileId	path		integer	true	"文件记录 ID"
-//	@Success		200		{object}	response.Body{data=dto.DeletedResult}
-//	@Failure		403		{object}	response.Body	"权限不足"
-//	@Failure		404		{object}	response.Body	"文件不存在"
-//	@Failure		503		{object}	response.Body	"数据库不可用"
+//	@Param			id				path		integer	true	"校友档案 ID"
+//	@Param			enrollmentId	path		integer	true	"学籍段 ID"
+//	@Param			fileId			path		integer	true	"文件记录 ID"
+//	@Success		200				{object}	response.Body{data=dto.DeletedResult}
+//	@Failure		403				{object}	response.Body	"权限不足"
+//	@Failure		404				{object}	response.Body	"文件不存在"
+//	@Failure		409				{object}	response.Body	"正式附件不能通过草稿删除接口移除"
+//	@Failure		503				{object}	response.Body	"数据库不可用"
 //	@Security		BearerAuth
-//	@Router			/admin/alumni/{id}/files/{fileId} [delete]
+//	@Router			/admin/alumni/{id}/enrollments/{enrollmentId}/files/{fileId} [delete]
 func (h *AlumniFileHandler) Delete(c *gin.Context) {
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
@@ -255,15 +287,22 @@ func (h *AlumniFileHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	err = h.fileService.DeleteFile(c.Request.Context(), *access, alumniID, fileID)
+	enrollmentID, ok := parseEnrollmentID(c)
+	if !ok {
+		return
+	}
+
+	err = h.fileService.DeleteDraftFile(c.Request.Context(), *access, alumniID, enrollmentID, fileID)
 	if err == nil {
 		response.Success(c, dto.DeletedResult{Deleted: true})
 		return
 	}
 
 	switch {
-	case errors.Is(err, common.ErrFileNotFound), errors.Is(err, common.ErrAlumniNotFound):
+	case errors.Is(err, common.ErrFileNotFound), errors.Is(err, common.ErrAlumniNotFound), errors.Is(err, common.ErrEnrollmentNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeFileNotFound, "文件不存在")
+	case errors.Is(err, common.ErrFileNotDraft):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "正式附件需通过保存全部修改移除")
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrDatabaseUnavailable):
@@ -279,8 +318,8 @@ func (h *AlumniFileHandler) writeUploadError(c *gin.Context, err error) {
 		response.Fail(c, http.StatusUnsupportedMediaType, response.CodeFileTypeNotAllowed, "不支持的文件类型，仅允许 PDF、Word、JPG、PNG")
 	case errors.Is(err, common.ErrFileTooLarge):
 		response.Fail(c, http.StatusRequestEntityTooLarge, response.CodeFileTooLarge, "文件大小超过限制（最大 50MB）")
-	case errors.Is(err, common.ErrAlumniNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
+	case errors.Is(err, common.ErrAlumniNotFound), errors.Is(err, common.ErrEnrollmentNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友或学籍不存在")
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrStorageUnavailable):
@@ -294,8 +333,8 @@ func (h *AlumniFileHandler) writeUploadError(c *gin.Context, err error) {
 
 func (h *AlumniFileHandler) writeFileError(c *gin.Context, err error, fallback string) {
 	switch {
-	case errors.Is(err, common.ErrAlumniNotFound), errors.Is(err, common.ErrFileNotFound):
-		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
+	case errors.Is(err, common.ErrAlumniNotFound), errors.Is(err, common.ErrEnrollmentNotFound), errors.Is(err, common.ErrFileNotFound):
+		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友、学籍或文件不存在")
 	case errors.Is(err, common.ErrPermissionDenied):
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrStorageUnavailable):

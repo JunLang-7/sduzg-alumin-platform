@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
@@ -61,6 +63,7 @@ type auditBatchRecord struct {
 
 var auditBatchPublicFields = []auditBatchField{
 	{FieldName: "name", FieldLabel: "姓名"},
+	{FieldName: "training_level", FieldLabel: "培养层次"},
 	{FieldName: "grade", FieldLabel: "年级"},
 	{FieldName: "class_name", FieldLabel: "班级"},
 	{FieldName: "major", FieldLabel: "专业"},
@@ -96,6 +99,8 @@ type AuditEvent struct {
 	TargetMeta                string
 	Changes                   []AuditChange
 	DataDomainIDs             []uint64
+	EnrollmentID              *uint64
+	EnrollmentLabel           string
 	BatchImportFields         []auditBatchField
 	BatchCreatedAlumni        []auditBatchRecord
 	BatchHiddenSensitiveCount int
@@ -113,6 +118,8 @@ type auditLogDetail struct {
 	TargetID                    *uint64            `json:"target_id,omitempty"`
 	TargetName                  string             `json:"target_name,omitempty"`
 	TargetMeta                  string             `json:"target_meta,omitempty"`
+	EnrollmentID                *uint64            `json:"enrollment_id,omitempty"`
+	EnrollmentLabel             string             `json:"enrollment_label,omitempty"`
 	ManagementScope             string             `json:"management_scope,omitempty"`
 	Source                      string             `json:"source,omitempty"`
 	Reason                      string             `json:"reason,omitempty"`
@@ -172,6 +179,8 @@ func (l *OperationLogger) WriteAudit(ctx context.Context, event AuditEvent) erro
 		Status:                    status,
 		Changes:                   event.Changes,
 		DataDomainIDs:             append([]uint64(nil), event.DataDomainIDs...),
+		EnrollmentID:              event.EnrollmentID,
+		EnrollmentLabel:           event.EnrollmentLabel,
 		BatchImportFields:         append([]auditBatchField(nil), event.BatchImportFields...),
 		BatchCreatedAlumni:        append([]auditBatchRecord(nil), event.BatchCreatedAlumni...),
 		BatchHiddenSensitiveCount: event.BatchHiddenSensitiveCount,
@@ -226,15 +235,8 @@ type auditField struct {
 	value     func(*model.AlumniProfile) string
 }
 
-var alumniAuditFields = []auditField{
+var personalAuditFields = []auditField{
 	{name: "name", label: "姓名", value: func(p *model.AlumniProfile) string { return p.Name }},
-	{name: "grade", label: "年级", value: func(p *model.AlumniProfile) string { return p.Grade }},
-	{name: "class_name", label: "班级", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.ClassName) }},
-	{name: "cohort", label: "届数", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Cohort) }},
-	{name: "counselor", label: "辅导员", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Counselor) }},
-	{name: "mentor", label: "导师", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Mentor) }},
-	{name: "major", label: "专业", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Major) }},
-	{name: "training_mode", label: "培养方式", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.TrainingMode) }},
 	{name: "industry", label: "行业", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Industry) }},
 	{name: "work_unit", label: "工作单位", sensitive: true, value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.WorkUnit) }},
 	{name: "position", label: "职务", sensitive: true, value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Position) }},
@@ -242,10 +244,74 @@ var alumniAuditFields = []auditField{
 	{name: "gender", label: "性别", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Gender) }},
 	{name: "mobile", label: "手机号", sensitive: true, value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Mobile) }},
 	{name: "email", label: "邮箱", sensitive: true, value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Email) }},
-	{name: "remark", label: "管理员备注", value: func(p *model.AlumniProfile) string { return optionalProfileValue(p.Remark) }},
+}
+
+type enrollmentAuditField struct {
+	name      string
+	label     string
+	value     func(*model.AlumniEnrollment) string
+	sensitive bool
+}
+
+var enrollmentAuditFields = []enrollmentAuditField{
+	{name: "data_domain_id", label: "培养类别", value: func(e *model.AlumniEnrollment) string {
+		return enrollmentDomainLabel(e.DataDomainID)
+	}},
+	{name: "training_level", label: "培养层次", value: func(e *model.AlumniEnrollment) string {
+		return TrainingLevelLabel(e.TrainingLevel)
+	}},
+	{name: "grade", label: "年级", value: func(e *model.AlumniEnrollment) string { return e.Grade }},
+	{name: "class_name", label: "班级", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.ClassName) }},
+	{name: "cohort", label: "届数", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.Cohort) }},
+	{name: "counselor", label: "辅导员", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.Counselor) }},
+	{name: "mentor", label: "导师", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.Mentor) }},
+	{name: "major", label: "专业", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.Major) }},
+	{name: "training_mode", label: "培养方式", value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.TrainingMode) }},
+	{name: "remark", label: "管理员备注", sensitive: true, value: func(e *model.AlumniEnrollment) string { return optionalEnrollmentValue(e.Remark) }},
+}
+
+// enrollmentDomainLabel 供审计字段值使用；具体数据域名称由调用方的 target_meta 提供。
+func domainDisplayValue(enrollment *model.AlumniEnrollment, domainNames map[uint64]string) string {
+	if enrollment == nil {
+		return "未填写"
+	}
+	if name := domainNames[enrollment.DataDomainID]; name != "" {
+		return name
+	}
+	return enrollmentDomainLabel(enrollment.DataDomainID)
+}
+
+func enrollmentDomainLabel(id uint64) string {
+	if id == 0 {
+		return "未填写"
+	}
+	return fmt.Sprintf("数据域 #%d", id)
+}
+
+// TrainingLevelLabel 返回培养层次的稳定中文名称。
+func TrainingLevelLabel(level string) string {
+	switch level {
+	case common.TrainingLevelUndergraduate:
+		return "本科"
+	case common.TrainingLevelMaster:
+		return "硕士"
+	case common.TrainingLevelDoctor:
+		return "博士"
+	case common.TrainingLevelUnverified:
+		return "待核验"
+	default:
+		return "未填写"
+	}
 }
 
 func optionalProfileValue(value *string) string {
+	if value == nil || *value == "" {
+		return "未填写"
+	}
+	return *value
+}
+
+func optionalEnrollmentValue(value *string) string {
 	if value == nil || *value == "" {
 		return "未填写"
 	}
@@ -264,7 +330,7 @@ func profileAuditChanges(action string, before, after *model.AlumniProfile) []Au
 	}
 
 	changes := make([]AuditChange, 0)
-	for _, field := range alumniAuditFields {
+	for _, field := range personalAuditFields {
 		oldValue := "未填写"
 		newValue := "未填写"
 		if before != nil {
@@ -276,23 +342,61 @@ func profileAuditChanges(action string, before, after *model.AlumniProfile) []Au
 		if oldValue == newValue {
 			continue
 		}
-
-		change := AuditChange{
-			FieldName:  field.name,
-			FieldLabel: field.label,
-			Sensitive:  field.sensitive,
-		}
-		if field.sensitive {
-			change.OldValue, change.NewValue = sensitiveTransition(oldValue, newValue)
-			change.CurrentValue = change.NewValue
-		} else {
-			change.OldValue = oldValue
-			change.NewValue = newValue
-			change.CurrentValue = newValue
-		}
-		changes = append(changes, change)
+		changes = append(changes, buildAuditChange(field.name, field.label, field.sensitive, oldValue, newValue))
 	}
 	return changes
+}
+
+func enrollmentAuditChanges(action string, before, after *model.AlumniEnrollment, domainNames map[uint64]string) []AuditChange {
+	if action == AuditActionDelete {
+		return []AuditChange{{
+			FieldName:    "status",
+			FieldLabel:   "学籍状态",
+			OldValue:     common.AlumniStatusActive,
+			NewValue:     common.AlumniStatusDeleted,
+			CurrentValue: common.AlumniStatusDeleted,
+		}}
+	}
+
+	changes := make([]AuditChange, 0)
+	for _, field := range enrollmentAuditFields {
+		oldValue := "未填写"
+		newValue := "未填写"
+		if before != nil {
+			oldValue = field.value(before)
+		}
+		if after != nil {
+			newValue = field.value(after)
+		}
+		if oldValue == newValue {
+			continue
+		}
+		if field.name == "data_domain_id" {
+			if after != nil && domainNames[after.DataDomainID] != "" {
+				oldValue = domainDisplayValue(before, domainNames)
+				newValue = domainNames[after.DataDomainID]
+			}
+		}
+		changes = append(changes, buildAuditChange(field.name, field.label, field.sensitive, oldValue, newValue))
+	}
+	return changes
+}
+
+func buildAuditChange(name, label string, sensitive bool, oldValue, newValue string) AuditChange {
+	change := AuditChange{
+		FieldName:  name,
+		FieldLabel: label,
+		Sensitive:  sensitive,
+	}
+	if sensitive {
+		change.OldValue, change.NewValue = sensitiveTransition(oldValue, newValue)
+		change.CurrentValue = change.NewValue
+		return change
+	}
+	change.OldValue = oldValue
+	change.NewValue = newValue
+	change.CurrentValue = newValue
+	return change
 }
 
 func sensitiveTransition(oldValue, newValue string) (string, string) {
@@ -308,17 +412,7 @@ func sensitiveTransition(oldValue, newValue string) (string, string) {
 	}
 }
 
-func profileAuditMeta(profile *model.AlumniProfile) string {
-	if profile == nil {
-		return ""
-	}
-	meta := profile.Grade
-	if profile.ClassName != nil && *profile.ClassName != "" {
-		meta += " · " + *profile.ClassName
-	}
-	return meta
-}
-
+// writeProfileAudit 记录个人共享字段变化。dataDomainIDs 用于按当前可访问学籍裁剪历史可见性。
 func writeProfileAudit(
 	ctx context.Context,
 	writer AuditEventWriter,
@@ -328,6 +422,7 @@ func writeProfileAudit(
 	source string,
 	reason string,
 	managementScope string,
+	dataDomainIDs []uint64,
 	before *model.AlumniProfile,
 	after *model.AlumniProfile,
 ) {
@@ -361,11 +456,81 @@ func writeProfileAudit(
 		TargetType:      auditTargetAlumni,
 		TargetID:        &targetID,
 		TargetName:      target.Name,
-		TargetMeta:      profileAuditMeta(target),
 		Changes:         changes,
+		DataDomainIDs:   append([]uint64(nil), dataDomainIDs...),
 	}
 	if err := writer.WriteAudit(ctx, event); err != nil {
 		logger.Warn("failed to write alumni audit", zap.Uint64("alumni_id", target.ID), zap.String("action", action), zap.Error(err))
+	}
+}
+
+// writeEnrollmentAudit 记录具体学籍段的字段变化，日志仍以校友个人 ID 关联，
+// 并附带学籍 ID 与标签，便于详情页定位到具体学籍。
+func writeEnrollmentAudit(
+	ctx context.Context,
+	writer AuditEventWriter,
+	users repository.UserStore,
+	operatorID uint64,
+	action string,
+	source string,
+	reason string,
+	managementScope string,
+	alumniID uint64,
+	alumniName string,
+	enrollmentLabel string,
+	dataDomainID uint64,
+	domainNames map[uint64]string,
+	before *model.AlumniEnrollment,
+	after *model.AlumniEnrollment,
+	fileChanges ...AuditChange,
+) {
+	if writer == nil || users == nil {
+		return
+	}
+
+	var enrollmentID uint64
+	if after != nil {
+		enrollmentID = after.ID
+	} else if before != nil {
+		enrollmentID = before.ID
+	}
+	if enrollmentID == 0 {
+		return
+	}
+
+	changes := append(enrollmentAuditChanges(action, before, after, domainNames), fileChanges...)
+	if len(changes) == 0 && action == AuditActionUpdate {
+		return
+	}
+	operator, err := users.FindByID(ctx, operatorID)
+	if err != nil {
+		logger.Warn("failed to load audit operator", zap.Uint64("operator_id", operatorID), zap.Error(err))
+		return
+	}
+	domainID := dataDomainID
+	if after != nil {
+		domainID = after.DataDomainID
+	} else if before != nil {
+		domainID = before.DataDomainID
+	}
+	targetID := alumniID
+	event := AuditEvent{
+		Operator:        operator,
+		Action:          action,
+		Source:          source,
+		ManagementScope: managementScope,
+		Reason:          reason,
+		TargetType:      auditTargetAlumni,
+		TargetID:        &targetID,
+		TargetName:      alumniName,
+		TargetMeta:      enrollmentLabel,
+		Changes:         changes,
+		DataDomainIDs:   []uint64{domainID},
+		EnrollmentID:    &enrollmentID,
+		EnrollmentLabel: enrollmentLabel,
+	}
+	if err := writer.WriteAudit(ctx, event); err != nil {
+		logger.Warn("failed to write enrollment audit", zap.Uint64("alumni_id", alumniID), zap.Uint64("enrollment_id", enrollmentID), zap.String("action", action), zap.Error(err))
 	}
 }
 
@@ -408,4 +573,31 @@ func writeBatchAudit(
 	}); err != nil {
 		logger.Warn("failed to write batch alumni audit", zap.Uint64("operator_id", operatorID), zap.Error(err))
 	}
+}
+
+// enrollmentFileAuditChanges 使用实际提交成功的文件快照，草稿清理不产生正式变更。
+func enrollmentFileAuditChanges(enrollmentID uint64, files []do.AlumniFileChange) []AuditChange {
+	var changes []AuditChange
+	for _, archive := range []struct{ field, label string }{
+		{common.FileTypeDegreeArchive, "学位档案"},
+		{common.FileTypeAcademicRecord, "学籍档案"},
+	} {
+		var added, removed []string
+		for _, file := range files {
+			if file.EnrollmentID != enrollmentID || file.FileType != archive.field {
+				continue
+			}
+			value := fmt.Sprintf("%s（文件ID：%d）", file.OriginalName, file.FileID)
+			if file.Removed {
+				removed = append(removed, value)
+			} else {
+				added = append(added, value)
+			}
+		}
+		if len(added) == 0 && len(removed) == 0 {
+			continue
+		}
+		changes = append(changes, AuditChange{FieldName: archive.field, FieldLabel: archive.label + "（本次移除 / 新增）", OldValue: strings.Join(removed, "；"), NewValue: strings.Join(added, "；")})
+	}
+	return changes
 }

@@ -145,11 +145,11 @@ func newEngine(t *testing.T, storageClient *storage.Client) *gin.Engine {
 // storageOnlyRoutes 是仅在启用对象存储时才注册的接口，
 // 关闭存储时规范中存在但路由不存在属于预期差异。
 var storageOnlyRoutes = map[operation]bool{
-	{Method: "GET", Path: "/api/v1/admin/alumni/:id/files"}:                  true,
-	{Method: "POST", Path: "/api/v1/admin/alumni/:id/files/upload-url"}:      true,
-	{Method: "POST", Path: "/api/v1/admin/alumni/:id/files/:fileId/confirm"}: true,
-	{Method: "GET", Path: "/api/v1/admin/alumni/:id/files/:fileId/download"}: true,
-	{Method: "DELETE", Path: "/api/v1/admin/alumni/:id/files/:fileId"}:       true,
+	{Method: "GET", Path: "/api/v1/admin/alumni/:id/files"}:                                            true,
+	{Method: "POST", Path: "/api/v1/admin/alumni/:id/enrollments/:enrollmentId/files/upload-url"}:      true,
+	{Method: "POST", Path: "/api/v1/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId/confirm"}: true,
+	{Method: "GET", Path: "/api/v1/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId/download"}: true,
+	{Method: "DELETE", Path: "/api/v1/admin/alumni/:id/enrollments/:enrollmentId/files/:fileId"}:       true,
 }
 
 func assertOperationsMatch(t *testing.T, engine *gin.Engine, allowedMissing map[operation]bool) {

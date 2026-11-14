@@ -98,3 +98,29 @@ func TestHistoryMigrationRequiresDataDomains(t *testing.T) {
 		t.Fatal("008 should depend on data_domains")
 	}
 }
+
+func TestAlumniEnrollmentMigrationIsIdempotentAndBackfills(t *testing.T) {
+	content, err := os.ReadFile("012_add_alumni_enrollments.sql")
+	if err != nil {
+		t.Fatalf("read 012: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		"-- migrate: proves alumni_enrollments",
+		"-- migrate: requires alumni_profiles,alumni_files,data_domains,operation_logs",
+		"CREATE TABLE IF NOT EXISTS alumni_enrollments",
+		"information_schema.columns",
+		"NOT EXISTS",
+		"unverified",
+		"$.data_domain_ids",
+		"fk_af_enrollment",
+	} {
+		if !strings.Contains(text, want) {
+			t.Errorf("012 missing %q", want)
+		}
+	}
+	// 旧列清理必须最后执行，且回填受旧列存在性保护，保证重复执行不会因列已删除而失败。
+	if strings.Index(text, "DROP COLUMN data_domain_id") < strings.Index(text, "INSERT INTO alumni_enrollments") {
+		t.Error("012 must backfill enrollments before dropping legacy columns")
+	}
+}

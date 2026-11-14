@@ -50,6 +50,7 @@ func TestAlumniQueryAccessIntegration(t *testing.T) {
 			{&model.AdminDataScope{}, "user_id", userIDs},
 			{&model.AdminPermission{}, "user_id", userIDs},
 			{&model.User{}, "id", userIDs},
+			{&model.AlumniEnrollment{}, "alumni_id", profileIDs},
 			{&model.AlumniProfile{}, "id", profileIDs},
 		} {
 			if len(cleanup.ids) > 0 {
@@ -74,13 +75,21 @@ func TestAlumniQueryAccessIntegration(t *testing.T) {
 	}
 	tag := fmt.Sprintf("query-access-%d", time.Now().UnixNano())
 	profiles := []*model.AlumniProfile{
-		{DataDomainID: localDomain.ID, Name: tag + "-self", Grade: "2020", Mobile: ptrString("13800000001"), WorkUnit: ptrString("测试单位"), Status: common.AlumniStatusActive},
-		{DataDomainID: localDomain.ID, Name: tag + "-other", Grade: "2020", Mobile: ptrString("13800000002"), Status: common.AlumniStatusActive},
-		{DataDomainID: foreignDomain.ID, Name: tag + "-foreign", Grade: "2020", Mobile: ptrString("13800000003"), Status: common.AlumniStatusActive},
+		{Name: tag + "-self", Mobile: ptrString("13800000001"), WorkUnit: ptrString("测试单位"), Status: common.AlumniStatusActive, Version: 1},
+		{Name: tag + "-other", Mobile: ptrString("13800000002"), Status: common.AlumniStatusActive, Version: 1},
+		{Name: tag + "-foreign", Mobile: ptrString("13800000003"), Status: common.AlumniStatusActive, Version: 1},
 	}
-	for _, profile := range profiles {
+	enrollmentDomains := []uint64{localDomain.ID, localDomain.ID, foreignDomain.ID}
+	enrollmentLevels := []string{common.TrainingLevelMaster, common.TrainingLevelMaster, common.TrainingLevelUndergraduate}
+	for i, profile := range profiles {
 		if err := db.Create(profile).Error; err != nil {
 			t.Fatalf("create profile fixture: %v", err)
+		}
+		if err := db.Create(&model.AlumniEnrollment{
+			AlumniID: profile.ID, DataDomainID: enrollmentDomains[i], TrainingLevel: enrollmentLevels[i],
+			Grade: "2020", Status: common.AlumniStatusActive, Version: 1,
+		}).Error; err != nil {
+			t.Fatalf("create enrollment fixture: %v", err)
 		}
 		profileIDs = append(profileIDs, profile.ID)
 	}
@@ -163,7 +172,7 @@ func TestAlumniQueryAccessIntegration(t *testing.T) {
 				t.Fatalf("unexpected scoped list: %d %s", rec.Code, rec.Body.String())
 			}
 			for _, item := range body.Data.Items {
-				if label != "super-admin" && item.DataDomainID != localDomain.ID {
+				if label != "super-admin" && (len(item.Enrollments) != 1 || item.Enrollments[0].DataDomainID != localDomain.ID) {
 					t.Fatalf("list leaked foreign domain: %+v", item)
 				}
 				if (item.Mobile == nil) != (label == "admin") {

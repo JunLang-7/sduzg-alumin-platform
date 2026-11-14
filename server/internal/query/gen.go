@@ -20,6 +20,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		db:                          db,
 		AdminDataScope:              newAdminDataScope(db, opts...),
 		AdminPermission:             newAdminPermission(db, opts...),
+		AlumniEnrollment:            newAlumniEnrollment(db, opts...),
 		AlumniFile:                  newAlumniFile(db, opts...),
 		AlumniProfile:               newAlumniProfile(db, opts...),
 		DataDomain:                  newDataDomain(db, opts...),
@@ -38,6 +39,7 @@ type Query struct {
 
 	AdminDataScope              adminDataScope
 	AdminPermission             adminPermission
+	AlumniEnrollment            alumniEnrollment
 	AlumniFile                  alumniFile
 	AlumniProfile               alumniProfile
 	DataDomain                  dataDomain
@@ -57,6 +59,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		db:                          db,
 		AdminDataScope:              q.AdminDataScope.clone(db),
 		AdminPermission:             q.AdminPermission.clone(db),
+		AlumniEnrollment:            q.AlumniEnrollment.clone(db),
 		AlumniFile:                  q.AlumniFile.clone(db),
 		AlumniProfile:               q.AlumniProfile.clone(db),
 		DataDomain:                  q.DataDomain.clone(db),
@@ -83,6 +86,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		db:                          db,
 		AdminDataScope:              q.AdminDataScope.replaceDB(db),
 		AdminPermission:             q.AdminPermission.replaceDB(db),
+		AlumniEnrollment:            q.AlumniEnrollment.replaceDB(db),
 		AlumniFile:                  q.AlumniFile.replaceDB(db),
 		AlumniProfile:               q.AlumniProfile.replaceDB(db),
 		DataDomain:                  q.DataDomain.replaceDB(db),
@@ -99,6 +103,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 type queryCtx struct {
 	AdminDataScope              *adminDataScopeDo
 	AdminPermission             *adminPermissionDo
+	AlumniEnrollment            *alumniEnrollmentDo
 	AlumniFile                  *alumniFileDo
 	AlumniProfile               *alumniProfileDo
 	DataDomain                  *dataDomainDo
@@ -115,6 +120,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
 		AdminDataScope:              q.AdminDataScope.WithContext(ctx),
 		AdminPermission:             q.AdminPermission.WithContext(ctx),
+		AlumniEnrollment:            q.AlumniEnrollment.WithContext(ctx),
 		AlumniFile:                  q.AlumniFile.WithContext(ctx),
 		AlumniProfile:               q.AlumniProfile.WithContext(ctx),
 		DataDomain:                  q.DataDomain.WithContext(ctx),

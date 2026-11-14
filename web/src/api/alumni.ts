@@ -4,8 +4,10 @@ import type {
   AlumniImportResult,
   AlumniFileItem,
   AlumniFileListResponse,
+  AlumniFileType,
   AlumniFileUploadURLResponse,
   AlumniFileDownloadURLResponse,
+  AlumniListItem,
   AlumniProfile,
   AlumniProfilePayload,
   AlumniQuery,
@@ -19,7 +21,7 @@ const toSameOriginStorageURL = (presignedURL: string) => {
 
 export const alumniApi = {
   list(params: AlumniQuery) {
-    return request<PageResult<AlumniProfile>>({
+    return request<PageResult<AlumniListItem>>({
       method: 'GET',
       url: '/alumni',
       params,
@@ -91,22 +93,24 @@ export const alumniApi = {
     });
   },
 
-  listFiles(id: number) {
+  listFiles(id: number, includeDraft = false) {
     return request<AlumniFileListResponse>({
       method: 'GET',
       url: `/admin/alumni/${id}/files`,
+      params: includeDraft ? { include_draft: true } : undefined,
     });
   },
 
   async uploadFile(
     id: number,
-    fileType: 'degree_archive' | 'academic_record',
+    enrollmentId: number,
+    fileType: AlumniFileType,
     file: File,
   ): Promise<AlumniFileItem> {
-    // 1. 请求预签名上传 URL
+    // 1. 请求预签名上传 URL（绑定到具体学籍段）
     const { file_id, upload_url } = await request<AlumniFileUploadURLResponse>({
       method: 'POST',
-      url: `/admin/alumni/${id}/files/upload-url`,
+      url: `/admin/alumni/${id}/enrollments/${enrollmentId}/files/upload-url`,
       data: {
         file_type: fileType,
         original_name: file.name,
@@ -124,33 +128,35 @@ export const alumniApi = {
       throw new Error(`文件上传失败: ${putResp.status}`);
     }
 
-    // 3. 确认上传完成（返回值未使用，后端返回 AlumniFileUploadResponse）
+    // 3. 确认直传完成；文件仍是隔离草稿，保存全部修改后才转正式附件。
     await request({
       method: 'POST',
-      url: `/admin/alumni/${id}/files/${file_id}/confirm`,
+      url: `/admin/alumni/${id}/enrollments/${enrollmentId}/files/${file_id}/confirm`,
     });
 
     return {
       id: file_id,
+      enrollment_id: enrollmentId,
       file_type: fileType,
       original_name: file.name,
       file_size: file.size,
       mime_type: file.type || 'application/octet-stream',
+      status: 'draft',
       created_at: new Date().toISOString(),
     };
   },
 
-  deleteFile(alumniId: number, fileId: number) {
+  deleteDraftFile(alumniId: number, enrollmentId: number, fileId: number) {
     return request<void>({
       method: 'DELETE',
-      url: `/admin/alumni/${alumniId}/files/${fileId}`,
+      url: `/admin/alumni/${alumniId}/enrollments/${enrollmentId}/files/${fileId}`,
     });
   },
 
-  async downloadFile(alumniId: number, fileId: number) {
+  async downloadFile(alumniId: number, enrollmentId: number, fileId: number) {
     const { download_url, original_name } = await request<AlumniFileDownloadURLResponse>({
       method: 'GET',
-      url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
+      url: `/admin/alumni/${alumniId}/enrollments/${enrollmentId}/files/${fileId}/download`,
     });
     // 通过 fetch 获取文件再创建 blob URL 下载，绕过弹窗拦截且保证下载行为
     const fileResp = await fetch(toSameOriginStorageURL(download_url));
@@ -166,10 +172,10 @@ export const alumniApi = {
     window.URL.revokeObjectURL(url);
   },
 
-  async getDownloadURL(alumniId: number, fileId: number) {
+  async getDownloadURL(alumniId: number, enrollmentId: number, fileId: number) {
     const { download_url } = await request<AlumniFileDownloadURLResponse>({
       method: 'GET',
-      url: `/admin/alumni/${alumniId}/files/${fileId}/download`,
+      url: `/admin/alumni/${alumniId}/enrollments/${enrollmentId}/files/${fileId}/download`,
     });
     return toSameOriginStorageURL(download_url);
   },

@@ -5,6 +5,7 @@ database:
   tables:
     - users
     - alumni_profiles
+    - alumni_enrollments
     - operation_logs
     - alumni_files
     - data_domains

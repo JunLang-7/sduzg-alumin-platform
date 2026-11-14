@@ -66,6 +66,20 @@ func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, 
 	}
 	sensitiveReadable := access.HasPermission(common.PermissionAlumniSensitiveRead)
 	result := mapAuditOperation(*item, true, sensitiveReadable)
+	if !access.HasPermission(common.PermissionAlumniFilesManage) {
+		for i := range result.Changes {
+			change := &result.Changes[i]
+			if change.FieldName == "degree_archive" || change.FieldName == "academic_record" {
+				if change.OldValue != "" {
+					change.OldValue = "已移除文件"
+				}
+				if change.NewValue != "" {
+					change.NewValue = "已添加文件"
+				}
+				change.CurrentValue = change.NewValue
+			}
+		}
+	}
 	if err := s.populateBatchSensitiveValues(ctx, access, sensitiveReadable, &result); err != nil {
 		return nil, err
 	}
@@ -126,13 +140,7 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiv
 	}
 
 	targetMeta := detail.TargetMeta
-	if targetMeta == "" {
-		targetMeta = joinedTargetMeta(item.TargetGrade, item.TargetClass, item.TargetCohort)
-	}
 	managementScope := detail.ManagementScope
-	if (managementScope == "" || managementScope == defaultAuditScope) && item.TargetDomainName != nil && *item.TargetDomainName != "" {
-		managementScope = *item.TargetDomainName
-	}
 	if managementScope == "" {
 		managementScope = defaultAuditScope
 	}
@@ -159,6 +167,8 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiv
 		TargetType:        item.TargetType,
 		TargetName:        targetName,
 		TargetMeta:        targetMeta,
+		EnrollmentID:      detail.EnrollmentID,
+		EnrollmentLabel:   detail.EnrollmentLabel,
 		ManagementScope:   managementScope,
 		Action:            item.Action,
 		Source:            source,
@@ -249,13 +259,17 @@ func (s *AuditService) populateBatchSensitiveValues(ctx context.Context, access 
 	}
 	for i := range operation.BatchCreatedAlumni {
 		record := &operation.BatchCreatedAlumni[i]
-		profile, err := s.alumni.GetByID(ctx, record.ID, dataDomainIDs)
+		detail, err := s.alumni.GetDetail(ctx, record.ID, dataDomainIDs)
 		if errors.Is(err, common.ErrAlumniNotFound) {
 			continue
 		}
 		if err != nil {
 			return err
 		}
+		if detail == nil || detail.Profile == nil {
+			continue
+		}
+		profile := detail.Profile
 		if record.FieldValues == nil {
 			record.FieldValues = make(map[string]string)
 		}
@@ -359,18 +373,4 @@ func roleFromDetail(roleLabel string) string {
 	default:
 		return ""
 	}
-}
-
-func joinedTargetMeta(grade, className, cohort *string) string {
-	parts := make([]string, 0, 2)
-	if grade != nil && *grade != "" {
-		parts = append(parts, *grade)
-	}
-	if className != nil && *className != "" {
-		parts = append(parts, *className)
-	}
-	if len(parts) == 0 && cohort != nil && *cohort != "" {
-		return *cohort
-	}
-	return strings.Join(parts, " · ")
 }

@@ -15,73 +15,34 @@ import (
 )
 
 type fakeExportStore struct {
-	items []*model.AlumniProfile
-	err   error
+	stubAlumniStore
+	rows []do.AlumniExportRow
+	err  error
 }
 
-func (s *fakeExportStore) List(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, int64, error) {
-	return nil, 0, nil
+func (s *fakeExportStore) ListAll(context.Context, do.AlumniListQuery) ([]do.AlumniExportRow, error) {
+	return s.rows, s.err
 }
 
-func (s *fakeExportStore) ListAll(_ context.Context, _ do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	return s.items, s.err
+func (s *fakeExportStore) CountActive(context.Context) (int64, error) {
+	return int64(len(s.rows)), s.err
 }
 
-func (s *fakeExportStore) GetByID(_ context.Context, _ uint64, _ []uint64) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
-}
-
-func (s *fakeExportStore) FindByMobile(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
-}
-
-func (s *fakeExportStore) FindByEmail(_ context.Context, _ string) (*model.AlumniProfile, error) {
-	return nil, common.ErrAlumniNotFound
-}
-
-func (s *fakeExportStore) UpdateMobile(_ context.Context, _ uint64, _ string) error { return nil }
-func (s *fakeExportStore) UpdateEmail(_ context.Context, _ uint64, _ string) error  { return nil }
-
-func (s *fakeExportStore) Create(_ context.Context, _ *do.AlumniCreateProfile, _ uint64) (*model.AlumniProfile, error) {
-	return nil, nil
-}
-
-func (s *fakeExportStore) Update(_ context.Context, _ uint64, _ uint64, _ do.AlumniUpdateProfile, _ []uint64) error {
-	return nil
-}
-
-func (s *fakeExportStore) Delete(_ context.Context, _ uint64, _ uint64, _ []uint64) error {
-	return nil
-}
-
-func (s *fakeExportStore) BatchCreate(_ context.Context, _ []do.AlumniCreateProfile, _ uint64) error {
-	return nil
-}
-
-func (s *fakeExportStore) FindExistingByDedupKey(_ context.Context, _ []do.AlumniDedupKey) (map[string]bool, error) {
-	return make(map[string]bool), nil
-}
-
-func (s *fakeExportStore) CountActive(_ context.Context) (int64, error) {
-	return int64(len(s.items)), s.err
-}
-
-func (s *fakeExportStore) FindOnly(_ context.Context, query do.AlumniListQuery) ([]*model.AlumniProfile, error) {
-	return s.items, s.err
-}
-
-func (s *fakeExportStore) UpdateEditableFields(_ context.Context, _ uint64, _ uint64, _ do.AlumniEditableProfile) error {
-	return nil
+func exportTestRows(name, grade string) []do.AlumniExportRow {
+	profile := &model.AlumniProfile{ID: 1, Name: name, Status: common.AlumniStatusActive, Version: 1}
+	return []do.AlumniExportRow{{
+		Profile: profile,
+		Enrollment: &model.AlumniEnrollment{
+			ID: 11, AlumniID: 1, DataDomainID: 1, TrainingLevel: common.TrainingLevelUndergraduate,
+			Grade: grade, Status: common.AlumniStatusActive, Version: 1,
+		},
+	}}
 }
 
 func TestExportHandlerXlsxSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	store := &fakeExportStore{
-		items: []*model.AlumniProfile{
-			{ID: 1, Name: "张三", Grade: "2020级", Status: common.AlumniStatusActive},
-		},
-	}
+	store := &fakeExportStore{rows: exportTestRows("张三", "2020级")}
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()
@@ -111,11 +72,7 @@ func TestExportHandlerXlsxSuccess(t *testing.T) {
 func TestExportHandlerCsvSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	store := &fakeExportStore{
-		items: []*model.AlumniProfile{
-			{ID: 1, Name: "李四", Grade: "2021级", Status: common.AlumniStatusActive},
-		},
-	}
+	store := &fakeExportStore{rows: exportTestRows("李四", "2021级")}
 	h := NewAlumniHandler(service.NewAlumniService(store, nil))
 
 	engine := gin.New()

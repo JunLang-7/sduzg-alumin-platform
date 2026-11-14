@@ -3221,3 +3221,64 @@ button {
     width: 100%;
   }
 }
+
+/* 多段学籍：编辑弹窗与详情页的学籍卡片 */
+.enrollment-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.enrollment-editor {
+  background: #fafcff;
+}
+
+.enrollment-editor .ant-card-body > .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.enrollment-editor .ant-card-head-title {
+  min-width: 0;
+}
+
+.alumni-enrollment-section {
+  margin-top: 16px;
+}
+
+.alumni-enrollment-card .ant-card-head-title {
+  flex-wrap: wrap;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.file-row__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-row__name--removed {
+  color: #a8071a;
+  text-decoration: line-through;
+}
+
+@media (max-width: 767px) {
+  .file-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .alumni-enrollment-card .ant-descriptions-view {
+    overflow-x: auto;
+  }
+}

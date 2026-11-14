@@ -144,15 +144,21 @@ func (r *HistoryRepository) AlumniDomainID(ctx context.Context, alumniID uint64)
 	if r == nil || r.db == nil {
 		return 0, common.ErrDatabaseUnavailable
 	}
-	qs := query.Use(r.db).AlumniProfile
-	profile, err := qs.WithContext(ctx).Select(qs.DataDomainID).Where(qs.ID.Eq(alumniID)).First()
+	// 校友可能拥有多段学籍。院史投稿未提供选择学籍的入口，按最早创建的活跃学籍
+	// 确定归属数据域，保证同一校友的投稿范围稳定且可审核。
+	var enrollment model.AlumniEnrollment
+	err := r.db.WithContext(ctx).
+		Select("id", "data_domain_id").
+		Where("alumni_id = ? AND status = ? AND deleted_at IS NULL", alumniID, common.AlumniStatusActive).
+		Order("id ASC").
+		First(&enrollment).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return 0, common.ErrAlumniNotFound
 		}
 		return 0, err
 	}
-	return profile.DataDomainID, nil
+	return enrollment.DataDomainID, nil
 }
 
 // DeletePublished serializes deletion with publication/editing and keeps all
