@@ -66,8 +66,9 @@ export const alumniApi = {
     });
   },
 
+  // 保存成功但操作者已无可维护学籍时后端返回 data: null。
   update(id: number, payload: AlumniProfilePayload) {
-    return request<AlumniProfile>({
+    return request<AlumniProfile | null>({
       method: 'PUT',
       url: `/admin/alumni/${id}`,
       data: payload,

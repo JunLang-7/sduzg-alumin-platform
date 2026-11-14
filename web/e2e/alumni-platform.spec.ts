@@ -286,6 +286,9 @@ test('同一校友可维护多段学籍，取消编辑不落库', async ({ page 
     await dialog.getByTestId('enrollment-grade-1').fill('2019');
     await dialog.getByTestId('enrollment-level-1').click();
     await page.getByText('硕士', { exact: true }).last().click();
+    // 硕士对应多个培养类别，需要管理员明确选择。
+    await dialog.getByTestId('enrollment-domain-1').click();
+    await page.getByText('学术学位研究生', { exact: true }).last().click();
     await dialog.getByRole('button', { name: '保存全部修改' }).click();
     await expect(dialog).toBeHidden();
 
@@ -315,6 +318,91 @@ test('同一校友可维护多段学籍，取消编辑不落库', async ({ page 
     await expect(page.locator('.alumni-enrollment-card')).toHaveCount(2);
   } finally {
     // 多段学籍校友当前不允许整人删除，测试数据随隔离 E2E 数据库一并清理。
+  }
+});
+
+test('管理员可独立删除、撤销并更正学籍培养类别', async ({ page }) => {
+  const alumniName = `E2E学籍维护${Date.now()}`;
+  await login(page, 'admin');
+  const searchRow = async () => {
+    const keyword = page.getByPlaceholder('姓名、单位、导师');
+    await keyword.fill(alumniName);
+    await page.getByRole('button', { name: '查询' }).click();
+    return page.getByRole('row').filter({ hasText: alumniName });
+  };
+  try {
+    await page.getByRole('button', { name: '新增校友' }).click();
+    const dialog = page.getByRole('dialog', { name: '新增校友' });
+    await dialog.getByTestId('alumni-name-input').fill(alumniName);
+    await dialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await dialog.getByTestId('enrollment-grade-0').fill('2015');
+    await dialog.getByRole('button', { name: '添加一段学籍' }).click();
+    await dialog.getByTestId('enrollment-grade-1').fill('2019');
+    await dialog.getByTestId('enrollment-level-1').click();
+    await page.getByText('硕士', { exact: true }).last().click();
+    // 硕士对应学术学位与 MPA 两个类别，必须由管理员选择，不能自动猜测。
+    await dialog.getByTestId('enrollment-domain-1').click();
+    await page.getByText('学术学位研究生', { exact: true }).last().click();
+    await dialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(dialog).toBeHidden();
+
+    let row = await searchRow();
+    await expect(row).toContainText('2015级');
+    await expect(row).toContainText('2019级');
+
+    // 标记删除第二段后可撤销，撤销保存不会删除任何学籍。
+    await row.getByRole('button', { name: '编辑' }).click();
+    let editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-delete-1').click();
+    await page.getByRole('button', { name: '标记删除' }).click();
+    await expect(editDialog.getByText('待删除')).toBeVisible();
+    await editDialog.getByTestId('enrollment-undo-delete-1').click();
+    await expect(editDialog.getByText('待删除')).toHaveCount(0);
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(editDialog).toBeHidden();
+    row = await searchRow();
+    await expect(row).toContainText('2019级');
+
+    // 更正第一段培养类别：本科 → 硕士 + 学术学位研究生，保存后保留同一段学籍。
+    await row.getByRole('button', { name: '编辑' }).click();
+    editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-level-0').click();
+    await page.getByText('硕士', { exact: true }).last().click();
+    await editDialog.getByTestId('enrollment-domain-0').click();
+    await page.getByText('学术学位研究生', { exact: true }).last().click();
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(editDialog).toBeHidden();
+    row = await searchRow();
+    await expect(row).toContainText('硕士');
+
+    // 删除第二段后只剩一段；再次尝试删除会被服务端拒绝，学籍保持不变。
+    await row.getByRole('button', { name: '编辑' }).click();
+    editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-delete-1').click();
+    await page.getByRole('button', { name: '标记删除' }).click();
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(editDialog).toBeHidden();
+    row = await searchRow();
+    await expect(row).toContainText('2015级');
+    await expect(row).not.toContainText('2019级');
+
+    await row.getByRole('button', { name: '编辑' }).click();
+    editDialog = page.getByRole('dialog', { name: '编辑校友' });
+    await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
+    await editDialog.getByTestId('enrollment-delete-0').click();
+    await page.getByRole('button', { name: '标记删除' }).click();
+    await editDialog.getByRole('button', { name: '保存全部修改' }).click();
+    await expect(page.getByText('至少需要保留一段有效学籍')).toBeVisible();
+    await expect(editDialog).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(editDialog).toBeHidden();
+    row = await searchRow();
+    await expect(row).toContainText('2015级');
+  } finally {
+    await removeAlumni(page, alumniName).catch(() => undefined);
   }
 });
 
