@@ -18,7 +18,7 @@ type AlumniFileStore interface {
 	GetByID(ctx context.Context, id uint64) (*model.AlumniFile, error)
 	GetByIDAnyStatus(ctx context.Context, id uint64) (*model.AlumniFile, error)
 	MarkDraft(ctx context.Context, id uint64, fileSize uint64) error
-	SoftDelete(ctx context.Context, id uint64) error
+	DeleteDraft(ctx context.Context, id, enrollmentID, operatorID uint64) error
 	SoftDeleteByEnrollmentIDAndType(ctx context.Context, enrollmentID uint64, fileType string) error
 	SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error
 }
@@ -133,15 +133,16 @@ func (r *AlumniFileRepository) MarkDraft(ctx context.Context, id uint64, fileSiz
 	return nil
 }
 
-// SoftDelete 软删除单条文件记录。
-func (r *AlumniFileRepository) SoftDelete(ctx context.Context, id uint64) error {
+// DeleteDraft 原子清理本人尚未保存的文件；并发保存转为 active 后不能再删除。
+func (r *AlumniFileRepository) DeleteDraft(ctx context.Context, id, enrollmentID, operatorID uint64) error {
 	if r.db == nil {
 		return common.ErrDatabaseUnavailable
 	}
 
 	result := r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
-		Where("id = ? AND status IN ? AND deleted_at IS NULL", id, []string{common.FileStatusActive, common.FileStatusDraft}).
+		Where("id = ? AND enrollment_id = ? AND uploaded_by = ? AND status IN ? AND deleted_at IS NULL",
+			id, enrollmentID, operatorID, []string{common.FileStatusPending, common.FileStatusDraft}).
 		Updates(map[string]any{
 			"status":     common.FileStatusDeleted,
 			"deleted_at": time.Now(),

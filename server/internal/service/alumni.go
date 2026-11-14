@@ -362,6 +362,13 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 	if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && personalContainsSensitiveFields(input.Personal) {
 		return nil, common.ErrPermissionDenied
 	}
+	for _, enrollment := range input.Enrollments {
+		if (len(enrollment.ActivateFileIDs) > 0 || len(enrollment.RemoveFileIDs) > 0) &&
+			!operator.HasPermission(common.PermissionAlumniFilesManage) {
+			return nil, common.ErrPermissionDenied
+		}
+	}
+
 	domainIDs, restricted := scopedDataDomainIDs(operator)
 	if restricted && len(domainIDs) == 0 {
 		return nil, common.ErrAlumniNotFound
@@ -442,7 +449,7 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 	}
 
 	domainNames, _ := s.domainNameMap(ctx)
-	s.writeUpdateAudits(ctx, operator, id, before, &result.Record, accessible, domainNames)
+	s.writeUpdateAudits(ctx, operator, id, before, &result.Record, accessible, domainNames, result.FileChanges)
 
 	if s.exportCache != nil {
 		_ = s.exportCache.Invalidate(ctx)
@@ -460,6 +467,7 @@ func (s *AlumniService) writeUpdateAudits(
 	after *do.AlumniRecord,
 	accessible map[uint64]*model.AlumniEnrollment,
 	domainNames map[uint64]string,
+	fileChanges []do.AlumniFileChange,
 ) {
 	if s.auditWriter == nil || s.users == nil || before == nil || after == nil {
 		return
@@ -482,7 +490,7 @@ func (s *AlumniService) writeUpdateAudits(
 		}
 		writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionUpdate, "admin",
 			"管理员修改学籍", domainNames[enrollment.DataDomainID], alumniID, after.Profile.Name,
-			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, previous, enrollment)
+			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, previous, enrollment, enrollmentFileAuditChanges(enrollment.ID, fileChanges)...)
 	}
 	for id, previous := range accessible {
 		if _, ok := afterByID[id]; ok {

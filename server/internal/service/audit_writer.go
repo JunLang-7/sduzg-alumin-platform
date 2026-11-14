@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
+	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/logger"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/repository"
@@ -480,6 +482,7 @@ func writeEnrollmentAudit(
 	domainNames map[uint64]string,
 	before *model.AlumniEnrollment,
 	after *model.AlumniEnrollment,
+	fileChanges ...AuditChange,
 ) {
 	if writer == nil || users == nil {
 		return
@@ -495,7 +498,7 @@ func writeEnrollmentAudit(
 		return
 	}
 
-	changes := enrollmentAuditChanges(action, before, after, domainNames)
+	changes := append(enrollmentAuditChanges(action, before, after, domainNames), fileChanges...)
 	if len(changes) == 0 && action == AuditActionUpdate {
 		return
 	}
@@ -570,4 +573,31 @@ func writeBatchAudit(
 	}); err != nil {
 		logger.Warn("failed to write batch alumni audit", zap.Uint64("operator_id", operatorID), zap.Error(err))
 	}
+}
+
+// enrollmentFileAuditChanges 使用实际提交成功的文件快照，草稿清理不产生正式变更。
+func enrollmentFileAuditChanges(enrollmentID uint64, files []do.AlumniFileChange) []AuditChange {
+	var changes []AuditChange
+	for _, archive := range []struct{ field, label string }{
+		{common.FileTypeDegreeArchive, "学位档案"},
+		{common.FileTypeAcademicRecord, "学籍档案"},
+	} {
+		var added, removed []string
+		for _, file := range files {
+			if file.EnrollmentID != enrollmentID || file.FileType != archive.field {
+				continue
+			}
+			value := fmt.Sprintf("%s（文件ID：%d）", file.OriginalName, file.FileID)
+			if file.Removed {
+				removed = append(removed, value)
+			} else {
+				added = append(added, value)
+			}
+		}
+		if len(added) == 0 && len(removed) == 0 {
+			continue
+		}
+		changes = append(changes, AuditChange{FieldName: archive.field, FieldLabel: archive.label + "（本次移除 / 新增）", OldValue: strings.Join(removed, "；"), NewValue: strings.Join(added, "；")})
+	}
+	return changes
 }

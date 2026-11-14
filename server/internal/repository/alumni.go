@@ -570,6 +570,7 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 	}
 
 	var removedObjectKeys []string
+	var fileChanges []do.AlumniFileChange
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var profile model.AlumniProfile
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -640,11 +641,12 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 				}
 				continue
 			}
-			keys, err := r.updateEnrollment(tx, id, enrollmentInput, operatorID, dataDomainIDs)
+			changes, err := r.updateEnrollment(tx, id, enrollmentInput, operatorID, dataDomainIDs)
 			if err != nil {
 				return err
 			}
-			removedObjectKeys = append(removedObjectKeys, keys...)
+			removedObjectKeys = append(removedObjectKeys, changes.RemovedObjectKeys...)
+			fileChanges = append(fileChanges, changes.Changes...)
 		}
 		return nil
 	})
@@ -656,7 +658,7 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 	if err != nil {
 		return nil, err
 	}
-	return &do.AlumniSaveResult{Record: *record, RemovedObjectKeys: removedObjectKeys}, nil
+	return &do.AlumniSaveResult{Record: *record, RemovedObjectKeys: removedObjectKeys, FileChanges: fileChanges}, nil
 }
 
 func (r *AlumniRepository) createEnrollment(tx *gorm.DB, alumniID uint64, input do.AlumniEnrollmentInput, operatorID uint64) error {
@@ -684,7 +686,7 @@ func (r *AlumniRepository) createEnrollment(tx *gorm.DB, alumniID uint64, input 
 	return err
 }
 
-func (r *AlumniRepository) updateEnrollment(tx *gorm.DB, alumniID uint64, input do.AlumniEnrollmentInput, operatorID uint64, dataDomainIDs []uint64) ([]string, error) {
+func (r *AlumniRepository) updateEnrollment(tx *gorm.DB, alumniID uint64, input do.AlumniEnrollmentInput, operatorID uint64, dataDomainIDs []uint64) (*do.AlumniFileChanges, error) {
 	var enrollment model.AlumniEnrollment
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("id = ? AND alumni_id = ? AND status = ? AND deleted_at IS NULL", input.ID, alumniID, common.AlumniStatusActive).
@@ -749,7 +751,8 @@ func (r *AlumniRepository) updateEnrollment(tx *gorm.DB, alumniID uint64, input 
 
 // applyFileChanges 在同一事务内确认草稿文件与移除文件。
 // 激活前必须是 draft（已直传完成但尚未保存）；移除只改元数据，MinIO 对象在提交后清理。
-func (r *AlumniRepository) applyFileChanges(tx *gorm.DB, enrollmentID uint64, input do.AlumniEnrollmentInput, current *model.AlumniEnrollment, operatorID uint64) ([]string, error) {
+func (r *AlumniRepository) applyFileChanges(tx *gorm.DB, enrollmentID uint64, input do.AlumniEnrollmentInput, current *model.AlumniEnrollment, operatorID uint64) (*do.AlumniFileChanges, error) {
+	result := &do.AlumniFileChanges{}
 	if len(input.ActivateFileIDs) > 0 {
 		var files []model.AlumniFile
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -765,10 +768,13 @@ func (r *AlumniRepository) applyFileChanges(tx *gorm.DB, enrollmentID uint64, in
 			Updates(map[string]any{"status": common.FileStatusActive}).Error; err != nil {
 			return nil, err
 		}
+		for _, file := range files {
+			result.Changes = append(result.Changes, do.AlumniFileChange{EnrollmentID: enrollmentID, FileID: file.ID, FileType: file.FileType, OriginalName: file.OriginalName})
+		}
 	}
 
 	if len(input.RemoveFileIDs) == 0 {
-		return nil, nil
+		return result, nil
 	}
 	var files []model.AlumniFile
 	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -791,11 +797,13 @@ func (r *AlumniRepository) applyFileChanges(tx *gorm.DB, enrollmentID uint64, in
 		Updates(map[string]any{"status": common.FileStatusDeleted, "deleted_at": now}).Error; err != nil {
 		return nil, err
 	}
-	keys := make([]string, 0, len(files))
 	for _, file := range files {
-		keys = append(keys, file.ObjectKey)
+		result.RemovedObjectKeys = append(result.RemovedObjectKeys, file.ObjectKey)
+		if file.Status == common.FileStatusActive {
+			result.Changes = append(result.Changes, do.AlumniFileChange{EnrollmentID: enrollmentID, FileID: file.ID, FileType: file.FileType, OriginalName: file.OriginalName, Removed: true})
+		}
 	}
-	return keys, nil
+	return result, nil
 }
 
 func containsUint64(values []uint64, target uint64) bool {

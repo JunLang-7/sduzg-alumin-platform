@@ -359,7 +359,7 @@ func TestImportDedupesExactEnrollmentButKeepsDifferentPeople(t *testing.T) {
 	}
 }
 
-func TestImportMergesMultipleEnrollmentsOfOnePerson(t *testing.T) {
+func TestImportDoesNotInferIdentityFromSameNameAndMobile(t *testing.T) {
 	rows := [][]string{
 		{"张同学", "本科", "2015", "", "", "", "", "行政管理", "", "", "", "", "", "", "13800000001", "", "undergraduate"},
 		{"张同学", "硕士", "2019", "", "", "", "", "行政管理", "", "", "", "", "", "", "13800000001", "", "academic_graduate"},
@@ -376,12 +376,12 @@ func TestImportMergesMultipleEnrollmentsOfOnePerson(t *testing.T) {
 	if result.Success != 2 || len(result.Errors) != 0 {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
-	if len(store.batchInputs) != 1 || len(store.batchInputs[0].Enrollments) != 2 {
-		t.Fatalf("expected one person with two enrollments, got %+v", store.batchInputs)
+	if len(store.batchInputs) != 2 || len(store.batchInputs[0].Enrollments) != 1 || len(store.batchInputs[1].Enrollments) != 1 {
+		t.Fatalf("expected two independent people with one enrollment each, got %+v", store.batchInputs)
 	}
 	if store.batchInputs[0].Enrollments[0].TrainingLevel != common.TrainingLevelUndergraduate ||
-		store.batchInputs[0].Enrollments[1].TrainingLevel != common.TrainingLevelMaster {
-		t.Fatalf("unexpected merged enrollment levels: %+v", store.batchInputs[0].Enrollments)
+		store.batchInputs[1].Enrollments[0].TrainingLevel != common.TrainingLevelMaster {
+		t.Fatalf("unexpected independent enrollment levels: %+v", store.batchInputs[0].Enrollments)
 	}
 }
 
@@ -551,7 +551,7 @@ func TestImportTemplateExplainsDomainsAndLevelsAndExampleIsImportable(t *testing
 		noteText.WriteString(strings.Join(row, " "))
 		noteText.WriteString("\n")
 	}
-	for _, want := range []string{"undergraduate", "academic_graduate", "mpa", "MPA专业学位研究生", "示例校友", "2024", "数字 ID", "培养层次"} {
+	for _, want := range []string{"undergraduate", "academic_graduate", "mpa", "MPA专业学位研究生", "示例校友", "2024", "数字 ID", "培养层次", "不凭姓名、手机号或邮箱自动归并", "编辑既有校友"} {
 		if !strings.Contains(noteText.String(), want) {
 			t.Fatalf("template guide missing %q: %s", want, noteText.String())
 		}
@@ -744,5 +744,33 @@ func TestImportExplicitTargetDomainIgnoresDomainColumn(t *testing.T) {
 	}
 	if got := store.batchInputs[0].Enrollments[0].DataDomainID; got != targetDomainID {
 		t.Fatalf("explicit target domain should win over file column: got %d, want %d", got, targetDomainID)
+	}
+}
+
+func TestImportPreservesConflictingPersonalRows(t *testing.T) {
+	for _, contact := range []string{"mobile", "email"} {
+		t.Run(contact, func(t *testing.T) {
+			first := currentRow("张三", "本科", "2015", "undergraduate")
+			second := currentRow("张三", "硕士", "2019", "academic_graduate")
+			first[13], second[13] = "男", "女"
+			first[15], second[15] = "first@example.com", "second@example.com"
+			if contact == "mobile" {
+				first[14], second[14] = "13800000001", "13800000001"
+			} else {
+				first[15], second[15] = "same@example.com", "same@example.com"
+			}
+			reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{first, second})
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := &fakeAlumniStore{}
+			result, err := importAsSuperAdmin(NewAlumniService(store, nil, testDataDomainStore()), reader)
+			if err != nil || result.Success != 2 || len(store.batchInputs) != 2 {
+				t.Fatalf("rows merged or rejected: result=%+v inputs=%+v err=%v", result, store.batchInputs, err)
+			}
+			if *store.batchInputs[0].Personal.Gender == *store.batchInputs[1].Personal.Gender || *store.batchInputs[0].Personal.Email != first[15] || *store.batchInputs[1].Personal.Email != second[15] {
+				t.Fatalf("lost conflicting personal values: %+v", store.batchInputs)
+			}
+		})
 	}
 }

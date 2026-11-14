@@ -50,6 +50,7 @@ import type {
   TrainingLevel,
 } from '../../types/alumni';
 import { EXPLICIT_TRAINING_LEVELS, TRAINING_LEVEL_LABELS } from '../../types/alumni';
+import { draftFilesToActivate } from '../../utils/alumniFiles';
 import { canManageFiles, canReadSensitive } from '../../utils/access';
 import { genderOptions, industryOptions, trainingModeOptions } from '../../utils/dictionaries';
 
@@ -268,7 +269,7 @@ export function AlumniManagementPage() {
         const profile = await alumniApi.detail(record.id);
         let fileGroups: AlumniEnrollmentFileGroup[] = [];
         if (filesManageable) {
-          const files = await alumniApi.listFiles(record.id, true);
+          const files = await alumniApi.listFiles(record.id, false);
           fileGroups = files.enrollments ?? [];
         }
         setEditing(profile);
@@ -467,9 +468,7 @@ export function AlumniManagementPage() {
       major: draft.major,
       training_mode: draft.training_mode,
       remark: draft.remark,
-      activate_file_ids: draft.files
-        .filter((file) => file.status === 'draft')
-        .map((file) => file.id),
+      activate_file_ids: draftFilesToActivate(draft.files, draft.uploadedDraftIds),
       remove_file_ids: draft.removedFileIds,
     }));
     const payload: AlumniProfilePayload = {

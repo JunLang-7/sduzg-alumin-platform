@@ -66,6 +66,20 @@ func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, 
 	}
 	sensitiveReadable := access.HasPermission(common.PermissionAlumniSensitiveRead)
 	result := mapAuditOperation(*item, true, sensitiveReadable)
+	if !access.HasPermission(common.PermissionAlumniFilesManage) {
+		for i := range result.Changes {
+			change := &result.Changes[i]
+			if change.FieldName == "degree_archive" || change.FieldName == "academic_record" {
+				if change.OldValue != "" {
+					change.OldValue = "已移除文件"
+				}
+				if change.NewValue != "" {
+					change.NewValue = "已添加文件"
+				}
+				change.CurrentValue = change.NewValue
+			}
+		}
+	}
 	if err := s.populateBatchSensitiveValues(ctx, access, sensitiveReadable, &result); err != nil {
 		return nil, err
 	}

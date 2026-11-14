@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -387,5 +388,30 @@ func TestAuditServiceAllowsSuperAdminHistoryAcrossDomains(t *testing.T) {
 	}
 	if store.listQuery.RestrictToDataDomains {
 		t.Fatal("super admin history should not be restricted to assigned domains")
+	}
+}
+
+func TestAuditServiceFileChangesRespectFilePermission(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		store := &fakeAuditStore{detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, TargetType: auditTargetAlumni, TargetID: new(uint64(9)), Detail: new(`{"changes":[{"field_name":"degree_archive","old_value":"旧学位.pdf","new_value":"新学位.pdf"},{"field_name":"academic_record","new_value":"学籍.pdf"}]}`)}}
+		access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{3}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
+		item, err := NewAuditService(store).Detail(context.Background(), access, 19)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(item.Changes) != 2 {
+			t.Fatalf("missing file changes: %+v", item)
+		}
+		if allowed {
+			if item.Changes[0].OldValue != "旧学位.pdf" || item.Changes[0].NewValue != "新学位.pdf" {
+				t.Fatalf("lost authorized file names: %+v", item.Changes)
+			}
+		} else {
+			for _, change := range item.Changes {
+				if strings.Contains(change.OldValue+change.NewValue+change.CurrentValue, ".pdf") {
+					t.Fatalf("file name leaked without permission: %+v", change)
+				}
+			}
+		}
 	}
 }

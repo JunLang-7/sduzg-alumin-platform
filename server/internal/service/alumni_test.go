@@ -3,6 +3,8 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -919,7 +921,7 @@ func TestAlumniServiceRejectsAlumniAsAdminOperator(t *testing.T) {
 	}
 }
 
-func TestAlumniServiceImportMergesRowsOfSamePersonWithinFile(t *testing.T) {
+func TestAlumniServiceImportKeepsRowsAsIndependentPeople(t *testing.T) {
 	store := &fakeAlumniStore{}
 	svc := NewAlumniService(store, nil, testDataDomainStore())
 	workbook := buildAlumniImportWorkbook(t, [][]string{
@@ -933,11 +935,8 @@ func TestAlumniServiceImportMergesRowsOfSamePersonWithinFile(t *testing.T) {
 	if result.Total != 2 || result.Success != 2 || len(result.Errors) != 0 {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
-	if len(store.batchInputs) != 1 {
-		t.Fatalf("expected rows with same name+mobile to merge into one person, got %+v", store.batchInputs)
-	}
-	if len(store.batchInputs[0].Enrollments) != 2 {
-		t.Fatalf("expected two enrollments for merged person, got %+v", store.batchInputs[0].Enrollments)
+	if len(store.batchInputs) != 2 || len(store.batchInputs[0].Enrollments) != 1 || len(store.batchInputs[1].Enrollments) != 1 {
+		t.Fatalf("expected independent people, each with an initial enrollment, got %+v", store.batchInputs)
 	}
 }
 
@@ -957,5 +956,34 @@ func TestAlumniServiceImportRejectsDuplicateEnrollment(t *testing.T) {
 	}
 	if len(store.batchInputs) != 1 || len(store.batchInputs[0].Enrollments) != 1 {
 		t.Fatalf("expected only one enrollment to be imported, got %+v", store.batchInputs)
+	}
+}
+
+func TestAlumniServiceSaveEnforcesFilePermission(t *testing.T) {
+	for _, action := range []string{"activate", "remove", "personal"} {
+		for _, role := range []string{"", common.RoleAlumni, common.RoleAdmin, common.RoleSuperAdmin} {
+			for _, allowed := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/%t", action, role, allowed), func(t *testing.T) {
+					store := &fakeAlumniStore{detail: &model.AlumniProfile{ID: 9, Name: "张三", Version: 1}, detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()}}
+					operator := common.AccessContext{UserID: 7, Role: role, DomainIDs: []uint64{2}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
+					enrollment := dto.AlumniEnrollmentPayload{ID: new(uint64(11)), Version: new(uint32(1)), DataDomainID: 2, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级"}
+					if action == "activate" {
+						enrollment.ActivateFileIDs = []uint64{42}
+					}
+					if action == "remove" {
+						enrollment.RemoveFileIDs = []uint64{42}
+					}
+					_, err := NewAlumniService(store, nil).Update(context.Background(), operator, 9, dto.AdminAlumniUpdateRequest{Version: 1, Name: "张三", Enrollments: []dto.AlumniEnrollmentPayload{enrollment}})
+					canSave := role == common.RoleSuperAdmin || (role == common.RoleAdmin && (allowed || action == "personal"))
+					if canSave {
+						if err != nil || store.saveID != 9 {
+							t.Fatalf("authorized save failed: %v", err)
+						}
+					} else if !errors.Is(err, common.ErrPermissionDenied) || store.saveID != 0 {
+						t.Fatalf("unauthorized save: err=%v, wrote=%d", err, store.saveID)
+					}
+				})
+			}
+		}
 	}
 }

@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -11,10 +13,13 @@ import (
 )
 
 type fakeAlumniFileStore struct {
-	file        *model.AlumniFile
-	files       []*model.AlumniFile
-	deletedID   uint64
-	markDraftID uint64
+	file               *model.AlumniFile
+	files              []*model.AlumniFile
+	deletedID          uint64
+	markDraftID        uint64
+	deleteDraftErr     error
+	deleteEnrollmentID uint64
+	deleteOperatorID   uint64
 }
 
 func (s *fakeAlumniFileStore) Create(context.Context, *model.AlumniFile) (*model.AlumniFile, error) {
@@ -45,7 +50,11 @@ func (s *fakeAlumniFileStore) MarkDraft(_ context.Context, id uint64, _ uint64) 
 	return nil
 }
 
-func (s *fakeAlumniFileStore) SoftDelete(_ context.Context, id uint64) error {
+func (s *fakeAlumniFileStore) DeleteDraft(_ context.Context, id, enrollmentID, operatorID uint64) error {
+	s.deleteEnrollmentID, s.deleteOperatorID = enrollmentID, operatorID
+	if s.deleteDraftErr != nil {
+		return s.deleteDraftErr
+	}
 	s.deletedID = id
 	return nil
 }
@@ -220,5 +229,54 @@ func TestAlumniFileServiceAuditIncludesEnrollmentScopeAndTargetDomain(t *testing
 	}
 	if len(detail.OperatorDataDomainIDs) != 2 || detail.OperatorDataDomainIDs[0] != 1 || detail.OperatorDataDomainIDs[1] != 3 {
 		t.Fatalf("unexpected audit access detail: %+v", detail)
+	}
+}
+
+func TestAlumniFileServiceListDraftsIsolatesUploader(t *testing.T) {
+	for _, includeDrafts := range []bool{false, true} {
+		t.Run(strconv.FormatBool(includeDrafts), func(t *testing.T) {
+			operator := fileTestAccessContext()
+			operator.UserID = 7
+			enrollmentID := uint64(11)
+			files := &fakeAlumniFileStore{files: []*model.AlumniFile{
+				{ID: 1, EnrollmentID: &enrollmentID, Status: common.FileStatusActive, FileType: common.FileTypeDegreeArchive, UploadedBy: new(uint64(99))},
+				{ID: 2, EnrollmentID: &enrollmentID, Status: common.FileStatusDraft, FileType: common.FileTypeDegreeArchive, UploadedBy: new(uint64(7))},
+				{ID: 3, EnrollmentID: &enrollmentID, Status: common.FileStatusDraft, FileType: common.FileTypeDegreeArchive, UploadedBy: new(uint64(99))},
+				{ID: 4, EnrollmentID: &enrollmentID, Status: common.FileStatusDraft, FileType: common.FileTypeDegreeArchive},
+				{ID: 5, EnrollmentID: &enrollmentID, Status: common.FileStatusPending, FileType: common.FileTypeDegreeArchive, UploadedBy: new(uint64(7))},
+			}}
+			service := &AlumniFileService{files: files, alumni: &fakeAlumniStore{detail: &model.AlumniProfile{ID: 9}, detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()}}}
+			result, err := service.ListFiles(context.Background(), operator, 9, includeDrafts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 1
+			if includeDrafts {
+				want = 2
+			}
+			if got := len(result.Enrollments[0].DegreeArchive); got != want {
+				t.Fatalf("files = %+v, want %d", result.Enrollments[0].DegreeArchive, want)
+			}
+			for _, file := range result.Enrollments[0].DegreeArchive {
+				if file.ID > 2 {
+					t.Fatalf("leaked another uploader's or incomplete draft: %+v", file)
+				}
+			}
+		})
+	}
+}
+
+func TestAlumniFileServiceCancelDoesNotDeleteObjectAfterConcurrentActivation(t *testing.T) {
+	operator := fileTestAccessContext()
+	operator.UserID = 7
+	fileStore := &fakeAlumniFileStore{file: &model.AlumniFile{ID: 21, EnrollmentID: new(uint64(11)), Status: common.FileStatusDraft, UploadedBy: new(uint64(7))}, deleteDraftErr: common.ErrFileNotFound}
+	service := &AlumniFileService{files: fileStore, alumni: &fakeAlumniStore{detail: &model.AlumniProfile{ID: 9}, detailEnrollments: []*model.AlumniEnrollment{fileTestEnrollment()}}}
+	// The atomic delete loses to activation. A nil object store also proves no blob deletion is attempted.
+	err := service.DeleteDraftFile(context.Background(), operator, 9, 11, 21)
+	if !errors.Is(err, common.ErrFileNotFound) {
+		t.Fatalf("cancel after activation = %v", err)
+	}
+	if fileStore.deletedID != 0 || fileStore.deleteEnrollmentID != 11 || fileStore.deleteOperatorID != 7 {
+		t.Fatalf("incorrect conditional cleanup: %+v", fileStore)
 	}
 }

@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"strconv"
 	"testing"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -206,5 +208,46 @@ func TestAlumniServiceUpdateMeWritesAlumniSelfAudit(t *testing.T) {
 	}
 	if len(event.Changes) != 1 || event.Changes[0].FieldName != "work_unit" {
 		t.Fatalf("unexpected work-unit change: %+v", event.Changes)
+	}
+}
+
+func TestAlumniServiceFileOnlySaveWritesScopedAuditAfterSuccess(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(strconv.FormatBool(fail), func(t *testing.T) {
+			profile := &model.AlumniProfile{ID: 9, Name: "张三", Version: 1}
+			enrollment := auditEnrollment(11, 9)
+			store := &fakeAlumniStore{detail: profile, detailEnrollments: []*model.AlumniEnrollment{enrollment}, saveResult: &do.AlumniSaveResult{
+				Record: do.AlumniRecord{Profile: profile, Enrollments: []*model.AlumniEnrollment{enrollment}},
+				FileChanges: []do.AlumniFileChange{
+					{EnrollmentID: 11, FileID: 42, FileType: common.FileTypeDegreeArchive, OriginalName: "学位证明.pdf"},
+					{EnrollmentID: 11, FileID: 43, FileType: common.FileTypeAcademicRecord, OriginalName: "旧学籍.pdf", Removed: true},
+				},
+			}}
+			if fail {
+				store.saveErr = common.ErrVersionConflict
+			}
+			writer := &captureAuditWriter{}
+			service := NewAlumniService(store, nil).WithAuditUserStore(&fakeUserStore{usersByID: map[uint64]*model.User{7: auditOperatorUser()}}).WithAuditWriter(writer)
+			_, err := service.Update(context.Background(), auditOperator(), 9, dto.AdminAlumniUpdateRequest{Version: 1, Name: profile.Name, Enrollments: []dto.AlumniEnrollmentPayload{{ID: new(uint64(11)), Version: new(uint32(1)), DataDomainID: 3, TrainingLevel: common.TrainingLevelMaster, Grade: enrollment.Grade, ActivateFileIDs: []uint64{42}, RemoveFileIDs: []uint64{43}}}})
+			if fail {
+				if !errors.Is(err, common.ErrVersionConflict) || len(writer.events) != 0 {
+					t.Fatalf("failed save produced success audit: %v %+v", err, writer.events)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(writer.events) != 1 {
+				t.Fatalf("file-only save audit events = %+v", writer.events)
+			}
+			event := writer.events[0]
+			if event.EnrollmentID == nil || *event.EnrollmentID != 11 || event.TargetID == nil || *event.TargetID != 9 || len(event.DataDomainIDs) != 1 || event.DataDomainIDs[0] != 3 || len(event.Changes) != 2 {
+				t.Fatalf("incorrect file audit scope: %+v", event)
+			}
+			if event.Changes[0].FieldName != "degree_archive" || event.Changes[0].OldValue != "" || event.Changes[0].NewValue != "学位证明.pdf（文件ID：42）" || event.Changes[1].FieldName != "academic_record" || event.Changes[1].NewValue != "" || event.Changes[1].OldValue != "旧学籍.pdf（文件ID：43）" {
+				t.Fatalf("incorrect file diffs: %+v", event.Changes)
+			}
+		})
 	}
 }

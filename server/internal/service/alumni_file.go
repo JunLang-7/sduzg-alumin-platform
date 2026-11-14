@@ -254,6 +254,9 @@ func (s *AlumniFileService) ListFiles(ctx context.Context, operator common.Acces
 			// pending 仅用于直传确认前的临时记录，列表不展示；级联删除仍会清理其对象。
 			continue
 		}
+		if rec.Status == common.FileStatusDraft && (!includeDrafts || rec.UploadedBy == nil || *rec.UploadedBy != operator.UserID) {
+			continue
+		}
 		index, ok := groupIndex[*rec.EnrollmentID]
 		if !ok {
 			continue
@@ -297,7 +300,7 @@ func (s *AlumniFileService) DeleteDraftFile(ctx context.Context, operator common
 	if record.UploadedBy == nil || *record.UploadedBy != operator.UserID {
 		return common.ErrFileNotFound
 	}
-	if err := s.files.SoftDelete(ctx, fileID); err != nil {
+	if err := s.files.DeleteDraft(ctx, fileID, enrollmentID, operator.UserID); err != nil {
 		return err
 	}
 	if err := s.store.DeleteFile(ctx, record.ObjectKey); err != nil {

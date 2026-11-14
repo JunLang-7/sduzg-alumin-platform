@@ -42,16 +42,9 @@ type parsedImportRow struct {
 	enrollment do.AlumniEnrollmentInput
 }
 
-type importPersonGroup struct {
-	key         string
-	personal    do.AlumniPersonalInput
-	enrollments []do.AlumniEnrollmentInput
-	firstRow    int
-}
-
 // Import 从上传的 xlsx/csv 文件批量导入校友档案。
-// 一行代表一段学籍；同一姓名与手机号/邮箱的多行合并为同一校友的多段学籍，
-// 但不会凭姓名或手机号挂接到数据库中已有的校友身份。
+// 每个有效行创建独立个人与一段初始学籍，不凭姓名、手机号或邮箱推断身份。
+// 为既有校友添加学籍须通过明确选择该校友的编辑流程。
 func (s *AlumniService) Import(ctx context.Context, operator common.AccessContext, dataDomainID *uint64, file io.Reader) (*dto.AlumniImportResult, error) {
 	if s.alumni == nil {
 		logger.Error("alumni repository is not initialized")
@@ -265,9 +258,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 		return nil, err
 	}
 
-	groups := make(map[string]*importPersonGroup)
-	groupOrder := make([]string, 0)
-	selected := make([]parsedImportRow, 0, len(parsedRows))
+	inputs := make([]do.AlumniCreateInput, 0, len(parsedRows))
 	for _, parsed := range parsedRows {
 		key := alumniImportDedupKey(parsed).Key()
 		if existing[key] {
@@ -275,27 +266,9 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 			continue
 		}
 		existing[key] = true
-		selected = append(selected, parsed)
-
-		groupKey := importPersonGroupKey(parsed)
-		group := groups[groupKey]
-		if group == nil {
-			group = &importPersonGroup{key: groupKey, personal: parsed.personal, firstRow: parsed.rowNum}
-			groups[groupKey] = group
-			groupOrder = append(groupOrder, groupKey)
-		}
-		group.enrollments = append(group.enrollments, parsed.enrollment)
-	}
-
-	inputs := make([]do.AlumniCreateInput, 0, len(groupOrder))
-	for _, key := range groupOrder {
-		group := groups[key]
-		if group == nil || len(group.enrollments) == 0 {
-			continue
-		}
 		inputs = append(inputs, do.AlumniCreateInput{
-			Personal:    group.personal,
-			Enrollments: group.enrollments,
+			Personal:    parsed.personal,
+			Enrollments: []do.AlumniEnrollmentInput{parsed.enrollment},
 		})
 	}
 
@@ -561,19 +534,6 @@ func alumniImportDedupKey(parsed parsedImportRow) do.AlumniDedupKey {
 		ClassName:    stringOrEmpty(parsed.enrollment.ClassName),
 		Cohort:       stringOrEmpty(parsed.enrollment.Cohort),
 	}
-}
-
-// importPersonGroupKey 在同一文件内合并同一校友的多段学籍。
-// 只有姓名与手机号（或邮箱）同时存在时才合并，避免仅凭姓名误并不同人员。
-func importPersonGroupKey(parsed parsedImportRow) string {
-	name := strings.TrimSpace(parsed.personal.Name)
-	if mobile := strings.TrimSpace(stringOrEmpty(parsed.personal.Mobile)); mobile != "" {
-		return name + "|mobile|" + mobile
-	}
-	if email := strings.TrimSpace(strings.ToLower(stringOrEmpty(parsed.personal.Email))); email != "" {
-		return name + "|email|" + email
-	}
-	return name + "|row|" + strconv.Itoa(parsed.rowNum)
 }
 
 type importAuditDetail struct {

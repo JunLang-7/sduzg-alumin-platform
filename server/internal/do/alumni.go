@@ -96,6 +96,22 @@ type AlumniCreateInput struct {
 type AlumniSaveResult struct {
 	Record            AlumniRecord
 	RemovedObjectKeys []string
+	FileChanges       []AlumniFileChange
+}
+
+// AlumniFileChange 仅在统一保存事务成功后交给服务层审计，不包含存储对象键。
+type AlumniFileChange struct {
+	EnrollmentID uint64
+	FileID       uint64
+	FileType     string
+	OriginalName string
+	Removed      bool
+}
+
+// AlumniFileChanges 是事务内附件变更与提交后的对象清理清单。
+type AlumniFileChanges struct {
+	RemovedObjectKeys []string
+	Changes           []AlumniFileChange
 }
 
 type AlumniEditableProfile struct {

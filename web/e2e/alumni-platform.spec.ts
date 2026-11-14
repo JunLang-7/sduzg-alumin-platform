@@ -219,6 +219,20 @@ test('管理员可以上传、下载并移除校友附件', async ({ page }) => 
     const download = await downloadPromise;
     expect(await readFile((await download.path())!)).toEqual(attachmentContent);
 
+    // File-only saves must appear in the existing enrollment operation history.
+    await page
+      .locator('.audit-alumni-history-card')
+      .getByRole('button', { name: '详情' })
+      .first()
+      .click();
+    const addedAudit = page.getByRole('dialog', { name: '操作详情' });
+    const addedDiff = addedAudit
+      .locator('.audit-change-table tbody tr')
+      .filter({ hasText: '学位档案' });
+    await expect(addedDiff.locator('td').nth(1)).toContainText(attachmentName);
+    await page.keyboard.press('Escape');
+    await expect(addedAudit).toBeHidden();
+
     await page.getByRole('button', { name: '返回' }).click();
     const rowAfterView = page.getByRole('row').filter({ hasText: alumniName });
     await rowAfterView.getByRole('button', { name: '编辑' }).click();
@@ -236,6 +250,24 @@ test('管理员可以上传、下载并移除校友附件', async ({ page }) => 
     await expect(removeDialog).toBeHidden();
     await page.reload();
     await expect(page.getByText(attachmentName)).toHaveCount(0);
+    await page
+      .getByRole('row')
+      .filter({ hasText: alumniName })
+      .getByRole('button', { name: '查看' })
+      .click();
+    await expect(page.getByRole('listitem').filter({ hasText: attachmentName })).toHaveCount(0);
+    await page
+      .locator('.audit-alumni-history-card')
+      .getByRole('button', { name: '详情' })
+      .first()
+      .click();
+    const removedAudit = page.getByRole('dialog', { name: '操作详情' });
+    const removedDiff = removedAudit
+      .locator('.audit-change-table tbody tr')
+      .filter({ hasText: '学位档案' });
+    await expect(removedDiff.locator('td').nth(0)).toContainText(attachmentName);
+    await page.keyboard.press('Escape');
+    await expect(removedAudit).toBeHidden();
   } finally {
     await removeAlumni(page, alumniName).catch(() => undefined);
   }
