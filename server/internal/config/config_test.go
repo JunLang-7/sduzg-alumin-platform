@@ -1,7 +1,9 @@
 package config
 
 import (
+	"errors"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -187,7 +189,7 @@ func TestSwaggerEnabledDefaultsByEnvironment(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			clearConfigEnv(t)
-			t.Setenv("AUTH_JWT_SECRET", "test-secret")
+			t.Setenv("AUTH_JWT_SECRET", strings.Repeat("s", MinimumProductionJWTSecretLength))
 			t.Setenv("APP_ENV", tc.env)
 			if tc.explicit != "" {
 				t.Setenv("SWAGGER_ENABLED", tc.explicit)
@@ -203,6 +205,63 @@ func TestSwaggerEnabledDefaultsByEnvironment(t *testing.T) {
 					tc.env, tc.explicit, tc.want, cfg.Swagger.Enabled)
 			}
 		})
+	}
+}
+
+func TestProductionRejectsWeakJWTSecret(t *testing.T) {
+	cases := []struct {
+		name   string
+		secret string
+	}{
+		{name: "未设置使用默认值", secret: ""},
+		{name: "显式使用默认值", secret: DefaultJWTSecret},
+		{name: "空白密钥", secret: "   "},
+		{name: "长度不足", secret: strings.Repeat("a", MinimumProductionJWTSecretLength-1)},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			clearConfigEnv(t)
+			t.Setenv("APP_ENV", EnvProduction)
+			t.Setenv("AUTH_JWT_SECRET", testCase.secret)
+
+			_, err := Load()
+			if !errors.Is(err, ErrWeakProductionJWTSecret) {
+				t.Fatalf("expected ErrWeakProductionJWTSecret, got %v", err)
+			}
+			if strings.Contains(err.Error(), testCase.secret) && testCase.secret != "" {
+				t.Fatalf("error must not echo the secret: %v", err)
+			}
+		})
+	}
+}
+
+func TestProductionAcceptsStrongJWTSecret(t *testing.T) {
+	clearConfigEnv(t)
+	secret := strings.Repeat("0123456789abcdef", 6)
+	t.Setenv("APP_ENV", EnvProduction)
+	t.Setenv("AUTH_JWT_SECRET", secret)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("strong secret should load: %v", err)
+	}
+	if cfg.Auth.JWTSecret != secret {
+		t.Fatalf("jwt secret not propagated")
+	}
+	if cfg.Swagger.Enabled {
+		t.Fatal("production must keep swagger disabled by default")
+	}
+}
+
+func TestDevelopmentKeepsDefaultJWTSecret(t *testing.T) {
+	clearConfigEnv(t)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("development should keep the default secret: %v", err)
+	}
+	if cfg.Auth.JWTSecret != DefaultJWTSecret {
+		t.Fatalf("expected default secret in development, got %q", cfg.Auth.JWTSecret)
 	}
 }
 

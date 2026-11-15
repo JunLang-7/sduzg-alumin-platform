@@ -17,10 +17,11 @@
 
 ```bash
 cp .env.example .env
+openssl rand -hex 48   # 将输出写入 .env 的 AUTH_JWT_SECRET
 docker compose up --build
 ```
 
-启动后访问 [平台首页](http://127.0.0.1)。默认开发账号、服务端口、配置与升级方式见[部署说明](docs/deployment.md)。已有 `.env` 时保留现有配置；公开部署前需更换默认凭据并设置 JWT 密钥。
+启动后访问 [平台首页](http://127.0.0.1)。默认开发账号、服务端口、配置与升级方式见[部署说明](docs/deployment.md)。`AUTH_JWT_SECRET` 是 Compose 启动必填项，未配置时 Compose 与 API 都会拒绝启动；公开部署前还需更换默认凭据。
 
 ## 文档入口
 

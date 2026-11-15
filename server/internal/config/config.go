@@ -16,7 +16,16 @@ import (
 const (
 	EnvDevelopment = "development"
 	EnvProduction  = "production"
+
+	// DefaultJWTSecret 仅用于本地开发；生产环境必须显式配置强密钥。
+	DefaultJWTSecret = "dev-only-change-me"
+	// MinimumProductionJWTSecretLength 是生产环境 JWT 密钥的最小长度。
+	MinimumProductionJWTSecretLength = 32
 )
+
+// ErrWeakProductionJWTSecret 表示生产环境缺少可用的 JWT 签名密钥。
+// 生产使用默认值/空值/过短密钥会让任何人都能伪造令牌，因此直接拒绝启动。
+var ErrWeakProductionJWTSecret = errors.New("production environment requires a strong AUTH_JWT_SECRET")
 
 type Config struct {
 	App       AppConfig
@@ -250,7 +259,26 @@ func Load() (Config, error) {
 		},
 	}
 
+	if err := validateProductionAuth(cfg); err != nil {
+		return Config{}, err
+	}
+
 	return cfg, nil
+}
+
+// validateProductionAuth 阻止生产环境带着默认或过弱的 JWT 密钥启动。
+// 错误信息只说明如何修复，不回显密钥本身。
+func validateProductionAuth(cfg Config) error {
+	if cfg.App.Env != EnvProduction {
+		return nil
+	}
+
+	secret := cfg.Auth.JWTSecret
+	if strings.TrimSpace(secret) == "" || secret == DefaultJWTSecret || len(secret) < MinimumProductionJWTSecretLength {
+		return fmt.Errorf("%w: 至少 %d 个字符且不能使用默认值，可用 openssl rand -hex 48 生成后写入 AUTH_JWT_SECRET",
+			ErrWeakProductionJWTSecret, MinimumProductionJWTSecretLength)
+	}
+	return nil
 }
 
 // resolveSwaggerEnabled 决定是否开启在线接口文档。
@@ -291,7 +319,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("REDIS_DIAL_TIMEOUT", 5*time.Second)
 	v.SetDefault("REDIS_READ_TIMEOUT", 3*time.Second)
 	v.SetDefault("REDIS_WRITE_TIMEOUT", 3*time.Second)
-	v.SetDefault("AUTH_JWT_SECRET", "dev-only-change-me")
+	v.SetDefault("AUTH_JWT_SECRET", DefaultJWTSecret)
 	v.SetDefault("AUTH_ACCESS_TOKEN_TTL", 24*time.Hour)
 	v.SetDefault("STORAGE_ENABLED", false)
 	v.SetDefault("STORAGE_ENDPOINT", "127.0.0.1:9000")

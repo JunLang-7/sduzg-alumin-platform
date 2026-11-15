@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const webDir = resolve(scriptDir, '..');
@@ -33,6 +34,8 @@ const composeEnv = {
   // E2E 套件在一分钟内会多次登录，会与登录限流（RATE_LIMIT_AUTH_RPM）冲突；
   // 显式关闭限流，避免本地 .env 的 RATE_LIMIT_* 配置影响 e2e 环境（与 CI 行为一致）。
   RATE_LIMIT_ENABLED: 'false',
+  // 生产模式下 API 要求强 JWT 密钥；E2E 每次随机生成，不写死可复用密钥。
+  AUTH_JWT_SECRET: randomBytes(32).toString('hex'),
   MINIO_API_HOST_PORT: process.env.E2E_MINIO_API_PORT || '19000',
   MINIO_CONSOLE_HOST_PORT: process.env.E2E_MINIO_CONSOLE_PORT || '19001',
   MINIO_ROOT_USER: process.env.E2E_MINIO_ACCESS_KEY || 'e2e-minio-admin',
