@@ -13,17 +13,19 @@ docker compose up --build
 
 已有 `.env` 时直接使用原配置。Compose 启动 MySQL、Redis、Silo 对象存储、数据库迁移任务、API 和 Web；Silo 兼容 MinIO 接口，服务名及配置项保留 `minio`／`MINIO_*` 命名。
 
-| 服务           | 默认地址                                   | 根 `.env` 中的端口配置         |
-| -------------- | ------------------------------------------ | ------------------------------ |
-| Web            | `http://127.0.0.1`                         | `WEB_HOST_PORT=80`             |
-| API            | `http://127.0.0.1:8080`                    | `API_HOST_PORT=8080`           |
-| MySQL          | `127.0.0.1:3307`                           | `MYSQL_HOST_PORT=3307`         |
-| Redis          | `127.0.0.1:6379`                           | `REDIS_HOST_PORT=6379`         |
-| 对象存储 API   | `http://127.0.0.1:9000`                    | `MINIO_API_HOST_PORT=9000`     |
-| 对象存储控制台 | `http://127.0.0.1:9001`                    | `MINIO_CONSOLE_HOST_PORT=9001` |
-| 接口文档       | `http://127.0.0.1:8080/swagger/index.html` | `SWAGGER_ENABLED`              |
+| 服务           | 默认地址                                   | 端口绑定       | 根 `.env` 中的端口配置         |
+| -------------- | ------------------------------------------ | -------------- | ------------------------------ |
+| Web            | `http://127.0.0.1`                         | 全部网卡       | `WEB_HOST_PORT=80`             |
+| API            | `http://127.0.0.1:8080`                    | 仅 `127.0.0.1` | `API_HOST_PORT=8080`           |
+| MySQL          | `127.0.0.1:3307`                           | 仅 `127.0.0.1` | `MYSQL_HOST_PORT=3307`         |
+| Redis          | `127.0.0.1:6379`                           | 仅 `127.0.0.1` | `REDIS_HOST_PORT=6379`         |
+| 对象存储 API   | `http://127.0.0.1:9000`                    | 仅 `127.0.0.1` | `MINIO_API_HOST_PORT=9000`     |
+| 对象存储控制台 | `http://127.0.0.1:9001`                    | 仅 `127.0.0.1` | `MINIO_CONSOLE_HOST_PORT=9001` |
+| 接口文档       | `http://127.0.0.1:8080/swagger/index.html` | 仅 `127.0.0.1` | `SWAGGER_ENABLED`（默认关闭）  |
 
-初始化迁移提供开发账号：`admin` / `Admin@123456`，角色为 `super_admin`。公开部署前必须更换默认管理员密码、数据库与对象存储密码，并向 API 容器传入独立的 `AUTH_JWT_SECRET`；同时确认接口文档已关闭（见下文）。
+只有 Web 默认对全部网卡开放；数据库、缓存、对象存储和 API 一律绑定 `127.0.0.1`，需要跨机联调时用覆盖文件单独放宽，不要把默认端口直接暴露到公网。CI 的 `Containers and health checks` 任务会断言这组默认绑定（`Check default port bindings`）。
+
+初始化迁移提供开发账号：`admin` / `Admin@123456`，角色为 `super_admin`。公开部署前必须更换默认管理员密码、数据库与对象存储密码，并向 API 容器传入独立的 `AUTH_JWT_SECRET`；同时确认接口文档已关闭（见下文）。完整清单见[上线安全检查清单](#上线安全检查清单)。
 
 ## 配置放在哪里
 
@@ -96,17 +98,46 @@ Swagger UI 挂在 API 服务的 `/swagger/index.html`，接口规范端点为 `/
 - `APP_ENV=production` 且未设置 `SWAGGER_ENABLED`（如直接运行生产构建的二进制）：默认关闭，`/swagger/index.html` 与 `/swagger/doc.json` 都返回 HTTP 404。
 - 其他环境（如本地 `go run ./cmd/api`）：默认开启。
 
-注意 [docker-compose.yml](../docker-compose.yml) 中 API 的 `APP_ENV` 为 `production`，但同时把 `SWAGGER_ENABLED` 默认传为 `true`，所以 `docker compose up --build` 后默认**开启**接口文档，可以直接访问。该编排带有默认管理员账号，用它对外公开部署时，必须在编排中显式设为 `false`：
+[docker-compose.yml](../docker-compose.yml) 中 API 的 `APP_ENV` 为 `production`，`SWAGGER_ENABLED` 默认传为 `false`，因此 `docker compose up --build` 后接口文档默认**关闭**。本地联调需要查看文档时，在根 `.env` 显式打开：
 
-```yaml
-# compose.production.yaml
-services:
-  api:
-    environment:
-      SWAGGER_ENABLED: "false"
+```bash
+SWAGGER_ENABLED=true
 ```
 
-接口文档关闭只影响这两个地址，不影响任何业务接口。规范由 handler 注解生成，重新生成与校验方式见[后端开发说明](../server/README.md)。
+该编排在本地会带默认管理员账号，用它对外公开部署时必须保持关闭（或额外在反向代理层限制访问）。接口文档开关只影响这两个地址，不影响任何业务接口。规范由 handler 注解生成，重新生成与校验方式见[后端开发说明](../server/README.md)。
+
+## 上线安全检查清单
+
+公开部署前逐条确认；每项都给出可执行的验证方式。
+
+- [ ] **JWT 密钥**：根 `.env` / 部署环境已配置至少 32 字符的随机 `AUTH_JWT_SECRET`（`openssl rand -hex 48`）。未配置时 `docker compose config` 直接报错，API 也会拒绝启动。轮换会让已签发令牌全部失效。
+- [ ] **接口文档**：`SWAGGER_ENABLED=false`（默认值）。验证：`curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/swagger/index.html` 返回 `404`。
+- [ ] **端口暴露范围**：`docker compose config --format json` 中只有 `web` 的 `host_ip` 为空（全部网卡），`mysql`、`redis`、`minio`、`api` 均为 `127.0.0.1`。确需跨机访问时用覆盖文件显式放开，并在防火墙层限制来源。
+- [ ] **HTTPS**：公网入口有 TLS 终止（反向代理或云负载均衡），80 端口仅做跳转；代理后部署时配置 `SERVER_TRUSTED_PROXIES`，否则审计日志里的客户端 IP 不可信。
+- [ ] **默认凭据**：`admin` 初始密码 `Admin@123456` 已修改；`MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`MINIO_ROOT_*`、`REDIS_PASSWORD` 均非示例值。验证：`docker inspect sduzg-alumin-platform-api-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'PASSWORD|SECRET'` 不应出现 `change-me`、`minioadmin123` 等示例值。
+- [ ] **配置文件权限**：`.env`、`docker-compose.override.yml` 等含密钥文件权限为 `600`，且位于仓库目录之外或已被 `.gitignore` 覆盖。验证：`ls -l .env docker-compose.override.yml`、`git status --short` 不应出现密钥文件。
+- [ ] **时间与时区**：`DB_PARAMS` 含 `loc=UTC` 与 `time_zone=%27%2B00%3A00%27`。验证见下一节。
+- [ ] **备份与回滚**：升级前备份数据库与对象存储，并记录当前版本与镜像标签；回滚依赖备份而不是反向迁移。
+
+## 时区自查与一次性修复
+
+生产部署应始终让数据库保存 UTC。验证三项一致：
+
+```bash
+# 1) 容器连接参数
+docker inspect sduzg-alumin-platform-api-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep DB_PARAMS
+# 2) 数据库会话时区（MySQL 容器）
+docker exec sduzg-alumin-platform-mysql-1 sh -c \
+  'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" -N -e "select @@session.time_zone, now(), utc_timestamp();"'
+# 3) 是否存在“未来时间”（只读预检，正常应为空）
+docker exec -i sduzg-alumin-platform-mysql-1 sh -c \
+  'mysql -uroot -p"$MYSQL_ROOT_PASSWORD" sdu_alumni_db' \
+  < server/scripts/fix_local_datetime_shift.sql
+```
+
+第 3 步使用 [server/scripts/fix_local_datetime_shift.sql](../server/scripts/fix_local_datetime_shift.sql)：它把「值 > `UTC_TIMESTAMP()`」的 `DATETIME` 视为按本地时间误写，默认**只输出报告不修改数据**；确认报告后加 `--init-command="SET @apply_fix=1"` 才会按固定 8 小时回退，且可重复执行。
+
+只有在曾把 `DB_PARAMS` 改为 `loc=Local` 的环境才会出现该问题（典型是本地开发）。生产预检为空时**不要执行修复**。若某环境长期使用 `loc=Local`，超过 8 小时的历史行不会被自动命中，需要按备份评估后单独处理。
 
 ## 历史公式前缀数据清理
 

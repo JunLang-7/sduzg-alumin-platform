@@ -296,6 +296,39 @@ jobs:
           # AUTH_JWT_SECRET 是 compose 启动必填项；此处只做配置渲染校验。
           AUTH_JWT_SECRET: ci-compose-config-only-secret-0123456789abcdef
         run: docker compose config -q
+      - name: Check default port bindings
+        env:
+          AUTH_JWT_SECRET: ci-compose-config-only-secret-0123456789abcdef
+        run: |
+          # 默认端口必须只暴露 Web；数据库、缓存、对象存储和 API 仅绑定回环地址。
+          python3 - <<'PY'
+          import json, subprocess, sys
+
+          rendered = subprocess.run(
+              ["docker", "compose", "config", "--format", "json"],
+              check=True, capture_output=True, text=True,
+          )
+          services = json.loads(rendered.stdout)["services"]
+          loopback = {"127.0.0.1", "::1"}
+          public = {"", None, "0.0.0.0", "::"}
+          private_services = {"mysql", "redis", "minio", "api"}
+          problems = []
+          for name, service in services.items():
+              for port in service.get("ports") or []:
+                  if not port.get("published"):
+                      continue
+                  host_ip = port.get("host_ip")
+                  if name in private_services:
+                      if host_ip not in loopback:
+                          problems.append(f"{name}:{port['published']} must bind loopback, got {host_ip!r}")
+                  elif name == "web":
+                      if host_ip not in public:
+                          problems.append(f"web must stay public, got {host_ip!r}")
+          if problems:
+              print("\n".join(problems))
+              sys.exit(1)
+          print("compose default port bindings OK")
+          PY
       - name: Build images
         run: |
           docker build --tag sdu-alumni-api-ci ./server
