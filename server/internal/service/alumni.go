@@ -304,6 +304,9 @@ func (s *AlumniService) Create(ctx context.Context, operator common.AccessContex
 			return nil, err
 		}
 	}
+	if err := s.validateEnrollmentCategories(ctx, input.Enrollments); err != nil {
+		return nil, err
+	}
 
 	record, err := s.alumni.Create(ctx, input, operator.UserID)
 	if errors.Is(err, common.ErrDatabaseUnavailable) {
@@ -389,6 +392,28 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 	seen := make(map[uint64]struct{}, len(input.Enrollments))
 	for i := range input.Enrollments {
 		item := &input.Enrollments[i]
+		if item.ID != 0 {
+			if _, ok := seen[item.ID]; ok {
+				return nil, common.ErrInvalidRequest
+			}
+			seen[item.ID] = struct{}{}
+		}
+
+		if item.Deleted {
+			// 删除已保存学籍必须显式标记，并携带已加载的版本用于并发冲突检查。
+			if item.ID == 0 || item.Version == 0 {
+				return nil, common.ErrInvalidRequest
+			}
+			if accessible[item.ID] == nil {
+				return nil, common.ErrEnrollmentNotFound
+			}
+			if len(item.ActivateFileIDs) > 0 || len(item.RemoveFileIDs) > 0 {
+				// 删除学籍时不再处理文件变更，避免误删附件或激活草稿。
+				return nil, common.ErrInvalidRequest
+			}
+			continue
+		}
+
 		if item.Grade == "" {
 			return nil, common.ErrInvalidRequest
 		}
@@ -405,10 +430,6 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 			}
 			continue
 		}
-		if _, ok := seen[item.ID]; ok {
-			return nil, common.ErrInvalidRequest
-		}
-		seen[item.ID] = struct{}{}
 		existing := accessible[item.ID]
 		if existing == nil {
 			return nil, common.ErrEnrollmentNotFound
@@ -419,6 +440,20 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		if item.Version == 0 {
 			return nil, common.ErrVersionConflict
 		}
+		if item.DataDomainID == 0 {
+			item.DataDomainID = existing.DataDomainID
+		}
+		if item.DataDomainID != existing.DataDomainID {
+			// 培养类别更正：普通管理员必须同时拥有原域和目标域权限。
+			// 原域已由 accessible 保证；隐藏学籍不会进入 accessible，
+			// 因此不能借“先看到隐藏学籍再转入本人域”绕过数据域边界。
+			if !operator.IsSuperAdmin() && !operator.CanAccessDomain(item.DataDomainID) {
+				return nil, common.ErrPermissionDenied
+			}
+		}
+	}
+	if err := s.validateEnrollmentCategories(ctx, input.Enrollments); err != nil {
+		return nil, err
 	}
 
 	result, err := s.alumni.Save(ctx, id, input, operator.UserID, domainIDs)
@@ -432,8 +467,12 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 		return nil, common.ErrVersionConflict
 	case errors.Is(err, common.ErrEnrollmentNotFound):
 		return nil, common.ErrEnrollmentNotFound
-	case errors.Is(err, common.ErrEnrollmentDomainFixed):
-		return nil, common.ErrEnrollmentDomainFixed
+	case errors.Is(err, common.ErrEnrollmentCategoryMismatch):
+		return nil, common.ErrEnrollmentCategoryMismatch
+	case errors.Is(err, common.ErrLastEnrollment):
+		return nil, common.ErrLastEnrollment
+	case errors.Is(err, common.ErrInvalidDataDomain):
+		return nil, err
 	case errors.Is(err, common.ErrFileNotFound):
 		return nil, common.ErrFileNotFound
 	case errors.Is(err, common.ErrInvalidRequest), errors.Is(err, common.ErrInvalidTrainingLevel):
@@ -449,14 +488,44 @@ func (s *AlumniService) Update(ctx context.Context, operator common.AccessContex
 	}
 
 	domainNames, _ := s.domainNameMap(ctx)
-	s.writeUpdateAudits(ctx, operator, id, before, &result.Record, accessible, domainNames, result.FileChanges)
+	s.writeUpdateAudits(ctx, operator, id, before, result, accessible, input.Enrollments, domainNames)
 
 	if s.exportCache != nil {
 		_ = s.exportCache.Invalidate(ctx)
 	}
-	detail := mapAlumniDetail(&result.Record, domainNames, operator)
+	if !result.Visible {
+		// 保存已成功，但操作者不再有权查看该校友：返回空详情让前端回到列表。
+		return nil, nil
+	}
+	detail := mapAlumniDetail(result.Record, domainNames, operator)
 	s.maskSensitiveFields(detail, id, operator)
 	return detail, nil
+}
+
+// validateEnrollmentCategories 校验培养层次与培养类别的组合。
+// 无法解析类别编码时（未注入数据域配置）跳过组合校验，避免历史档案在
+// 配置缺失时无法保存；生产环境始终注入数据域仓储，未知数据域由仓储拒绝。
+func (s *AlumniService) validateEnrollmentCategories(ctx context.Context, enrollments []do.AlumniEnrollmentInput) error {
+	if s.dataDomains == nil {
+		return nil
+	}
+	codes, err := s.dataDomainCodeMap(ctx)
+	if err != nil {
+		return err
+	}
+	for _, item := range enrollments {
+		if item.Deleted {
+			continue
+		}
+		code := codes[item.DataDomainID]
+		if code == "" {
+			continue
+		}
+		if !common.TrainingLevelAllowsDataDomainCode(item.TrainingLevel, code) {
+			return common.ErrEnrollmentCategoryMismatch
+		}
+	}
+	return nil
 }
 
 func (s *AlumniService) writeUpdateAudits(
@@ -464,22 +533,19 @@ func (s *AlumniService) writeUpdateAudits(
 	operator common.AccessContext,
 	alumniID uint64,
 	before *do.AlumniRecord,
-	after *do.AlumniRecord,
+	result *do.AlumniSaveResult,
 	accessible map[uint64]*model.AlumniEnrollment,
+	inputs []do.AlumniEnrollmentInput,
 	domainNames map[uint64]string,
-	fileChanges []do.AlumniFileChange,
 ) {
-	if s.auditWriter == nil || s.users == nil || before == nil || after == nil {
+	if s.auditWriter == nil || s.users == nil || before == nil || result == nil || result.Record == nil {
 		return
 	}
+	after := result.Record
 	writeProfileAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionUpdate, "admin",
 		"管理员修改个人信息", defaultAuditScope, enrollmentDomainIDs(after.Enrollments),
 		before.Profile, after.Profile)
 
-	afterByID := make(map[uint64]*model.AlumniEnrollment, len(after.Enrollments))
-	for _, enrollment := range after.Enrollments {
-		afterByID[enrollment.ID] = enrollment
-	}
 	for _, enrollment := range after.Enrollments {
 		previous := accessible[enrollment.ID]
 		if previous == nil {
@@ -490,14 +556,21 @@ func (s *AlumniService) writeUpdateAudits(
 		}
 		writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionUpdate, "admin",
 			"管理员修改学籍", domainNames[enrollment.DataDomainID], alumniID, after.Profile.Name,
-			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, previous, enrollment, enrollmentFileAuditChanges(enrollment.ID, fileChanges)...)
+			enrollmentLabel(enrollment, domainNames), enrollment.DataDomainID, domainNames, previous, enrollment, enrollmentFileAuditChanges(enrollment.ID, result.FileChanges)...)
 	}
-	for id, previous := range accessible {
-		if _, ok := afterByID[id]; ok {
+
+	// 只有显式标记删除的学籍才写删除日志；未提交的已有学籍保持不变。
+	for _, input := range inputs {
+		if !input.Deleted {
 			continue
 		}
-		// 未提交的已有学籍保持不变，不应被当作删除；这里不写删除日志。
-		_ = previous
+		previous := accessible[input.ID]
+		if previous == nil {
+			continue
+		}
+		writeEnrollmentAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionDelete, "admin",
+			"管理员删除学籍", domainNames[previous.DataDomainID], alumniID, after.Profile.Name,
+			enrollmentLabel(previous, domainNames), previous.DataDomainID, domainNames, previous, nil)
 	}
 }
 

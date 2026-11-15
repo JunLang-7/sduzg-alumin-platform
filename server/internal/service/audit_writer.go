@@ -87,18 +87,21 @@ func auditBatchFields() []auditBatchField {
 
 // AuditEvent 是一条业务操作审计事件。
 type AuditEvent struct {
-	Operator                  *model.User
-	OperatorID                uint64
-	Action                    string
-	Source                    string
-	ManagementScope           string
-	Reason                    string
-	TargetType                string
-	TargetID                  *uint64
-	TargetName                string
-	TargetMeta                string
-	Changes                   []AuditChange
-	DataDomainIDs             []uint64
+	Operator        *model.User
+	OperatorID      uint64
+	Action          string
+	Source          string
+	ManagementScope string
+	Reason          string
+	TargetType      string
+	TargetID        *uint64
+	TargetName      string
+	TargetMeta      string
+	Changes         []AuditChange
+	DataDomainIDs   []uint64
+	// RequiredDataDomainIDs 要求查询者同时拥有全部数据域才可见，
+	// 用于跨类别更正这类同时包含新旧两侧信息的事件。
+	RequiredDataDomainIDs     []uint64
 	EnrollmentID              *uint64
 	EnrollmentLabel           string
 	BatchImportFields         []auditBatchField
@@ -126,6 +129,7 @@ type auditLogDetail struct {
 	Status                      string             `json:"status,omitempty"`
 	Changes                     []AuditChange      `json:"changes,omitempty"`
 	DataDomainIDs               []uint64           `json:"data_domain_ids,omitempty"`
+	RequiredDataDomainIDs       []uint64           `json:"required_data_domain_ids,omitempty"`
 	BatchImportFields           []auditBatchField  `json:"batch_import_fields,omitempty"`
 	BatchCreatedAlumni          []auditBatchRecord `json:"batch_created_alumni,omitempty"`
 	BatchCreatedAlumniTotal     int                `json:"batch_created_alumni_total,omitempty"`
@@ -179,6 +183,7 @@ func (l *OperationLogger) WriteAudit(ctx context.Context, event AuditEvent) erro
 		Status:                    status,
 		Changes:                   event.Changes,
 		DataDomainIDs:             append([]uint64(nil), event.DataDomainIDs...),
+		RequiredDataDomainIDs:     append([]uint64(nil), event.RequiredDataDomainIDs...),
 		EnrollmentID:              event.EnrollmentID,
 		EnrollmentLabel:           event.EnrollmentLabel,
 		BatchImportFields:         append([]auditBatchField(nil), event.BatchImportFields...),
@@ -513,21 +518,28 @@ func writeEnrollmentAudit(
 	} else if before != nil {
 		domainID = before.DataDomainID
 	}
+	// 跨类别更正同时携带新旧两侧的字段值：事件只在目标类别下声明归属，
+	// 但要求查询者同时拥有原类别与目标类别，避免单侧管理员读到另一侧数据。
+	var requiredDomainIDs []uint64
+	if before != nil && after != nil && before.DataDomainID != after.DataDomainID {
+		requiredDomainIDs = []uint64{before.DataDomainID, after.DataDomainID}
+	}
 	targetID := alumniID
 	event := AuditEvent{
-		Operator:        operator,
-		Action:          action,
-		Source:          source,
-		ManagementScope: managementScope,
-		Reason:          reason,
-		TargetType:      auditTargetAlumni,
-		TargetID:        &targetID,
-		TargetName:      alumniName,
-		TargetMeta:      enrollmentLabel,
-		Changes:         changes,
-		DataDomainIDs:   []uint64{domainID},
-		EnrollmentID:    &enrollmentID,
-		EnrollmentLabel: enrollmentLabel,
+		Operator:              operator,
+		Action:                action,
+		Source:                source,
+		ManagementScope:       managementScope,
+		Reason:                reason,
+		TargetType:            auditTargetAlumni,
+		TargetID:              &targetID,
+		TargetName:            alumniName,
+		TargetMeta:            enrollmentLabel,
+		Changes:               changes,
+		DataDomainIDs:         []uint64{domainID},
+		RequiredDataDomainIDs: requiredDomainIDs,
+		EnrollmentID:          &enrollmentID,
+		EnrollmentLabel:       enrollmentLabel,
 	}
 	if err := writer.WriteAudit(ctx, event); err != nil {
 		logger.Warn("failed to write enrollment audit", zap.Uint64("alumni_id", alumniID), zap.Uint64("enrollment_id", enrollmentID), zap.String("action", action), zap.Error(err))

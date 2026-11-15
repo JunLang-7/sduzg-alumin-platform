@@ -243,6 +243,8 @@ func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQ
 		}
 		rows = append(rows, do.AlumniExportRow{Profile: profile, Enrollment: enrollment})
 	}
+	// 同一人的学籍行必须按统一展示顺序输出，便于导出后与详情页对照。
+	do.SortExportRows(rows)
 	return rows, nil
 }
 
@@ -342,6 +344,9 @@ func (r *AlumniRepository) attachEnrollments(ctx context.Context, profiles []*mo
 	byAlumni := make(map[uint64][]*model.AlumniEnrollment, len(ids))
 	for _, enrollment := range enrollments {
 		byAlumni[enrollment.AlumniID] = append(byAlumni[enrollment.AlumniID], enrollment)
+	}
+	for _, items := range byAlumni {
+		do.SortEnrollments(items)
 	}
 	for _, profile := range profiles {
 		if profile == nil {
@@ -641,12 +646,32 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 				}
 				continue
 			}
+			if enrollmentInput.Deleted {
+				keys, err := r.softDeleteEnrollment(tx, id, enrollmentInput, operatorID, dataDomainIDs)
+				if err != nil {
+					return err
+				}
+				removedObjectKeys = append(removedObjectKeys, keys...)
+				continue
+			}
 			changes, err := r.updateEnrollment(tx, id, enrollmentInput, operatorID, dataDomainIDs)
 			if err != nil {
 				return err
 			}
 			removedObjectKeys = append(removedObjectKeys, changes.RemovedObjectKeys...)
 			fileChanges = append(fileChanges, changes.Changes...)
+		}
+
+		// 至少保留一段有效学籍：统计包含操作者不可见的学籍，避免把隐藏数量
+		// 暴露给调用方；失败时整个事务回滚，不会留下部分删除。
+		var remaining int64
+		if err := tx.Model(&model.AlumniEnrollment{}).
+			Where("alumni_id = ? AND status = ? AND deleted_at IS NULL", id, common.AlumniStatusActive).
+			Count(&remaining).Error; err != nil {
+			return err
+		}
+		if remaining == 0 {
+			return common.ErrLastEnrollment
 		}
 		return nil
 	})
@@ -655,13 +680,94 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 	}
 
 	record, err := r.GetDetail(ctx, id, dataDomainIDs)
+	if errors.Is(err, common.ErrAlumniNotFound) {
+		// 保存成功但操作者已无可见学籍：详情不可读是预期结果，不是失败。
+		profile, profileErr := r.GetPersonalProfile(ctx, id)
+		if profileErr != nil {
+			return nil, profileErr
+		}
+		return &do.AlumniSaveResult{
+			Record:            &do.AlumniRecord{Profile: profile, Enrollments: []*model.AlumniEnrollment{}},
+			Visible:           false,
+			RemovedObjectKeys: removedObjectKeys,
+			FileChanges:       fileChanges,
+		}, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	return &do.AlumniSaveResult{Record: *record, RemovedObjectKeys: removedObjectKeys, FileChanges: fileChanges}, nil
+	return &do.AlumniSaveResult{Record: record, Visible: true, RemovedObjectKeys: removedObjectKeys, FileChanges: fileChanges}, nil
+}
+
+// softDeleteEnrollment 只软删除明确标记的这一段学籍。
+// 正式附件保留与原学籍的关联和存储对象；仅清理本次编辑中由操作者自己上传、
+// 尚未激活的草稿，避免取消编辑后残留无主对象。
+func (r *AlumniRepository) softDeleteEnrollment(tx *gorm.DB, alumniID uint64, input do.AlumniEnrollmentInput, operatorID uint64, dataDomainIDs []uint64) ([]string, error) {
+	var enrollment model.AlumniEnrollment
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ? AND alumni_id = ? AND status = ? AND deleted_at IS NULL", input.ID, alumniID, common.AlumniStatusActive).
+		First(&enrollment).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, common.ErrEnrollmentNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if len(dataDomainIDs) > 0 && !containsUint64(dataDomainIDs, enrollment.DataDomainID) {
+		// 与编辑一致：不区分“无权”和“不存在”，避免借删除探测隐藏学籍。
+		return nil, common.ErrEnrollmentNotFound
+	}
+	if len(input.ActivateFileIDs) > 0 || len(input.RemoveFileIDs) > 0 {
+		return nil, common.ErrInvalidRequest
+	}
+	if input.Version == 0 || input.Version != enrollment.Version {
+		return nil, common.ErrVersionConflict
+	}
+
+	now := time.Now()
+	result := tx.Model(&model.AlumniEnrollment{}).
+		Where("id = ? AND version = ? AND status = ? AND deleted_at IS NULL", input.ID, input.Version, common.AlumniStatusActive).
+		Updates(map[string]any{
+			"status":     common.AlumniStatusDeleted,
+			"deleted_at": now,
+			"updated_at": now,
+			"updated_by": operatorID,
+			"version":    gorm.Expr("version + 1"),
+		})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, common.ErrVersionConflict
+	}
+
+	var drafts []model.AlumniFile
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("enrollment_id = ? AND status = ? AND uploaded_by = ? AND deleted_at IS NULL", enrollment.ID, common.FileStatusDraft, operatorID).
+		Find(&drafts).Error; err != nil {
+		return nil, err
+	}
+	if len(drafts) == 0 {
+		return nil, nil
+	}
+	ids := make([]uint64, 0, len(drafts))
+	keys := make([]string, 0, len(drafts))
+	for _, draft := range drafts {
+		ids = append(ids, draft.ID)
+		keys = append(keys, draft.ObjectKey)
+	}
+	if err := tx.Model(&model.AlumniFile{}).
+		Where("id IN ?", ids).
+		Updates(map[string]any{"status": common.FileStatusDeleted, "deleted_at": now}).Error; err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 func (r *AlumniRepository) createEnrollment(tx *gorm.DB, alumniID uint64, input do.AlumniEnrollmentInput, operatorID uint64) error {
+	if err := r.validateActiveDataDomainIDsTx(tx, []uint64{input.DataDomainID}); err != nil {
+		return err
+	}
 	enrollment := &model.AlumniEnrollment{
 		AlumniID:      alumniID,
 		DataDomainID:  input.DataDomainID,
@@ -701,8 +807,13 @@ func (r *AlumniRepository) updateEnrollment(tx *gorm.DB, alumniID uint64, input 
 		// 不区分“无权”和“不存在”，避免通过学籍 ID 探测隐藏身份。
 		return nil, common.ErrEnrollmentNotFound
 	}
-	if input.DataDomainID != enrollment.DataDomainID {
-		return nil, common.ErrEnrollmentDomainFixed
+	// 培养类别更正保留同一学籍 ID、附件关联与历史，只改归属数据域；
+	// 目标数据域必须仍然可用，权限与层次组合由服务层校验。
+	domainChanged := input.DataDomainID != 0 && input.DataDomainID != enrollment.DataDomainID
+	if domainChanged {
+		if err := r.validateActiveDataDomainIDsTx(tx, []uint64{input.DataDomainID}); err != nil {
+			return nil, err
+		}
 	}
 	if input.Version == 0 || input.Version != enrollment.Version {
 		return nil, common.ErrVersionConflict
@@ -714,6 +825,9 @@ func (r *AlumniRepository) updateEnrollment(tx *gorm.DB, alumniID uint64, input 
 		"updated_by":     operatorID,
 		"version":        gorm.Expr("version + 1"),
 		"updated_at":     time.Now(),
+	}
+	if domainChanged {
+		updates["data_domain_id"] = input.DataDomainID
 	}
 	if input.ClassName != nil {
 		updates["class_name"] = nullableString(*input.ClassName)
@@ -956,6 +1070,11 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 
 // validateActiveDataDomainIDs 校验目标数据域存在且处于可用状态。
 func (r *AlumniRepository) validateActiveDataDomainIDs(ctx context.Context, ids []uint64) error {
+	return r.validateActiveDataDomainIDsTx(r.db.WithContext(ctx), ids)
+}
+
+// validateActiveDataDomainIDsTx 在给定事务内校验目标数据域可用，供保存流程复用。
+func (r *AlumniRepository) validateActiveDataDomainIDsTx(db *gorm.DB, ids []uint64) error {
 	uniqueIDs := make(map[uint64]struct{}, len(ids))
 	for _, id := range ids {
 		if id == 0 {
@@ -971,9 +1090,12 @@ func (r *AlumniRepository) validateActiveDataDomainIDs(ctx context.Context, ids 
 	for id := range uniqueIDs {
 		uniqueIDList = append(uniqueIDList, id)
 	}
-	qs := query.Use(r.db).DataDomain
+	if db == nil {
+		return common.ErrDatabaseUnavailable
+	}
+	qs := query.Use(db).DataDomain
 	var domains []model.DataDomain
-	if err := r.db.WithContext(ctx).
+	if err := db.
 		Where(qs.ID.In(uniqueIDList...), qs.Status.Eq(common.DataDomainStatusActive)).
 		Find(&domains).
 		Error; err != nil {
