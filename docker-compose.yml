@@ -91,6 +91,8 @@ services:
     environment:
       APP_ENV: production
       GIN_MODE: release
+      # 生产密钥不设默认值：未配置时 compose 直接报错，避免带默认密钥上线。
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET 必填，可用 openssl rand -hex 48 生成后写入根 .env}
       SERVER_TRUSTED_PROXIES: ${SERVER_TRUSTED_PROXIES:-}
       DB_ENABLED: "true"
       DB_HOST: mysql

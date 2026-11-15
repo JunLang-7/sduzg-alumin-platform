@@ -33,17 +33,25 @@ docker compose up --build
 | [后端 `.env.example`](../server/.env.example) | 复制为 `server/.env`，供本地 `go run` 读取 API 配置                              |
 | [前端 `.env.example`](../web/.env.example)    | 前端构建与开发配置，默认接口基础路径为 `/api/v1`                                 |
 
-Compose 的 API 通过 [docker-compose.yml](../docker-compose.yml) 中的 `environment` 接收配置，镜像不会复制或挂载 `server/.env`。仅在根 `.env` 添加变量也不会自动把它传入容器；例如生产 JWT 密钥需在部署编排中显式传递 `AUTH_JWT_SECRET`，可使用下面的本地覆盖文件：
+Compose 的 API 通过 [docker-compose.yml](../docker-compose.yml) 中的 `environment` 接收配置，镜像不会复制或挂载 `server/.env`。仅在根 `.env` 添加变量也不会自动把它传入容器，必须在上游编排里被引用。
 
-```yaml
-# compose.production.yaml（本地维护，不提交真实密钥）
-services:
-  api:
-    environment:
-      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?请设置生产 JWT 密钥}
+`AUTH_JWT_SECRET` 是生产启动的硬性要求，分两层拦截：
+
+1. **Compose 层**：`docker-compose.yml` 声明 `AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?...}`。根 `.env` 没有该变量时，`docker compose config` / `up` 直接报错，不会把默认密钥带上线；
+2. **API 层**：`APP_ENV=production` 且密钥为空、等于默认值 `dev-only-change-me` 或短于 32 个字符时，API 启动失败并提示生成方式。直接运行二进制（不经 Compose）同样受此保护。开发环境（`APP_ENV=development`）保留默认值以便本地调试。
+
+生成并配置密钥：
+
+```bash
+openssl rand -hex 48          # 生成密钥
+# 写入根 .env（Compose 读取）与部署环境变量
+AUTH_JWT_SECRET=<生成的值>
+docker compose up --build -d
 ```
 
-在部署环境设置 `AUTH_JWT_SECRET` 后，用 `docker compose -f docker-compose.yml -f compose.production.yaml up --build -d` 启动。其他 API 配置参照 [后端配置示例](../server/.env.example) 显式传递；配置加载规则见[后端开发说明](../server/README.md)。
+轮换密钥会让所有已签发的访问令牌失效，用户需要重新登录；账号密码不受影响。旧版本升级到含该校验的版本前，先确认已有部署都配置了强密钥，否则升级后 API 会拒绝启动。
+
+其他 API 配置参照 [后端配置示例](../server/.env.example) 显式传递；确需覆盖 Compose 默认值的场景，可另建 `compose.production.yaml`（本地维护，不提交真实密钥）并用 `docker compose -f docker-compose.yml -f compose.production.yaml up -d` 启动。配置加载规则见[后端开发说明](../server/README.md)。
 
 常用配置按用途分为：
 

@@ -292,6 +292,9 @@ jobs:
       - name: Test the run failure classifier
         run: bash .github/scripts/classify-run-failure.test.sh
       - name: Validate Compose configuration
+        env:
+          # AUTH_JWT_SECRET 是 compose 启动必填项；此处只做配置渲染校验。
+          AUTH_JWT_SECRET: ci-compose-config-only-secret-0123456789abcdef
         run: docker compose config -q
       - name: Build images
         run: |

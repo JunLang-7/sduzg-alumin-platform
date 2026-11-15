@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -52,10 +53,12 @@ import (
 // @name						Authorization
 // @description				填入 `Bearer <access_token>`，access_token 来自 POST /auth/login 或 POST /auth/setup-password。
 func main() {
-	// 加载配置
+	// 加载配置。配置错误（如生产环境缺少强 JWT 密钥）属于部署问题：
+	// 打印明确原因后退出，避免以堆栈形式淹没真正的原因。
 	cfg, err := config.Load()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "startup failed: %v\n", err)
+		os.Exit(1)
 	}
 
 	// 初始化日志
