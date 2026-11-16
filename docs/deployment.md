@@ -113,7 +113,6 @@ SWAGGER_ENABLED=true
 - [ ] **JWT 密钥**：根 `.env` / 部署环境已配置至少 32 字符的随机 `AUTH_JWT_SECRET`（`openssl rand -hex 48`）。未配置时 `docker compose config` 直接报错，API 也会拒绝启动。轮换会让已签发令牌全部失效。
 - [ ] **接口文档**：`SWAGGER_ENABLED=false`（默认值）。验证：`curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/swagger/index.html` 返回 `404`。
 - [ ] **端口暴露范围**：`docker compose config --format json` 中只有 `web` 的 `host_ip` 为空（全部网卡），`mysql`、`redis`、`minio`、`api` 均为 `127.0.0.1`。确需跨机访问时用覆盖文件显式放开，并在防火墙层限制来源。
-- [ ] **HTTPS**：公网入口有 TLS 终止（反向代理或云负载均衡），80 端口仅做跳转；代理后部署时配置 `SERVER_TRUSTED_PROXIES`，否则审计日志里的客户端 IP 不可信。
 - [ ] **默认凭据**：`admin` 初始密码 `Admin@123456` 已修改；`MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD`、`MINIO_ROOT_*`、`REDIS_PASSWORD` 均非示例值。验证：`docker inspect sduzg-alumin-platform-api-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep -E 'PASSWORD|SECRET'` 不应出现 `change-me`、`minioadmin123` 等示例值。
 - [ ] **配置文件权限**：`.env`、`docker-compose.override.yml` 等含密钥文件权限为 `600`，且位于仓库目录之外或已被 `.gitignore` 覆盖。验证：`ls -l .env docker-compose.override.yml`、`git status --short` 不应出现密钥文件。
 - [ ] **时间与时区**：`DB_PARAMS` 含 `loc=UTC` 与 `time_zone=%27%2B00%3A00%27`。验证见下一节。
