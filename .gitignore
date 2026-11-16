@@ -10,6 +10,12 @@
 bin/
 coverage.out
 
+# 生产覆盖文件可能包含密钥，禁止提交
+docker-compose.override.yml
+compose.production.yaml
+.env.bak*
+server/.env.bak*
+
 # Server
 server/.env
 server/tmp/
