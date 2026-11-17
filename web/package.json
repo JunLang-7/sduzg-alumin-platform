@@ -18,7 +18,7 @@
   "dependencies": {
     "@ant-design/icons": "^5.5.2",
     "antd": "^5.22.5",
-    "axios": "1.21.0",
+    "axios": "1.21.1",
     "echarts": "6.1.0",
     "echarts-for-react": "^3.0.2",
     "react": "^18.3.1",
@@ -32,7 +32,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
-    "@playwright/test": "1.65.0",
+    "@playwright/test": "1.65.1",
     "@types/mdast": "4.0.4",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -41,10 +41,10 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^15.15.0",
-    "prettier": "^3.9.10",
+    "prettier": "^3.10.1",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.72.1",
-    "vite": "6.4.5",
+    "typescript-eslint": "^8.72.2",
+    "vite": "6.4.6",
     "vitest": "^5.1.0"
   },
   "overrides": {
