@@ -931,6 +931,7 @@ func containsUint64(values []uint64, target uint64) bool {
 }
 
 // Delete 软删除只有一段学籍的校友；多段校友的整人删除语义尚未定义，直接拒绝。
+// 存在操作者无权维护的学籍（含已删历史段）时同样拒绝，避免误删跨域共享身份。
 func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) ([]string, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
@@ -970,8 +971,12 @@ func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint
 		if visible == 0 {
 			return common.ErrAlumniNotFound
 		}
-		if active > 1 || hasHidden {
+		if active > 1 {
 			return common.ErrAlumniMultiEnrollment
+		}
+		if hasHidden {
+			// 只剩一段有效学籍，但仍存在操作者无权维护的学籍（含已删历史段）。
+			return common.ErrAlumniHiddenEnrollment
 		}
 
 		now := time.Now()
@@ -998,12 +1003,16 @@ func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint
 			}).Error; err != nil {
 			return err
 		}
-		files := tx.Model(&model.AlumniFile{}).Where("enrollment_id IN ? AND status IN ?", enrollmentIDs,
-			[]string{common.FileStatusActive, common.FileStatusDraft, common.FileStatusPending})
-		if err := files.Session(&gorm.Session{}).Clauses(clause.Locking{Strength: "UPDATE"}).Pluck("object_key", &objectKeys).Error; err != nil {
+		fileStatuses := []string{common.FileStatusActive, common.FileStatusDraft, common.FileStatusPending}
+		if err := tx.Model(&model.AlumniFile{}).
+			Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("enrollment_id IN ? AND status IN ?", enrollmentIDs, fileStatuses).
+			Pluck("object_key", &objectKeys).Error; err != nil {
 			return err
 		}
-		return files.Updates(map[string]any{"status": common.FileStatusDeleted, "deleted_at": now}).Error
+		return tx.Model(&model.AlumniFile{}).
+			Where("enrollment_id IN ? AND status IN ?", enrollmentIDs, fileStatuses).
+			Updates(map[string]any{"status": common.FileStatusDeleted, "deleted_at": now}).Error
 	})
 	if err != nil {
 		return nil, err

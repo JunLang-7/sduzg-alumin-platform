@@ -465,7 +465,7 @@ func TestDeleteProfileCleansAttachmentsAndProtectsHiddenDomains(t *testing.T) {
 	if err := tx.Delete(past).Error; err != nil {
 		t.Fatal(err)
 	}
-	if removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniMultiEnrollment) || len(removed) != 0 {
+	if removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniHiddenEnrollment) || len(removed) != 0 {
 		t.Fatalf("hidden archived attachments affected: %v, %v", removed, err)
 	}
 	removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID, academic.ID})

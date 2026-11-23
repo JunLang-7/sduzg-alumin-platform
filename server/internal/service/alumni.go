@@ -603,6 +603,8 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 			return common.ErrAlumniNotFound
 		case errors.Is(err, common.ErrAlumniMultiEnrollment):
 			return common.ErrAlumniMultiEnrollment
+		case errors.Is(err, common.ErrAlumniHiddenEnrollment):
+			return common.ErrAlumniHiddenEnrollment
 		default:
 			logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return err

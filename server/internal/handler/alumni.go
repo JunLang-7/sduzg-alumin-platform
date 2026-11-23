@@ -288,6 +288,8 @@ func (h *AlumniHandler) Delete(c *gin.Context) {
 		response.Fail(c, http.StatusForbidden, response.CodeForbidden, "权限不足")
 	case errors.Is(err, common.ErrAlumniMultiEnrollment):
 		response.Fail(c, http.StatusConflict, response.CodeConflict, "该校友档案暂不支持整人删除")
+	case errors.Is(err, common.ErrAlumniHiddenEnrollment):
+		response.Fail(c, http.StatusConflict, response.CodeConflict, "存在无权维护的历史学籍，无法整人删除")
 	case errors.Is(err, common.ErrAlumniNotFound):
 		response.Fail(c, http.StatusNotFound, response.CodeNotFound, "对应校友不存在")
 	case errors.Is(err, common.ErrDatabaseUnavailable):

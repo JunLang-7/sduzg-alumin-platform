@@ -747,6 +747,10 @@ func TestAlumniServiceDeleteSuccessAndErrors(t *testing.T) {
 		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniMultiEnrollment {
 		t.Fatalf("expected multi-enrollment rejection, got %v", err)
 	}
+	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniHiddenEnrollment}, nil).
+		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniHiddenEnrollment {
+		t.Fatalf("expected hidden enrollment rejection, got %v", err)
+	}
 }
 
 func TestAlumniServiceListScopesDomainAndSensitiveSearch(t *testing.T) {
