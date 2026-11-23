@@ -133,6 +133,10 @@ func activeAlumniQuery(db *gorm.DB) *gorm.DB {
 		Where("alumni_profiles.deleted_at IS NULL")
 }
 
+// alumniListOrder 名册排序：姓名拼音升序（GBK 码位近似拼音序），id 升序作稳定并列序。
+// 与导入批次、录入时间无关；英文姓名经 GBK 转换后排在中文之前。
+const alumniListOrder = "CONVERT(alumni_profiles.name USING gbk) ASC, alumni_profiles.id ASC"
+
 // CountActive 统计当前活跃校友总数（不含过滤条件，按人去重）。
 func (r *AlumniRepository) CountActive(ctx context.Context) (int64, error) {
 	if r.db == nil {
@@ -161,7 +165,7 @@ func (r *AlumniRepository) FindOnly(ctx context.Context, listQuery do.AlumniList
 
 	var profiles []*model.AlumniProfile
 	if err := base.
-		Order("alumni_profiles.id DESC").
+		Order(alumniListOrder).
 		Offset(listQuery.Page.Offset()).
 		Limit(listQuery.Page.PageSize).
 		Find(&profiles).
@@ -188,7 +192,7 @@ func (r *AlumniRepository) List(ctx context.Context, listQuery do.AlumniListQuer
 
 	var profiles []*model.AlumniProfile
 	if err := base.
-		Order("alumni_profiles.id DESC").
+		Order(alumniListOrder).
 		Offset(listQuery.Page.Offset()).
 		Limit(listQuery.Page.PageSize).
 		Find(&profiles).
@@ -214,17 +218,15 @@ func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQ
 	base = applyFilters(base, listQuery)
 
 	var profiles []*model.AlumniProfile
-	if err := base.Order("alumni_profiles.id DESC").Find(&profiles).Error; err != nil {
+	if err := base.Order(alumniListOrder).Find(&profiles).Error; err != nil {
 		return nil, err
 	}
 	if len(profiles) == 0 {
 		return nil, nil
 	}
 
-	profileByID := make(map[uint64]*model.AlumniProfile, len(profiles))
 	profileIDs := make([]uint64, 0, len(profiles))
 	for _, profile := range profiles {
-		profileByID[profile.ID] = profile
 		profileIDs = append(profileIDs, profile.ID)
 	}
 
@@ -236,13 +238,16 @@ func (r *AlumniRepository) ListAll(ctx context.Context, listQuery do.AlumniListQ
 		return nil, err
 	}
 
-	rows := make([]do.AlumniExportRow, 0, len(enrollments))
+	enrollmentsByAlumni := make(map[uint64][]*model.AlumniEnrollment, len(profiles))
 	for _, enrollment := range enrollments {
-		profile := profileByID[enrollment.AlumniID]
-		if profile == nil {
-			continue
+		enrollmentsByAlumni[enrollment.AlumniID] = append(enrollmentsByAlumni[enrollment.AlumniID], enrollment)
+	}
+	rows := make([]do.AlumniExportRow, 0, len(enrollments))
+	// 按列表同款姓名拼音序输出，同一人内的学籍行由 SortExportRows 统一排序。
+	for _, profile := range profiles {
+		for _, enrollment := range enrollmentsByAlumni[profile.ID] {
+			rows = append(rows, do.AlumniExportRow{Profile: profile, Enrollment: enrollment})
 		}
-		rows = append(rows, do.AlumniExportRow{Profile: profile, Enrollment: enrollment})
 	}
 	// 同一人的学籍行必须按统一展示顺序输出，便于导出后与详情页对照。
 	do.SortExportRows(rows)
