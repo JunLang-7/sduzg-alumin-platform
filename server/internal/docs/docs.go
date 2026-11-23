@@ -1018,6 +1018,12 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "校友档案 ID，批量导入详情仅返回该档案的信息",
+                        "name": "target_id",
+                        "in": "query"
                     }
                 ],
                 "responses": {

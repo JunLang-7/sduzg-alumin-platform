@@ -196,8 +196,6 @@ func TestCurrentTemplateRequiresExplicitTrainingLevel(t *testing.T) {
 }
 
 func TestImportAuditTruncatesBatchRecords(t *testing.T) {
-	writer := &fakeExportOperationLogger{}
-	svc := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).WithOperationLogger(writer)
 	domainID := uint64(1)
 	total := maxAuditBatchRecords + 1
 	inputs := make([]do.AlumniCreateInput, 0, total)
@@ -212,14 +210,13 @@ func TestImportAuditTruncatesBatchRecords(t *testing.T) {
 		createdIDs = append(createdIDs, uint64(i+1))
 	}
 
-	svc.writeImportAudit(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
-		inputs, createdIDs, &dto.AlumniImportResult{Total: total, Success: total})
-
-	if len(writer.logs) != 1 || writer.logs[0].Detail == nil {
-		t.Fatalf("expected one import audit log, got %+v", writer.logs)
+	audit, err := buildImportAudit(common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
+		inputs, createdIDs, importAuditDetail{Total: total, Success: total})
+	if err != nil || audit.Detail == nil {
+		t.Fatalf("build import audit log: %v", err)
 	}
 	var detail importAuditDetail
-	if err := json.Unmarshal([]byte(*writer.logs[0].Detail), &detail); err != nil {
+	if err := json.Unmarshal([]byte(*audit.Detail), &detail); err != nil {
 		t.Fatalf("parse import audit detail: %v", err)
 	}
 	if len(detail.BatchCreatedAlumni) != maxAuditBatchRecords {
@@ -228,14 +225,15 @@ func TestImportAuditTruncatesBatchRecords(t *testing.T) {
 	if detail.BatchCreatedAlumniTotal != total || !detail.BatchCreatedAlumniTruncated {
 		t.Fatalf("unexpected truncation metadata: total=%d truncated=%v", detail.BatchCreatedAlumniTotal, detail.BatchCreatedAlumniTruncated)
 	}
-	if len(*writer.logs[0].Detail) > 256*1024 {
-		t.Fatalf("import audit detail is too large: %d bytes", len(*writer.logs[0].Detail))
+	if len(detail.BatchMemberDomains) != total || detail.BatchMemberDomains[createdIDs[total-1]] != domainID {
+		t.Fatalf("missing member beyond the snapshot limit: %d members", len(detail.BatchMemberDomains))
+	}
+	if len(*audit.Detail) > 256*1024 {
+		t.Fatalf("import audit detail is too large: %d bytes", len(*audit.Detail))
 	}
 }
 
 func TestImportAuditKeepsBatchRecordsUnderLimit(t *testing.T) {
-	writer := &fakeExportOperationLogger{}
-	svc := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).WithOperationLogger(writer)
 	inputs := make([]do.AlumniCreateInput, 0, maxAuditBatchRecords)
 	createdIDs := make([]uint64, 0, maxAuditBatchRecords)
 	for i := 0; i < maxAuditBatchRecords; i++ {
@@ -247,14 +245,13 @@ func TestImportAuditKeepsBatchRecordsUnderLimit(t *testing.T) {
 		})
 		createdIDs = append(createdIDs, uint64(i+1))
 	}
-	svc.writeImportAudit(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
-		inputs, createdIDs, &dto.AlumniImportResult{Total: maxAuditBatchRecords, Success: maxAuditBatchRecords})
-
-	if len(writer.logs) != 1 || writer.logs[0].Detail == nil {
-		t.Fatalf("expected one import audit log, got %+v", writer.logs)
+	audit, err := buildImportAudit(common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
+		inputs, createdIDs, importAuditDetail{Total: maxAuditBatchRecords, Success: maxAuditBatchRecords})
+	if err != nil || audit.Detail == nil {
+		t.Fatalf("build import audit log: %v", err)
 	}
 	var detail importAuditDetail
-	if err := json.Unmarshal([]byte(*writer.logs[0].Detail), &detail); err != nil {
+	if err := json.Unmarshal([]byte(*audit.Detail), &detail); err != nil {
 		t.Fatalf("parse import audit detail: %v", err)
 	}
 	if len(detail.BatchCreatedAlumni) != maxAuditBatchRecords || detail.BatchCreatedAlumniTruncated {
@@ -267,18 +264,18 @@ func TestImportWritesAuditWithoutProfileValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build xlsx: %v", err)
 	}
-	writer := &fakeExportOperationLogger{}
+	store := &fakeAlumniStore{}
 	domainID := uint64(1)
-	svc := NewAlumniService(&fakeAlumniStore{}, nil, testDataDomainStore()).WithOperationLogger(writer)
+	svc := NewAlumniService(store, nil, testDataDomainStore())
 
 	result, err := svc.Import(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, &domainID, reader)
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
-	if result.Success != 1 || len(writer.logs) != 1 {
-		t.Fatalf("expected one successful import audit, result=%+v logs=%+v", result, writer.logs)
+	if result.Success != 1 || store.batchAudit == nil {
+		t.Fatalf("expected one successful import audit, result=%+v log=%+v", result, store.batchAudit)
 	}
-	log := writer.logs[0]
+	log := store.batchAudit
 	if log.Action != AuditActionImport || log.TargetType != auditTargetBatch || log.OperatorID != 7 || log.OperatorRole != common.RoleSuperAdmin || log.Detail == nil {
 		t.Fatalf("unexpected import audit log: %+v", log)
 	}

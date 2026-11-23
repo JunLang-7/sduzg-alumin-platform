@@ -185,7 +185,7 @@ func (stubCreateStore) GetEnrollment(context.Context, uint64, uint64, []uint64) 
 func (stubCreateStore) Create(context.Context, do.AlumniCreateInput, uint64) (*do.AlumniRecord, error) {
 	return nil, common.ErrInvalidRequest
 }
-func (stubCreateStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint64) ([]uint64, error) {
+func (stubCreateStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint64, func([]uint64) (*model.OperationLog, error)) ([]uint64, error) {
 	return nil, nil
 }
 func (stubCreateStore) Save(context.Context, uint64, do.AlumniSaveInput, uint64, []uint64) (*do.AlumniSaveResult, error) {

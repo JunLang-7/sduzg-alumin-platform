@@ -463,7 +463,7 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 | 方法 | 路径                          | `data`                                     |
 | ---- | ----------------------------- | ------------------------------------------ |
 | GET  | `/admin/audit/operations`     | 分页操作记录，不含字段差异明细             |
-| GET  | `/admin/audit/operations/:id` | 单条记录及字段差异、批量导入明细（如适用） |
+| GET  | `/admin/audit/operations/:id` | 单条记录及字段差异、批量导入明细（如适用）；可选 `target_id` 限定校友档案 |
 
 列表查询参数：
 
@@ -474,13 +474,15 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 | `start_at`、`end_at` | string | RFC3339 瞬时，`end_at` 不含；Web 端按浏览器本地日期换算（开始日 00:00 到结束日次日 00:00），格式错误返回 400 |
 | `management_scope`       | string | 管理范围名称精确匹配，例如“本科生”；不会扩大当前用户授权范围      |
 | `action`                 | string | 操作类型，例如 `create`、`update`、`delete`、`import`             |
-| `target_id`              | uint64 | 筛选指定校友的操作记录                                            |
+| `target_id`              | uint64 | 筛选指定校友的操作记录，含关联的批量导入事件                      |
 
 记录包含 `id`、`created_at`、`operator`、`operator_role`、`operator_role_label`、可选 `target_id`、`target_type`、`target_name`、可选 `target_meta`、`management_scope`、`action`、`source`、可选 `reason`、`status`。列表只返回上述字段与关联展示信息，不返回 `changes`、`batch_created_alumni` 等明细。`created_at` 是 UTC 瞬时，Web 端按浏览器本地时区展示；日期筛选优先使用 `start_at`/`end_at`，保证筛选区间与列表展示为同一时区口径。
 
 列表查询按 `created_at DESC, id DESC` 排序，并依赖 `operation_logs` 上的复合索引 `idx_logs_created_id (created_at, id)`（由迁移 `011_add_audit_log_sort_index.sql` 创建）。这不是单纯的性能优化：`operation_logs.detail` 是 JSON 列，批量导入审计的明细可达数百 KB，而 MySQL 的 filesort 会在排序前物化包含被引用列的整行——只要查询引用了 `detail`（即使只取一个标量），多行叠加后就可能超过 `sort_buffer_size`（默认 256KB）而报 `1038 Out of sort memory`，导致列表接口返回 500。让排序走索引的反向扫描可以彻底避免 filesort，单条审计记录的 `detail` 体积因此不再影响列表查询。索引缺失时查询会降级为普通执行计划（并产生告警）而不是直接报错。
 
-详情中的 `changes` 每项为 `{ field_name, field_label, old_value, new_value, current_value?, sensitive? }`。敏感字段的历史差异只返回“未填写/首次填写/已修改”等安全状态，**即使拥有敏感权限也不返回历史原值**。批量导入详情另有 `batch_created_alumni`、`batch_import_fields`、`batch_hidden_sensitive_count`；单条审计最多保存前 200 条导入明细，超出时返回真实创建总数 `batch_created_alumni_total` 并置 `batch_created_alumni_truncated: true`，前端据此提示已截断。有 `alumni.sensitive.read` 时，允许从当前可访问档案补充敏感字段的**当前值**，不是历史快照。
+详情中的 `changes` 每项为 `{ field_name, field_label, old_value, new_value, current_value?, sensitive? }`。敏感字段的历史差异只返回“未填写/首次填写/已修改”等安全状态，**即使拥有敏感权限也不返回历史原值**。全局批量导入详情另有 `batch_created_alumni`、`batch_import_fields`、`batch_hidden_sensitive_count`。单条审计最多保存前 200 条字段快照，超出时返回真实创建总数 `batch_created_alumni_total` 并置 `batch_created_alumni_truncated: true`。有 `alumni.sensitive.read` 时，允许从当前可访问档案补充敏感字段的**当前值**。
+
+新批次保存全部成功档案的 ID 和导入时所属的数据域，旧批次可按留存的快照 ID 关联。带 `target_id` 的批次详情返回该校友的导入事件及留存的公开快照。普通管理员须能访问该档案，且具有该档案导入时的数据域权限。旧批次缺少逐人数据域时，普通管理员须拥有该批次声明的全部数据域。档案无关联或超出授权范围时返回 404。
 
 ```bash
 curl 'http://127.0.0.1:8080/api/v1/admin/audit/operations?page=1&page_size=20&start_date=2026-01-01&end_date=2026-01-31' \

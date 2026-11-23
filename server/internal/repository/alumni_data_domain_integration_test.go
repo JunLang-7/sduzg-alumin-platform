@@ -71,8 +71,29 @@ func TestAlumniRepositoryCreateAndBatchCreateUseEnrollmentDataDomain(t *testing.
 					DataDomainID: academic.ID, TrainingLevel: common.TrainingLevelUnverified, Grade: present,
 				}},
 			},
-		}, 1); err != nil {
+		}, 1, nil); err != nil {
 			return err
+		}
+
+		const failedAuditProfile = "审计写入异常回滚测试"
+		invalidJSON := "not-json"
+		if ids, err := repo.BatchCreate(ctx, []do.AlumniCreateInput{{
+			Personal: do.AlumniPersonalInput{Name: failedAuditProfile},
+			Enrollments: []do.AlumniEnrollmentInput{{
+				DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: present,
+			}},
+		}}, 1, func([]uint64) (*model.OperationLog, error) {
+			return &model.OperationLog{OperatorID: 1, OperatorRole: common.RoleSuperAdmin, Action: "import",
+				TargetType: "alumni_batch", Detail: &invalidJSON}, nil
+		}); err == nil || len(ids) != 0 {
+			t.Fatalf("invalid audit should roll back the import, got IDs %v, error %v", ids, err)
+		}
+		var rolledBackProfiles int64
+		if err := tx.Model(&model.AlumniProfile{}).Where("name = ?", failedAuditProfile).Count(&rolledBackProfiles).Error; err != nil {
+			return err
+		}
+		if rolledBackProfiles != 0 {
+			t.Fatalf("found %d profiles after audit write failed", rolledBackProfiles)
 		}
 
 		var mpaCount, academicCount int64

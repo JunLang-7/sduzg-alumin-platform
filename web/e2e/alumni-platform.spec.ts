@@ -66,6 +66,46 @@ test('普通校友不能进入管理员功能', async ({ page }) => {
   await expect(page).toHaveURL(/\/403$/);
 });
 
+test('从批量导入明细打开校友时，档案历史显示该校友的导入事件', async ({ page }) => {
+  await login(page, 'admin');
+  const token = await page.evaluate(() => window.localStorage.getItem('sdu_alumni_access_token'));
+  const headers = { Authorization: `Bearer ${token}` };
+  const suffix = randomUUID();
+  const targetName = `导入审计测试-${suffix}-甲`;
+  const otherName = `导入审计测试-${suffix}-乙`;
+  const template = [
+    '姓名,培养层次,年级,班级,届数,辅导员,导师,专业,培养方式,行业,工作单位,职务,通讯地址,性别,手机号,邮箱,所属领域',
+    ...[targetName, otherName].map((name) =>
+      [name, '硕士', '2026级', ...Array(13).fill(''), 'mpa'].join(','),
+    ),
+  ].join('\n');
+  const uploaded = await page.request.post('/api/v1/admin/alumni/import', {
+    headers,
+    multipart: {
+      file: { name: 'audit-import.csv', mimeType: 'text/csv', buffer: Buffer.from(template) },
+    },
+  });
+  expect(uploaded.ok()).toBe(true);
+  expect((await uploaded.json()).data.success).toBe(2);
+
+  await page.goto('/admin/audit/changes');
+  await page
+    .getByRole('row')
+    .filter({ hasText: '校友档案批量导入' })
+    .first()
+    .getByRole('button', { name: '详情' })
+    .click();
+  const drawer = page.getByRole('dialog', { name: '操作详情' });
+  await expect(drawer.getByRole('link', { name: otherName, exact: true })).toBeVisible();
+  await drawer.getByRole('link', { name: targetName, exact: true }).click();
+
+  const history = page.locator('.audit-alumni-history-card');
+  await expect(history.getByRole('row').filter({ hasText: '导入' })).toHaveCount(1);
+  await history.getByRole('button', { name: '详情' }).click();
+  await expect(drawer.getByRole('link', { name: targetName, exact: true })).toBeVisible();
+  await expect(drawer.getByText(otherName, { exact: true })).toHaveCount(0);
+});
+
 test('校友令牌不能查询通用档案，但本人资料和院史仍可访问', async ({ page }) => {
   for (const path of ['/api/v1/alumni', '/api/v1/alumni/1']) {
     const response = await page.request.get(path);

@@ -79,6 +79,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 //	@Tags			操作历史
 //	@Produce		json
 //	@Param			id	path		integer	true	"操作记录 ID"
+//	@Param			target_id	query	integer	false	"校友档案 ID，批量导入详情仅返回该档案的信息"
 //	@Success		200	{object}	response.Body{data=dto.AuditOperation}
 //	@Failure		400	{object}	response.Body	"操作记录 ID 无效"
 //	@Failure		403	{object}	response.Body	"权限不足，或记录不在可访问数据域内"
@@ -92,13 +93,18 @@ func (h *AuditHandler) Detail(c *gin.Context) {
 		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid audit id")
 		return
 	}
+	var req dto.AuditDetailRequest
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.Fail(c, http.StatusBadRequest, response.CodeBadRequest, "invalid target id")
+		return
+	}
 	access, ok := middleware.CurrentAccessContext(c)
 	if !ok {
 		response.Fail(c, http.StatusUnauthorized, response.CodeUnauthorized, "unauthorized")
 		return
 	}
 
-	result, err := h.audit.Detail(c.Request.Context(), *access, id)
+	result, err := h.audit.Detail(c.Request.Context(), *access, id, req.TargetID)
 	if err == nil {
 		response.Success(c, result)
 		return

@@ -219,7 +219,7 @@ func TestAuditServiceBatchDetailReportsTruncation(t *testing.T) {
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 24)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 24, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -237,7 +237,7 @@ func TestAuditServiceBatchDetailFallsBackForLegacyRecords(t *testing.T) {
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -253,7 +253,7 @@ func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 		detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, OperatorRole: common.RoleAdmin, TargetType: "alumni_profile", TargetID: &targetID, Detail: &detail},
 	}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 19)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 19, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -280,7 +280,7 @@ func TestAuditServiceBatchDetailHidesSensitiveFieldsWithoutPermission(t *testing
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}, 21)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}, 21, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -331,7 +331,7 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 		Permissions: map[string]bool{common.PermissionAlumniSensitiveRead: true},
 	}
 
-	item, err := NewAuditService(store, alumniStore).Detail(context.Background(), access, 22)
+	item, err := NewAuditService(store, alumniStore).Detail(context.Background(), access, 22, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -357,7 +357,7 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 
 func TestAuditServiceDetailPropagatesNotFound(t *testing.T) {
 	store := &fakeAuditStore{detailErr: common.ErrAuditNotFound}
-	_, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 404)
+	_, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 404, nil)
 	if !errors.Is(err, common.ErrAuditNotFound) {
 		t.Fatalf("Detail() error = %v, want ErrAuditNotFound", err)
 	}
@@ -395,7 +395,7 @@ func TestAuditServiceFileChangesRespectFilePermission(t *testing.T) {
 	for _, allowed := range []bool{false, true} {
 		store := &fakeAuditStore{detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, TargetType: auditTargetAlumni, TargetID: new(uint64(9)), Detail: new(`{"changes":[{"field_name":"degree_archive","old_value":"旧学位.pdf","new_value":"新学位.pdf"},{"field_name":"academic_record","new_value":"学籍.pdf"}]}`)}}
 		access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{3}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
-		item, err := NewAuditService(store).Detail(context.Background(), access, 19)
+		item, err := NewAuditService(store).Detail(context.Background(), access, 19, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

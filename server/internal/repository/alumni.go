@@ -26,7 +26,7 @@ type AlumniStore interface {
 	GetPersonalProfile(ctx context.Context, id uint64) (*model.AlumniProfile, error)
 	GetEnrollment(ctx context.Context, alumniID uint64, enrollmentID uint64, dataDomainIDs []uint64) (*model.AlumniEnrollment, error)
 	Create(ctx context.Context, input do.AlumniCreateInput, operatorID uint64) (*do.AlumniRecord, error)
-	BatchCreate(ctx context.Context, inputs []do.AlumniCreateInput, operatorID uint64) ([]uint64, error)
+	BatchCreate(ctx context.Context, inputs []do.AlumniCreateInput, operatorID uint64, buildAudit func([]uint64) (*model.OperationLog, error)) ([]uint64, error)
 	Save(ctx context.Context, id uint64, input do.AlumniSaveInput, operatorID uint64, dataDomainIDs []uint64) (*do.AlumniSaveResult, error)
 	Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) ([]string, error)
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
@@ -494,7 +494,8 @@ func (r *AlumniRepository) Create(ctx context.Context, input do.AlumniCreateInpu
 }
 
 // BatchCreate 批量新增校友（每份输入生成一份个人档案与至少一段学籍）。
-func (r *AlumniRepository) BatchCreate(ctx context.Context, inputs []do.AlumniCreateInput, operatorID uint64) ([]uint64, error) {
+// 提供审计构造函数时，审计记录与档案一并提交。
+func (r *AlumniRepository) BatchCreate(ctx context.Context, inputs []do.AlumniCreateInput, operatorID uint64, buildAudit func([]uint64) (*model.OperationLog, error)) ([]uint64, error) {
 	if r.db == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
@@ -560,6 +561,13 @@ func (r *AlumniRepository) BatchCreate(ctx context.Context, inputs []do.AlumniCr
 				return err
 			}
 			createdIDs = append(createdIDs, profile.ID)
+		}
+		if buildAudit != nil {
+			audit, err := buildAudit(createdIDs)
+			if err != nil {
+				return err
+			}
+			return tx.Create(audit).Error
 		}
 		return nil
 	})

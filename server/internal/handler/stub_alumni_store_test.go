@@ -33,7 +33,7 @@ func (stubAlumniStore) GetEnrollment(context.Context, uint64, uint64, []uint64) 
 func (stubAlumniStore) Create(context.Context, do.AlumniCreateInput, uint64) (*do.AlumniRecord, error) {
 	return nil, common.ErrInvalidRequest
 }
-func (stubAlumniStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint64) ([]uint64, error) {
+func (stubAlumniStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint64, func([]uint64) (*model.OperationLog, error)) ([]uint64, error) {
 	return nil, nil
 }
 func (stubAlumniStore) Save(context.Context, uint64, do.AlumniSaveInput, uint64, []uint64) (*do.AlumniSaveResult, error) {
