@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -433,3 +435,96 @@ func gradesOf(enrollments []*model.AlumniEnrollment) []string {
 }
 
 var _ = time.Now
+
+func TestDeleteProfileCleansAttachmentsAndProtectsHiddenDomains(t *testing.T) {
+	db := openLifecycleTestDB(t)
+	mpa, academic := lifecycleDomains(t, db)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	ctx := context.Background()
+	current := &model.AlumniEnrollment{DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: "2016"}
+	past := &model.AlumniEnrollment{DataDomainID: academic.ID, TrainingLevel: common.TrainingLevelDoctor, Grade: "2020"}
+	profile := seedLifecycleAlumni(tx, "整人删除附件回归", current, past)
+	repo := NewAlumniRepository(tx)
+	fileRepo := NewAlumniFileRepository(tx)
+	var keys []string
+	for _, segment := range []*model.AlumniEnrollment{current, past} {
+		for _, status := range []string{common.FileStatusActive, common.FileStatusPending, common.FileStatusDraft} {
+			key := fmt.Sprintf("whole-delete/%d/%s", segment.ID, status)
+			_, err := fileRepo.Create(ctx, &model.AlumniFile{EnrollmentID: &segment.ID, Status: status, ObjectKey: key})
+			if err != nil {
+				t.Fatal(err)
+			}
+			keys = append(keys, key)
+		}
+	}
+	// 完全不可见的多段档案与不存在的档案返回相同的业务错误。
+	if removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID + academic.ID + 1}); !errors.Is(err, common.ErrAlumniNotFound) || len(removed) != 0 {
+		t.Fatalf("hidden delete = %v, %v", removed, err)
+	}
+	if err := tx.Delete(past).Error; err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniMultiEnrollment) || len(removed) != 0 {
+		t.Fatalf("hidden archived attachments affected: %v, %v", removed, err)
+	}
+	removed, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID, academic.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(keys)
+	slices.Sort(removed)
+	if !slices.Equal(removed, keys) {
+		t.Fatalf("cleanup keys = %v, want %v", removed, keys)
+	}
+	var deleted int64
+	if err := tx.Unscoped().Model(&model.AlumniFile{}).Where("enrollment_id IN ? AND status = ? AND deleted_at IS NOT NULL", []uint64{current.ID, past.ID}, common.FileStatusDeleted).Count(&deleted).Error; err != nil || deleted != int64(len(keys)) {
+		t.Fatalf("deleted file count = %d, err = %v", deleted, err)
+	}
+	if _, err := fileRepo.Create(ctx, &model.AlumniFile{EnrollmentID: &current.ID, Status: common.FileStatusPending}); !errors.Is(err, common.ErrEnrollmentNotFound) {
+		t.Fatalf("late upload after profile deletion: %v", err)
+	}
+}
+
+func TestVerifiedContactChangesRejectStaleProfileSave(t *testing.T) {
+	db := openLifecycleTestDB(t)
+	mpa, _ := lifecycleDomains(t, db)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	ctx := context.Background()
+	repo := NewAlumniRepository(tx)
+	profile := seedLifecycleAlumni(tx, "本人联系方式回归", &model.AlumniEnrollment{DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: "2019"})
+	for _, change := range []func() error{
+		func() error { return repo.UpdateMobile(ctx, profile.ID, "13901230001") },
+		func() error { return repo.UpdateEmail(ctx, profile.ID, "alumni@example.org") },
+	} {
+		before, err := repo.GetPersonalProfile(ctx, profile.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := change(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := repo.Save(ctx, profile.ID, do.AlumniSaveInput{Version: before.Version, Personal: do.AlumniPersonalInput{Name: "过期修改"}}, 1, nil); !errors.Is(err, common.ErrVersionConflict) {
+			t.Fatalf("stale save = %v", err)
+		}
+	}
+}
+
+func TestImportDedupAtTwentyThousandRows(t *testing.T) {
+	db := openLifecycleTestDB(t)
+	mpa, _ := lifecycleDomains(t, db)
+	tx := db.Begin()
+	t.Cleanup(func() { tx.Rollback() })
+	keys := make([]do.AlumniDedupKey, 20000)
+	for i := range keys {
+		keys[i] = do.AlumniDedupKey{Name: fmt.Sprintf("去重回归-%d", i), DataDomainID: mpa.ID, Grade: "2019"}
+	}
+	for _, key := range []do.AlumniDedupKey{keys[0], keys[len(keys)-1]} {
+		seedLifecycleAlumni(tx, key.Name, &model.AlumniEnrollment{DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: key.Grade})
+	}
+	found, err := NewAlumniRepository(tx).FindExistingByDedupKey(context.Background(), keys)
+	if err != nil || len(found) != 2 || !found[keys[0].Key()] || !found[keys[len(keys)-1].Key()] {
+		t.Fatalf("dedup result = %v, err = %v", found, err)
+	}
+}

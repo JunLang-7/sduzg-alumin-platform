@@ -8,6 +8,7 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AlumniFileStore 校友学籍档案文件仓库接口。
@@ -20,7 +21,6 @@ type AlumniFileStore interface {
 	MarkDraft(ctx context.Context, id uint64, fileSize uint64) error
 	DeleteDraft(ctx context.Context, id, enrollmentID, operatorID uint64) error
 	SoftDeleteByEnrollmentIDAndType(ctx context.Context, enrollmentID uint64, fileType string) error
-	SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error
 }
 
 // AlumniFileRepository 文件元数据的 MySQL 存储实现。
@@ -39,7 +39,23 @@ func (r *AlumniFileRepository) Create(ctx context.Context, record *model.AlumniF
 		return nil, common.ErrDatabaseUnavailable
 	}
 
-	if err := r.db.WithContext(ctx).Create(record).Error; err != nil {
+	if record.EnrollmentID == nil {
+		return nil, common.ErrEnrollmentNotFound
+	}
+	// 在上传请求与整人删除交错时，禁止在已软删除的学籍上创建 pending 文件。
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var enrollment model.AlumniEnrollment
+		err := tx.Clauses(clause.Locking{Strength: "SHARE"}).Select("id").
+			Where("id = ? AND status = ?", *record.EnrollmentID, common.AlumniStatusActive).First(&enrollment).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrEnrollmentNotFound
+		}
+		if err != nil {
+			return err
+		}
+		return tx.Create(record).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 	return record, nil
@@ -165,25 +181,6 @@ func (r *AlumniFileRepository) SoftDeleteByEnrollmentIDAndType(ctx context.Conte
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniFile{}).
 		Where("enrollment_id = ? AND file_type = ? AND status IN ? AND deleted_at IS NULL", enrollmentID, fileType, []string{common.FileStatusActive, common.FileStatusDraft}).
-		Updates(map[string]any{
-			"status":     common.FileStatusDeleted,
-			"deleted_at": time.Now(),
-		}).Error
-}
-
-// SoftDeleteByAlumniID 级联软删除某校友所有学籍段的文件记录（整人删除时调用）。
-func (r *AlumniFileRepository) SoftDeleteByAlumniID(ctx context.Context, alumniID uint64) error {
-	if r.db == nil {
-		return common.ErrDatabaseUnavailable
-	}
-
-	subQuery := r.db.WithContext(ctx).
-		Model(&model.AlumniEnrollment{}).
-		Select("id").
-		Where("alumni_id = ?", alumniID)
-	return r.db.WithContext(ctx).
-		Model(&model.AlumniFile{}).
-		Where("enrollment_id IN (?) AND status IN ? AND deleted_at IS NULL", subQuery, []string{common.FileStatusActive, common.FileStatusDraft, common.FileStatusPending}).
 		Updates(map[string]any{
 			"status":     common.FileStatusDeleted,
 			"deleted_at": time.Now(),

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ type AlumniStore interface {
 	Create(ctx context.Context, input do.AlumniCreateInput, operatorID uint64) (*do.AlumniRecord, error)
 	BatchCreate(ctx context.Context, inputs []do.AlumniCreateInput, operatorID uint64) ([]uint64, error)
 	Save(ctx context.Context, id uint64, input do.AlumniSaveInput, operatorID uint64, dataDomainIDs []uint64) (*do.AlumniSaveResult, error)
-	Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error
+	Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) ([]string, error)
 	UpdateEditableFields(ctx context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error
 	FindExistingByDedupKey(ctx context.Context, keys []do.AlumniDedupKey) (map[string]bool, error)
 	FindByMobile(ctx context.Context, mobile string) (*model.AlumniProfile, error)
@@ -930,26 +931,47 @@ func containsUint64(values []uint64, target uint64) bool {
 }
 
 // Delete 软删除只有一段学籍的校友；多段校友的整人删除语义尚未定义，直接拒绝。
-func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error {
+func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) ([]string, error) {
 	if r.db == nil {
-		return common.ErrDatabaseUnavailable
+		return nil, common.ErrDatabaseUnavailable
 	}
 
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var enrollments []model.AlumniEnrollment
-		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("alumni_id = ? AND status = ? AND deleted_at IS NULL", id, common.AlumniStatusActive).
-			Find(&enrollments).Error; err != nil {
+	var objectKeys []string
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 和 Save 按相同顺序锁定个人、学籍、文件。
+		var profile model.AlumniProfile
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("id = ? AND status = ?", id, common.AlumniStatusActive).First(&profile).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return common.ErrAlumniNotFound
+		}
+		if err != nil {
 			return err
 		}
-		if len(enrollments) == 0 {
+		var enrollments []model.AlumniEnrollment
+		if err := tx.Unscoped().Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("alumni_id = ?", id).Find(&enrollments).Error; err != nil {
+			return err
+		}
+		var active, visible int
+		var enrollmentIDs []uint64
+		hasHidden := false
+		for _, e := range enrollments {
+			allowed := len(dataDomainIDs) == 0 || slices.Contains(dataDomainIDs, e.DataDomainID)
+			hasHidden = hasHidden || !allowed
+			enrollmentIDs = append(enrollmentIDs, e.ID)
+			if e.Status == common.AlumniStatusActive && !e.DeletedAt.Valid {
+				active++
+				if allowed {
+					visible++
+				}
+			}
+		}
+		if visible == 0 {
 			return common.ErrAlumniNotFound
 		}
-		if len(enrollments) > 1 {
+		if active > 1 || hasHidden {
 			return common.ErrAlumniMultiEnrollment
-		}
-		if len(dataDomainIDs) > 0 && !containsUint64(dataDomainIDs, enrollments[0].DataDomainID) {
-			return common.ErrAlumniNotFound
 		}
 
 		now := time.Now()
@@ -976,8 +998,17 @@ func (r *AlumniRepository) Delete(ctx context.Context, id uint64, updaterID uint
 			}).Error; err != nil {
 			return err
 		}
-		return nil
+		files := tx.Model(&model.AlumniFile{}).Where("enrollment_id IN ? AND status IN ?", enrollmentIDs,
+			[]string{common.FileStatusActive, common.FileStatusDraft, common.FileStatusPending})
+		if err := files.Session(&gorm.Session{}).Clauses(clause.Locking{Strength: "UPDATE"}).Pluck("object_key", &objectKeys).Error; err != nil {
+			return err
+		}
+		return files.Updates(map[string]any{"status": common.FileStatusDeleted, "deleted_at": now}).Error
 	})
+	if err != nil {
+		return nil, err
+	}
+	return objectKeys, nil
 }
 
 // UpdateEditableFields 更新校友本人允许维护的四个字段。
@@ -1028,42 +1059,26 @@ func (r *AlumniRepository) FindExistingByDedupKey(ctx context.Context, keys []do
 		return result, nil
 	}
 
-	condition := "(p.name = ? AND COALESCE(p.mobile, '') = ? AND e.data_domain_id = ? AND e.grade = ? AND COALESCE(e.class_name, '') = ? AND COALESCE(e.cohort, '') = ?)"
-	parts := make([]string, 0, len(keys))
-	args := make([]any, 0, len(keys)*6)
-	for _, key := range keys {
-		parts = append(parts, condition)
-		args = append(args, key.Name, strings.TrimSpace(key.Mobile), key.DataDomainID, key.Grade, key.ClassName, key.Cohort)
-	}
-
-	type dedupRow struct {
-		Name         string
-		Mobile       string
-		DataDomainID uint64
-		Grade        string
-		ClassName    string
-		Cohort       string
-	}
-	var rows []dedupRow
-	err := r.db.WithContext(ctx).
-		Table("alumni_profiles AS p").
-		Select("p.name, COALESCE(p.mobile, '') AS mobile, e.data_domain_id, e.grade, COALESCE(e.class_name, '') AS class_name, COALESCE(e.cohort, '') AS cohort").
-		Joins("JOIN alumni_enrollments AS e ON e.alumni_id = p.id AND e.status = ? AND e.deleted_at IS NULL", common.AlumniStatusActive).
-		Where("p.status = ? AND p.deleted_at IS NULL", common.AlumniStatusActive).
-		Where("("+strings.Join(parts, " OR ")+")", args...).
-		Find(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		result[do.AlumniDedupKey{
-			Name:         row.Name,
-			Mobile:       row.Mobile,
-			DataDomainID: row.DataDomainID,
-			Grade:        row.Grade,
-			ClassName:    row.ClassName,
-			Cohort:       row.Cohort,
-		}.Key()] = true
+	// 每行六个占位符，分批查询使 20000 行导入也在 MySQL 预处理参数限制内。
+	for batch := range slices.Chunk(keys, 500) {
+		tuples := make([][]any, 0, len(batch))
+		for _, key := range batch {
+			tuples = append(tuples, []any{key.Name, strings.TrimSpace(key.Mobile), key.DataDomainID, key.Grade, key.ClassName, key.Cohort})
+		}
+		var rows []do.AlumniDedupKey
+		err := r.db.WithContext(ctx).
+			Table("alumni_profiles AS p").
+			Select("p.name, COALESCE(p.mobile, '') AS mobile, e.data_domain_id, e.grade, COALESCE(e.class_name, '') AS class_name, COALESCE(e.cohort, '') AS cohort").
+			Joins("JOIN alumni_enrollments AS e ON e.alumni_id = p.id AND e.status = ? AND e.deleted_at IS NULL", common.AlumniStatusActive).
+			Where("p.status = ? AND p.deleted_at IS NULL", common.AlumniStatusActive).
+			Where("(p.name, COALESCE(p.mobile, ''), e.data_domain_id, e.grade, COALESCE(e.class_name, ''), COALESCE(e.cohort, '')) IN ?", tuples).
+			Find(&rows).Error
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			result[row.Key()] = true
+		}
 	}
 	return result, nil
 }
@@ -1161,7 +1176,7 @@ func (r *AlumniRepository) UpdateMobile(ctx context.Context, id uint64, mobile s
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
 		Where("id = ?", id).
-		Update("mobile", mobile).Error
+		Updates(map[string]any{"mobile": mobile, "version": gorm.Expr("version + 1")}).Error
 }
 
 // UpdateEmail 更新校友邮箱（小写）
@@ -1172,7 +1187,7 @@ func (r *AlumniRepository) UpdateEmail(ctx context.Context, id uint64, email str
 	return r.db.WithContext(ctx).
 		Model(&model.AlumniProfile{}).
 		Where("id = ?", id).
-		Update("email", strings.ToLower(email)).Error
+		Updates(map[string]any{"email": strings.ToLower(email), "version": gorm.Expr("version + 1")}).Error
 }
 
 func nilIfEmptyPointer(value *string) *string {

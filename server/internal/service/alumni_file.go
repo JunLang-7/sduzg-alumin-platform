@@ -333,35 +333,6 @@ func (s *AlumniFileService) getAccessibleEnrollment(ctx context.Context, operato
 	return s.alumni.GetEnrollment(ctx, alumniID, enrollmentID, domainIDs)
 }
 
-// CascadeSoftDelete 校友删除时级联软删除所有学籍段的文件记录。
-func (s *AlumniFileService) CascadeSoftDelete(ctx context.Context, alumniID uint64) error {
-	record, err := s.alumni.GetDetail(ctx, alumniID, nil)
-	if err != nil {
-		return err
-	}
-	enrollmentIDs := make([]uint64, 0, len(record.Enrollments))
-	for _, enrollment := range record.Enrollments {
-		enrollmentIDs = append(enrollmentIDs, enrollment.ID)
-	}
-	files, err := s.files.ListByEnrollmentIDs(ctx, enrollmentIDs, true)
-	if err != nil {
-		return err
-	}
-	if err := s.files.SoftDeleteByAlumniID(ctx, alumniID); err != nil {
-		return err
-	}
-	for _, rec := range files {
-		if err := s.store.DeleteFile(ctx, rec.ObjectKey); err != nil {
-			logger.Warn("failed to cleanup minio object during cascade delete",
-				zap.Uint64("file_id", rec.ID),
-				zap.String("object_key", rec.ObjectKey),
-				zap.Error(err),
-			)
-		}
-	}
-	return nil
-}
-
 // RemoveObjects 在保存事务提交后清理被移除文件的 MinIO 对象（best-effort）。
 func (s *AlumniFileService) RemoveObjects(ctx context.Context, objectKeys []string) {
 	for _, key := range objectKeys {
