@@ -179,7 +179,7 @@ func mapAuditOperation(item repository.AuditEntry, profileID *uint64, includeCha
 		Status:            status,
 	}
 	if profileID != nil && item.TargetType == auditTargetBatch {
-		// 从单人档案打开时只投影本人的导入元数据与已留存的公开字段。
+		// 所有权限等级的单人详情都只显示该档案的导入元数据和留存的公开字段。
 		result.TargetID = profileID
 		result.TargetName = "校友档案"
 		result.TargetMeta = ""

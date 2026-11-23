@@ -284,10 +284,11 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	for _, input := range inputs {
 		result.Success += len(input.Enrollments)
 	}
-	auditSummary := s.importAuditSummary(ctx, inputs, result)
+	auditMetadata := s.importAuditMetadata(ctx, inputs, result)
 	if len(inputs) == 0 {
+		// 所有行均被跳过时没有档案写入，审计失败只记录告警并返回逐行结果。
 		if s.opLogger != nil {
-			audit, err := buildImportAudit(operator, nil, nil, auditSummary)
+			audit, err := buildImportAudit(operator, nil, nil, auditMetadata)
 			if err == nil {
 				err = s.opLogger.Write(ctx, audit)
 			}
@@ -299,7 +300,7 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 
 	_, err = s.alumni.BatchCreate(ctx, inputs, operator.UserID, func(createdIDs []uint64) (*model.OperationLog, error) {
-		return buildImportAudit(operator, inputs, createdIDs, auditSummary)
+		return buildImportAudit(operator, inputs, createdIDs, auditMetadata)
 	})
 	if err != nil {
 		logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
@@ -575,7 +576,7 @@ type importAuditDetail struct {
 	BatchHiddenSensitiveCount   int                `json:"batch_hidden_sensitive_count,omitempty"`
 }
 
-func (s *AlumniService) importAuditSummary(ctx context.Context, inputs []do.AlumniCreateInput, result *dto.AlumniImportResult) importAuditDetail {
+func (s *AlumniService) importAuditMetadata(ctx context.Context, inputs []do.AlumniCreateInput, result *dto.AlumniImportResult) importAuditDetail {
 	domainSet := make(map[uint64]struct{})
 	sensitiveFieldsIncluded := false
 	for _, input := range inputs {
@@ -622,13 +623,16 @@ func buildImportAudit(operator common.AccessContext, inputs []do.AlumniCreateInp
 			return nil, fmt.Errorf("import audit: missing profile ID for row %d", i+1)
 		}
 		input := inputs[i]
-		// 每条导入行只创建一份档案及其首段学籍。关联保存全部成功档案，独立于快照上限。
-		memberDomains[id] = input.Enrollments[0].DataDomainID
+		if len(input.Enrollments) != 1 {
+			return nil, fmt.Errorf("import audit: row %d has %d enrollments, want 1", i+1, len(input.Enrollments))
+		}
+		enrollment := input.Enrollments[0]
+		// 关联保存全部成功档案，独立于快照上限。
+		memberDomains[id] = enrollment.DataDomainID
 		if len(batchRecords) >= maxAuditBatchRecords {
 			continue
 		}
 		values := map[string]string{"name": input.Personal.Name}
-		enrollment := input.Enrollments[0]
 		values["grade"] = enrollment.Grade
 		values["training_level"] = TrainingLevelLabel(enrollment.TrainingLevel)
 		values["class_name"] = stringOrEmpty(enrollment.ClassName)

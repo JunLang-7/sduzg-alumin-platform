@@ -195,6 +195,22 @@ func TestCurrentTemplateRequiresExplicitTrainingLevel(t *testing.T) {
 	}
 }
 
+func TestBuildImportAuditRequiresOneEnrollmentPerRow(t *testing.T) {
+	for _, count := range []int{0, 2} {
+		t.Run(fmt.Sprintf("%d enrollments", count), func(t *testing.T) {
+			inputs := []do.AlumniCreateInput{{
+				Enrollments: make([]do.AlumniEnrollmentInput, count),
+			}}
+			audit, err := buildImportAudit(common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin},
+				inputs, []uint64{1}, importAuditDetail{Total: 1, Success: 1})
+			want := fmt.Sprintf("import audit: row 1 has %d enrollments, want 1", count)
+			if audit != nil || err == nil || err.Error() != want {
+				t.Fatalf("buildImportAudit() = (%v, %v), want (nil, %q)", audit, err, want)
+			}
+		})
+	}
+}
+
 func TestImportAuditTruncatesBatchRecords(t *testing.T) {
 	domainID := uint64(1)
 	total := maxAuditBatchRecords + 1

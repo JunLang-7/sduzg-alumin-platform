@@ -246,6 +246,70 @@ func TestAuditServiceBatchDetailFallsBackForLegacyRecords(t *testing.T) {
 	}
 }
 
+func TestAuditServiceBatchDetailProjectsSelectedProfile(t *testing.T) {
+	detail := `{
+		"target_name":"校友档案批量导入","target_meta":"3 条校友档案",
+		"batch_member_domains":{"701":2,"702":2,"703":2},
+		"batch_created_alumni":[
+			{"id":701,"name":"测试档案甲","target_meta":"2020级","field_values":{"grade":"2020级","email":"private@example.test"}},
+			{"id":702,"name":"测试档案乙","target_meta":"2021级","field_values":{"grade":"2021级"}}
+		],
+		"batch_created_alumni_total":3,
+		"batch_created_alumni_truncated":true,
+		"changes":[{"field_name":"grade","new_value":"批次级明细"}]
+	}`
+	for _, tc := range []struct {
+		name         string
+		profileID    uint64
+		wantSnapshot bool
+	}{
+		{name: "with snapshot", profileID: 701, wantSnapshot: true},
+		{name: "without snapshot", profileID: 703},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeAuditStore{detail: &repository.AuditEntry{
+				ID: 25, Action: AuditActionImport, TargetType: auditTargetBatch, Detail: &detail,
+			}}
+			alumni := &fakeAuditAlumniStore{err: errors.New("profile-scoped detail should use the saved snapshot")}
+			service := NewAuditService(store, alumni)
+			item, err := service.Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25, &tc.profileID)
+			if err != nil {
+				t.Fatalf("Detail() error = %v", err)
+			}
+			if store.listQuery.TargetID == nil || *store.listQuery.TargetID != tc.profileID {
+				t.Fatalf("detail query must be scoped to the selected profile: %+v", store.listQuery)
+			}
+			if item.TargetID == nil || *item.TargetID != tc.profileID || item.Action != AuditActionImport ||
+				len(item.Changes) != 0 || item.BatchCreatedAlumniTruncated {
+				t.Fatalf("unexpected scoped batch detail: %+v", item)
+			}
+			if !tc.wantSnapshot {
+				if item.TargetName != "校友档案" || item.TargetMeta != "" ||
+					len(item.BatchCreatedAlumni) != 0 || item.BatchCreatedAlumniTotal != 0 || len(item.BatchImportFields) != 0 {
+					t.Fatalf("expected import summary without a snapshot: %+v", item)
+				}
+				return
+			}
+			if item.TargetName != "测试档案甲" || item.TargetMeta != "2020级" ||
+				len(item.BatchCreatedAlumni) != 1 || item.BatchCreatedAlumniTotal != 1 {
+				t.Fatalf("expected only the selected snapshot: %+v", item)
+			}
+			snapshot := item.BatchCreatedAlumni[0]
+			if snapshot.ID != tc.profileID || snapshot.FieldValues["grade"] != "2020级" {
+				t.Fatalf("unexpected snapshot: %+v", snapshot)
+			}
+			for _, field := range auditBatchSensitiveFields {
+				if _, ok := snapshot.FieldValues[field.FieldName]; ok {
+					t.Fatalf("scoped snapshot contains sensitive field %q", field.FieldName)
+				}
+			}
+			if len(item.BatchImportFields) != len(auditBatchPublicFields) {
+				t.Fatalf("expected only public fields: %+v", item.BatchImportFields)
+			}
+		})
+	}
+}
+
 func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 	targetID := uint64(88)
 	detail := `{"schema_version":1,"operator_name":"李四","operator_role_label":"子管理员","target_name":"王海宁","management_scope":"本科生","source":"admin","changes":[{"field_name":"work_unit","field_label":"工作单位","old_value":"旧单位","new_value":"新单位","current_value":"新单位"},{"field_name":"mobile","field_label":"手机号","old_value":"13800000000","new_value":"13900000000"}]}`

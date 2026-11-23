@@ -482,7 +482,9 @@ curl -X POST http://127.0.0.1:8080/api/v1/admin/alumni/import \
 
 详情中的 `changes` 每项为 `{ field_name, field_label, old_value, new_value, current_value?, sensitive? }`。敏感字段的历史差异只返回“未填写/首次填写/已修改”等安全状态，**即使拥有敏感权限也不返回历史原值**。全局批量导入详情另有 `batch_created_alumni`、`batch_import_fields`、`batch_hidden_sensitive_count`。单条审计最多保存前 200 条字段快照，超出时返回真实创建总数 `batch_created_alumni_total` 并置 `batch_created_alumni_truncated: true`。有 `alumni.sensitive.read` 时，允许从当前可访问档案补充敏感字段的**当前值**。
 
-新批次保存全部成功档案的 ID 和导入时所属的数据域，旧批次可按留存的快照 ID 关联。带 `target_id` 的批次详情返回该校友的导入事件及留存的公开快照。普通管理员须能访问该档案，且具有该档案导入时的数据域权限。旧批次缺少逐人数据域时，普通管理员须拥有该批次声明的全部数据域。档案无关联或超出授权范围时返回 404。
+新批次在审计 JSON 中保存全部成功档案的 ID 和导入时的数据域，关联大小随成功行数线性增长。旧批次按实际留存的快照 ID 关联。缺少档案 ID 的旧记录无法关联。
+
+带 `target_id` 的批次详情在所有权限等级下只返回该校友的导入事件及留存的公开快照。普通管理员须有该档案导入时的数据域权限，档案当前须有效，且至少一段有效学籍须在授权范围内。旧批次缺少逐人数据域时，普通管理员须拥有该批次声明的全部数据域。批次自身也缺少数据域时，仅超级管理员可查到有档案关联的事件。档案无关联或超出授权范围时返回 404。
 
 ```bash
 curl 'http://127.0.0.1:8080/api/v1/admin/audit/operations?page=1&page_size=20&start_date=2026-01-01&end_date=2026-01-31' \
