@@ -369,7 +369,7 @@ func TestImportDoesNotInferIdentityFromSameNameAndMobile(t *testing.T) {
 		t.Fatalf("build xlsx: %v", err)
 	}
 	store := &fakeAlumniStore{}
-	result, err := importAsSuperAdmin(NewAlumniService(store, nil, testDataDomainStore()), reader)
+	result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin, UserID: 1}, nil, reader)
 	if err != nil {
 		t.Fatalf("expected import success, got %v", err)
 	}
@@ -727,7 +727,8 @@ func TestImportDatabaseUnavailable(t *testing.T) {
 
 func TestImportExplicitTargetDomainIgnoresDomainColumn(t *testing.T) {
 	reader, err := buildXLSXReader(alumniImportColumnHeaders, [][]string{
-		currentRow("目标域校友", "硕士", "2020级", "mpa"),
+		currentRow("目标域校友", "本科", "2020级", "mpa"),
+		currentRow("不匹配校友", "硕士", "2020级", "mpa"),
 	})
 	if err != nil {
 		t.Fatalf("build xlsx: %v", err)
@@ -739,7 +740,7 @@ func TestImportExplicitTargetDomainIgnoresDomainColumn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Import() error = %v", err)
 	}
-	if result.Success != 1 || len(store.batchInputs) != 1 {
+	if result.Success != 1 || len(store.batchInputs) != 1 || len(result.Errors) != 1 || result.Errors[0].Row != 3 || !strings.Contains(result.Errors[0].Message, "不匹配") {
 		t.Fatalf("unexpected import result: %+v", result)
 	}
 	if got := store.batchInputs[0].Enrollments[0].DataDomainID; got != targetDomainID {
@@ -764,7 +765,7 @@ func TestImportPreservesConflictingPersonalRows(t *testing.T) {
 				t.Fatal(err)
 			}
 			store := &fakeAlumniStore{}
-			result, err := importAsSuperAdmin(NewAlumniService(store, nil, testDataDomainStore()), reader)
+			result, err := NewAlumniService(store, nil, testDataDomainStore()).Import(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin, UserID: 1}, nil, reader)
 			if err != nil || result.Success != 2 || len(store.batchInputs) != 2 {
 				t.Fatalf("rows merged or rejected: result=%+v inputs=%+v err=%v", result, store.batchInputs, err)
 			}

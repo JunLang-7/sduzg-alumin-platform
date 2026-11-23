@@ -21,6 +21,7 @@ var (
 	ErrLastEnrollment             = errors.New("at least one active enrollment must remain")
 	ErrVersionConflict            = errors.New("version conflict")
 	ErrAlumniMultiEnrollment      = errors.New("alumni has multiple enrollments")
+	ErrAlumniHiddenEnrollment     = errors.New("alumni has enrollments outside accessible data domains")
 	ErrFileNotDraft               = errors.New("file is not an unsaved draft")
 	ErrAuditNotFound              = errors.New("audit record not found")
 	ErrDataDomainUnavailable      = errors.New("data domain unavailable")

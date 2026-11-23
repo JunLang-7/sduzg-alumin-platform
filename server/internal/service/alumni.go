@@ -18,7 +18,6 @@ import (
 
 // AlumniFileCleaner 校友删除、文件移除时级联清理对象存储的接口。
 type AlumniFileCleaner interface {
-	CascadeSoftDelete(ctx context.Context, alumniID uint64) error
 	RemoveObjects(ctx context.Context, objectKeys []string)
 }
 
@@ -593,7 +592,8 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 	if s.auditWriter != nil && s.users != nil {
 		before, _ = s.alumni.GetDetail(ctx, id, domainIDs)
 	}
-	if err := s.alumni.Delete(ctx, id, operator.UserID, domainIDs); err != nil {
+	objectKeys, err := s.alumni.Delete(ctx, id, operator.UserID, domainIDs)
+	if err != nil {
 		switch {
 		case errors.Is(err, common.ErrDatabaseUnavailable):
 			logger.Error("database is unavailable", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
@@ -603,6 +603,8 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 			return common.ErrAlumniNotFound
 		case errors.Is(err, common.ErrAlumniMultiEnrollment):
 			return common.ErrAlumniMultiEnrollment
+		case errors.Is(err, common.ErrAlumniHiddenEnrollment):
+			return common.ErrAlumniHiddenEnrollment
 		default:
 			logger.Error("failed to delete alumni", zap.Uint64("operator_id", operator.UserID), zap.Uint64("alumni_id", id), zap.Error(err))
 			return err
@@ -610,8 +612,6 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 	}
 
 	if before != nil {
-		domainNames, _ := s.domainNameMap(ctx)
-		_ = domainNames
 		writeProfileAudit(ctx, s.auditWriter, s.users, operator.UserID, AuditActionDelete, "admin",
 			"管理员删除校友档案", defaultAuditScope, enrollmentDomainIDs(before.Enrollments), before.Profile, nil)
 	}
@@ -623,10 +623,8 @@ func (s *AlumniService) Delete(ctx context.Context, operator common.AccessContex
 		_ = s.exportCache.Invalidate(ctx)
 	}
 
-	if s.files != nil {
-		if err := s.files.CascadeSoftDelete(ctx, id); err != nil {
-			logger.Warn("failed to cascade delete alumni files", zap.Uint64("alumni_id", id), zap.Error(err))
-		}
+	if s.files != nil && len(objectKeys) > 0 {
+		s.files.RemoveObjects(ctx, objectKeys)
 	}
 	return nil
 }

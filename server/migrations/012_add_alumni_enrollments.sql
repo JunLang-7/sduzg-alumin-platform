@@ -114,11 +114,15 @@ BEGIN
     JOIN (
       SELECT alumni_id, MIN(id) AS enrollment_id
       FROM alumni_enrollments
-      WHERE status = 'active' AND deleted_at IS NULL
       GROUP BY alumni_id
     ) AS e ON e.alumni_id = f.alumni_id
     SET f.enrollment_id = e.enrollment_id
     WHERE f.enrollment_id IS NULL;
+
+    -- 旧表没有 alumni_id 外键。遇到孤儿文件先停止升级，保留旧 ID 供核对后重跑。
+    IF EXISTS (SELECT 1 FROM alumni_files WHERE enrollment_id IS NULL) THEN
+      SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = '012: unmapped alumni_files; reconcile legacy alumni_id before retry';
+    END IF;
   END IF;
 
   IF NOT EXISTS (
@@ -142,7 +146,6 @@ BEGIN
       JSON_ARRAY(p.data_domain_id)
     )
     WHERE l.target_type = 'alumni_profile'
-      AND l.detail IS NOT NULL
       AND JSON_EXTRACT(l.detail, '$.data_domain_ids') IS NULL;
 
     -- 旧日志的 management_scope 多为“全部校友”；升级后统一回填为原数据域名称，

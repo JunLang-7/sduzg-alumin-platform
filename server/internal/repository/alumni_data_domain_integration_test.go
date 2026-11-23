@@ -188,7 +188,7 @@ func TestAlumniRepositoryScopesReadAndWriteByEnrollmentDataDomain(t *testing.T) 
 		}, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniNotFound) {
 			t.Errorf("cross-domain Save error = %v, want ErrAlumniNotFound", err)
 		}
-		if err := repo.Delete(ctx, academicProfile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniNotFound) {
+		if _, err := repo.Delete(ctx, academicProfile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniNotFound) {
 			t.Errorf("cross-domain Delete error = %v, want ErrAlumniNotFound", err)
 		}
 
@@ -281,7 +281,7 @@ func TestAlumniRepositoryHidesOtherEnrollmentsAndRefusesMultiDelete(t *testing.T
 			t.Errorf("hidden enrollment save error = %v, want ErrEnrollmentNotFound", err)
 		}
 
-		if err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniMultiEnrollment) {
+		if _, err := repo.Delete(ctx, profile.ID, 1, []uint64{mpa.ID}); !errors.Is(err, common.ErrAlumniMultiEnrollment) {
 			t.Errorf("multi-enrollment delete error = %v, want ErrAlumniMultiEnrollment", err)
 		}
 

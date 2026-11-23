@@ -63,8 +63,6 @@ func (s *fakeAlumniFileStore) SoftDeleteByEnrollmentIDAndType(context.Context, u
 	return nil
 }
 
-func (s *fakeAlumniFileStore) SoftDeleteByAlumniID(context.Context, uint64) error { return nil }
-
 var _ repository.AlumniFileStore = (*fakeAlumniFileStore)(nil)
 
 type fakeFileOperationLogger struct {

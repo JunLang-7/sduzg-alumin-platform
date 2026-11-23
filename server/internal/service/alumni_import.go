@@ -236,6 +236,15 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: parsed.personal.Name, Message: "培养层次无效或缺失：请填写 本科 / 硕士 / 博士"})
 			continue
 		}
+		domain := domainByID[domainID]
+		if domain == nil || domain.Status != common.DataDomainStatusActive {
+			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: parsed.personal.Name, Message: "目标培养类别无效或已停用"})
+			continue
+		}
+		if !common.TrainingLevelAllowsDataDomainCode(parsed.enrollment.TrainingLevel, domain.Code) {
+			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: parsed.personal.Name, Message: "培养层次与目标培养类别不匹配"})
+			continue
+		}
 		if !operator.HasPermission(common.PermissionAlumniSensitiveRead) && personalContainsSensitiveFields(parsed.personal) {
 			rowErrors = append(rowErrors, dto.AlumniRowError{Row: rowNum, Name: parsed.personal.Name, Message: "无权导入敏感字段"})
 			continue

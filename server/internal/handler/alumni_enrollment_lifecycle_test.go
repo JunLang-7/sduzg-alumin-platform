@@ -191,7 +191,9 @@ func (stubCreateStore) BatchCreate(context.Context, []do.AlumniCreateInput, uint
 func (stubCreateStore) Save(context.Context, uint64, do.AlumniSaveInput, uint64, []uint64) (*do.AlumniSaveResult, error) {
 	return nil, common.ErrAlumniNotFound
 }
-func (stubCreateStore) Delete(context.Context, uint64, uint64, []uint64) error { return nil }
+func (stubCreateStore) Delete(context.Context, uint64, uint64, []uint64) ([]string, error) {
+	return nil, nil
+}
 func (stubCreateStore) UpdateEditableFields(context.Context, uint64, uint64, do.AlumniEditableProfile) error {
 	return nil
 }

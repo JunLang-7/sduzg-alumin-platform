@@ -182,11 +182,12 @@ WHERE p.name LIKE '''%' OR e.grade LIKE '''%' OR e.class_name LIKE '''%'
    WHERE e.id IS NULL;
 
    -- 文件均已绑定学籍
-   SELECT COUNT(*) FROM alumni_files WHERE enrollment_id IS NULL AND status <> 'deleted';
+   SELECT COUNT(*) FROM alumni_files WHERE enrollment_id IS NULL;
 
    -- 待核验数量（学术学位研究生历史数据）
    SELECT training_level, COUNT(*) FROM alumni_enrollments GROUP BY training_level;
    ```
+   若迁移报 `unmapped alumni_files`，先按保留的 `alumni_files.alumni_id` 和备份核对孤儿附件，修正归属后重跑迁移。若此前已运行旧版 012，旧关联只能从升级前的备份核对。
    再抽查若干校友的详情、两类档案下载、操作历史与列表筛选，确认账号登录、本人资料与院史投稿不受影响。
 6. 回退：停止 API，恢复升级前的 MySQL 备份，保持对象存储桶不变（对象键未改动），退回上一版本镜像。升级后被移除的正式附件对象无法通过旧版本恢复记录，因此回退前应先核对。升级后产生的草稿文件（`status=draft`）不会被旧版本识别，可在确认无保留价值后清理。
 

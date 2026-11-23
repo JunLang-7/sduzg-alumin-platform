@@ -178,6 +178,20 @@ WHERE users.account = 'admin';
 SQL
 fi
 
+# 覆盖旧附件的正常与软删除状态，以及没有 detail 的旧操作记录。
+legacy_has_files="$(query "SELECT COUNT(*) FROM information_schema.tables
+  WHERE table_schema = DATABASE() AND table_name = 'alumni_files';")"
+if [ "$legacy_has_files" = "1" ]; then
+  mysql_db <<'SQL' || fail "写入旧附件失败"
+UPDATE alumni_profiles SET status = 'deleted', deleted_at = UTC_TIMESTAMP() WHERE name = '旧卷校友乙';
+INSERT INTO alumni_files (alumni_id, file_type, object_key, original_name, file_size, mime_type, status, deleted_at)
+SELECT id, 'academic_record', CONCAT('upgrade/', id), 'archive.pdf', 64, 'application/pdf', status, deleted_at
+FROM alumni_profiles WHERE name IN ('旧卷校友甲', '旧卷校友乙');
+SQL
+fi
+mysql_db -e "INSERT INTO operation_logs (operator_id, operator_role, action, target_type, target_id)
+  SELECT 1, 'admin', 'update', 'alumni_profile', id FROM alumni_profiles WHERE name = '旧卷校友甲';"
+
 profiles_before="$(query "SELECT COUNT(*) FROM alumni_profiles;")"
 echo "  升级前 alumni_profiles 行数：$profiles_before"
 
@@ -248,6 +262,20 @@ assert_eq "$legacy_kept" "${#legacy_names[@]}" "旧卷校友数据保留"
 assert_eq "$(query "SELECT COUNT(*) FROM users
   WHERE account = 'legacy-alumni' AND alumni_id IS NOT NULL;")" \
   "1" "旧卷账号与其校友档案的关联保留"
+
+if [ "$legacy_has_files" = "1" ]; then
+  assert_eq "$(query "SELECT COUNT(*) FROM alumni_files f
+    JOIN alumni_enrollments e ON e.id = f.enrollment_id
+    JOIN alumni_profiles p ON p.id = e.alumni_id
+    WHERE f.object_key = CONCAT('upgrade/', p.id) AND e.status = f.status
+      AND p.name IN ('旧卷校友甲', '旧卷校友乙');")" "2" "原附件均绑定到对应学籍，含已删除档案"
+fi
+assert_eq "$(query "SELECT COUNT(*) FROM operation_logs l
+  JOIN alumni_enrollments e ON l.target_id = e.alumni_id
+  JOIN alumni_profiles p ON p.id = e.alumni_id
+  WHERE p.name = '旧卷校友甲' AND l.target_type = 'alumni_profile' AND l.action = 'update'
+    AND JSON_CONTAINS(l.detail, JSON_ARRAY(e.data_domain_id), '$.data_domain_ids');")" \
+  "1" "空详情旧日志保留原数据域"
 
 has_domain_column="$(query "SELECT COUNT(*) FROM information_schema.columns
   WHERE table_schema = DATABASE() AND table_name = 'alumni_profiles'

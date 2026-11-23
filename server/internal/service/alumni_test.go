@@ -58,6 +58,7 @@ type fakeAlumniStore struct {
 	deleteUserID    uint64
 	deleteDomainIDs []uint64
 	deleteErr       error
+	deleteKeys      []string
 
 	batchInputs     []do.AlumniCreateInput
 	batchOperatorID uint64
@@ -257,11 +258,11 @@ func enrollmentsFromInput(alumniID uint64, inputs []do.AlumniEnrollmentInput) []
 	return enrollments
 }
 
-func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) error {
+func (s *fakeAlumniStore) Delete(_ context.Context, id uint64, updaterID uint64, dataDomainIDs []uint64) ([]string, error) {
 	s.deleteID = id
 	s.deleteUserID = updaterID
 	s.deleteDomainIDs = slices.Clone(dataDomainIDs)
-	return s.deleteErr
+	return s.deleteKeys, s.deleteErr
 }
 
 func (s *fakeAlumniStore) UpdateEditableFields(_ context.Context, id uint64, updaterID uint64, profile do.AlumniEditableProfile) error {
@@ -715,23 +716,40 @@ func TestAlumniServiceUpdateMeUpdatesOnlyEditableFields(t *testing.T) {
 	}
 }
 
+type recordingFileCleaner struct{ keys []string }
+
+func (c *recordingFileCleaner) RemoveObjects(_ context.Context, keys []string) {
+	c.keys = append(c.keys, keys...)
+}
+
 func TestAlumniServiceDeleteSuccessAndErrors(t *testing.T) {
-	store := &fakeAlumniStore{}
-	svc := NewAlumniService(store, nil)
+	store := &fakeAlumniStore{deleteKeys: []string{"archive.pdf"}}
+	cleaner := &recordingFileCleaner{}
+	svc := NewAlumniService(store, cleaner)
 	if err := svc.Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != nil {
 		t.Fatalf("expected delete success, got %v", err)
+	}
+	if !slices.Equal(cleaner.keys, store.deleteKeys) {
+		t.Fatalf("removed objects = %v, want %v", cleaner.keys, store.deleteKeys)
 	}
 	if store.deleteID != 9 || store.deleteUserID != 7 {
 		t.Fatalf("unexpected delete target: alumni=%d user=%d", store.deleteID, store.deleteUserID)
 	}
 
-	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniNotFound}, nil).
+	if err := NewAlumniService(&fakeAlumniStore{deleteKeys: []string{"uncommitted.pdf"}, deleteErr: common.ErrAlumniNotFound}, cleaner).
 		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniNotFound {
 		t.Fatalf("expected alumni not found, got %v", err)
+	}
+	if !slices.Equal(cleaner.keys, store.deleteKeys) {
+		t.Fatalf("failed delete removed objects: %v", cleaner.keys)
 	}
 	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniMultiEnrollment}, nil).
 		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniMultiEnrollment {
 		t.Fatalf("expected multi-enrollment rejection, got %v", err)
+	}
+	if err := NewAlumniService(&fakeAlumniStore{deleteErr: common.ErrAlumniHiddenEnrollment}, nil).
+		Delete(context.Background(), common.AccessContext{UserID: 7, Role: common.RoleSuperAdmin}, 9); err != common.ErrAlumniHiddenEnrollment {
+		t.Fatalf("expected hidden enrollment rejection, got %v", err)
 	}
 }
 
