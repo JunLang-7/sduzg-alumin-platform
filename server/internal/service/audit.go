@@ -47,25 +47,28 @@ func (s *AuditService) List(ctx context.Context, access common.AccessContext, re
 
 	result := make([]dto.AuditOperation, 0, len(items))
 	for _, item := range items {
-		result = append(result, mapAuditOperation(item, false, false))
+		result = append(result, mapAuditOperation(item, query.TargetID, false, false))
 	}
 	return common.NewPager(result, query.Page, total), nil
 }
 
 // Detail 查询单条操作历史及字段差异。
-func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, id uint64) (*dto.AuditOperation, error) {
+func (s *AuditService) Detail(ctx context.Context, access common.AccessContext, id uint64, targetID *uint64) (*dto.AuditOperation, error) {
 	if s == nil || s.audits == nil {
 		return nil, common.ErrDatabaseUnavailable
 	}
 	if !access.IsAdministrator() {
 		return nil, common.ErrPermissionDenied
 	}
-	item, err := s.audits.GetByID(ctx, id, applyAuditAccess(do.AuditQuery{}, access))
+	item, err := s.audits.GetByID(ctx, id, applyAuditAccess(do.AuditQuery{TargetID: targetID}, access))
 	if err != nil {
 		return nil, err
 	}
 	sensitiveReadable := access.HasPermission(common.PermissionAlumniSensitiveRead)
-	result := mapAuditOperation(*item, true, sensitiveReadable)
+	result := mapAuditOperation(*item, targetID, true, sensitiveReadable)
+	if targetID != nil && item.TargetType == auditTargetBatch {
+		return &result, nil
+	}
 	if !access.HasPermission(common.PermissionAlumniFilesManage) {
 		for i := range result.Changes {
 			change := &result.Changes[i]
@@ -95,7 +98,7 @@ func applyAuditAccess(query do.AuditQuery, access common.AccessContext) do.Audit
 	return query
 }
 
-func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiveReadable bool) dto.AuditOperation {
+func mapAuditOperation(item repository.AuditEntry, profileID *uint64, includeChanges bool, sensitiveReadable bool) dto.AuditOperation {
 	detail := auditLogDetail{}
 	if item.Detail != nil && strings.TrimSpace(*item.Detail) != "" {
 		_ = json.Unmarshal([]byte(*item.Detail), &detail)
@@ -174,6 +177,28 @@ func mapAuditOperation(item repository.AuditEntry, includeChanges bool, sensitiv
 		Source:            source,
 		Reason:            detail.Reason,
 		Status:            status,
+	}
+	if profileID != nil && item.TargetType == auditTargetBatch {
+		// 所有权限等级的单人详情都只显示该档案的导入元数据和留存的公开字段。
+		result.TargetID = profileID
+		result.TargetName = "校友档案"
+		result.TargetMeta = ""
+		result.EnrollmentID = nil
+		result.EnrollmentLabel = ""
+		result.Reason = "由批量导入创建此档案"
+		if includeChanges {
+			for _, record := range detail.BatchCreatedAlumni {
+				if record.ID == *profileID {
+					result.TargetName = record.Name
+					result.TargetMeta = record.TargetMeta
+					result.BatchImportFields = mapBatchFields(false)
+					result.BatchCreatedAlumni = mapBatchRecords([]auditBatchRecord{record})
+					result.BatchCreatedAlumniTotal = 1
+					break
+				}
+			}
+		}
+		return result
 	}
 	if includeChanges {
 		result.Changes = make([]dto.AuditChange, 0, len(detail.Changes))

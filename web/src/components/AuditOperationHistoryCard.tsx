@@ -49,19 +49,22 @@ export function AuditOperationHistoryCard({ alumniId }: Props) {
     void loadHistory();
   }, [loadHistory]);
 
-  const openDetails = async (record: AuditOperation) => {
-    setSelectedRecord(record);
-    setDetailLoading(true);
-    try {
-      setSelectedRecord(await auditApi.detail(record.id));
-    } catch (error) {
-      const err = error as Error;
-      message.error(err.message || '操作详情加载失败');
-      setSelectedRecord(null);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+  const openDetails = useCallback(
+    async (record: AuditOperation) => {
+      setSelectedRecord(record);
+      setDetailLoading(true);
+      try {
+        setSelectedRecord(await auditApi.detail(record.id, alumniId));
+      } catch (error) {
+        const err = error as Error;
+        message.error(err.message || '操作详情加载失败');
+        setSelectedRecord(null);
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [alumniId],
+  );
 
   const columns = useMemo<ColumnsType<AuditOperation>>(
     () => [
@@ -110,7 +113,7 @@ export function AuditOperationHistoryCard({ alumniId }: Props) {
         ),
       },
     ],
-    [],
+    [openDetails],
   );
 
   return (

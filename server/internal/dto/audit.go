@@ -22,6 +22,11 @@ type AuditListRequest struct {
 	TargetID        uint64 `form:"target_id"`
 }
 
+// AuditDetailRequest 可将批次详情限定为一份校友档案。
+type AuditDetailRequest struct {
+	TargetID *uint64 `form:"target_id" binding:"omitempty,gt=0"`
+}
+
 // ToQuery 将日期边界转换为左闭右开时间范围。
 func (r AuditListRequest) ToQuery() (do.AuditQuery, error) {
 	query := do.AuditQuery{

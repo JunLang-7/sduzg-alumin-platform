@@ -64,6 +64,7 @@ type fakeAlumniStore struct {
 	batchOperatorID uint64
 	batchIDs        []uint64
 	batchErr        error
+	batchAudit      *model.OperationLog
 
 	existing map[string]bool
 
@@ -190,18 +191,25 @@ func (s *fakeAlumniStore) Create(_ context.Context, input do.AlumniCreateInput, 
 	return &do.AlumniRecord{Profile: profile, Enrollments: s.createEnrollments}, nil
 }
 
-func (s *fakeAlumniStore) BatchCreate(_ context.Context, inputs []do.AlumniCreateInput, operatorID uint64) ([]uint64, error) {
+func (s *fakeAlumniStore) BatchCreate(_ context.Context, inputs []do.AlumniCreateInput, operatorID uint64, buildAudit func([]uint64) (*model.OperationLog, error)) ([]uint64, error) {
 	s.batchInputs = append([]do.AlumniCreateInput(nil), inputs...)
 	s.batchOperatorID = operatorID
 	if s.batchErr != nil {
 		return nil, s.batchErr
 	}
-	if s.batchIDs != nil {
-		return s.batchIDs, nil
+	ids := s.batchIDs
+	if ids == nil {
+		ids = make([]uint64, len(inputs))
+		for i := range ids {
+			ids[i] = uint64(i + 1)
+		}
 	}
-	ids := make([]uint64, 0, len(inputs))
-	for i := range inputs {
-		ids = append(ids, uint64(i+1))
+	if buildAudit != nil {
+		audit, err := buildAudit(ids)
+		if err != nil {
+			return nil, err
+		}
+		s.batchAudit = audit
 	}
 	return ids, nil
 }

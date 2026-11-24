@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
@@ -192,6 +193,14 @@ func applyAuditSortIndex(db *gorm.DB) *gorm.DB {
 
 func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 	operationLogQuery := querypkg.Use(db).OperationLog.As("logs")
+	var authorizedDomains string
+	if auditQuery.RestrictToDataDomains {
+		if len(auditQuery.DataDomainIDs) == 0 {
+			return db.Where("1 = 0")
+		}
+		domainJSON, _ := json.Marshal(auditQuery.DataDomainIDs)
+		authorizedDomains = string(domainJSON)
+	}
 
 	db = db.Where(operationLogQuery.TargetType.In(auditTargetAlumni, auditTargetBatch))
 	if auditQuery.StartAt != nil {
@@ -204,10 +213,11 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 		db = db.Where(operationLogQuery.Action.Eq(auditQuery.Action))
 	}
 	if auditQuery.TargetID != nil {
-		db = db.Where(
-			operationLogQuery.TargetType.Eq(auditTargetAlumni),
-			operationLogQuery.TargetID.Eq(*auditQuery.TargetID),
-		)
+		db = db.Where(clause.Or(
+			clause.And(operationLogQuery.TargetType.Eq(auditTargetAlumni),
+				operationLogQuery.TargetID.Eq(*auditQuery.TargetID)),
+			auditBatchMemberFilter(*auditQuery.TargetID, authorizedDomains, auditQuery.DataDomainIDs),
+		))
 	}
 	if auditQuery.ManagementScope != "" {
 		db = db.Where(
@@ -219,10 +229,6 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 		)
 	}
 	if auditQuery.RestrictToDataDomains {
-		if len(auditQuery.DataDomainIDs) == 0 {
-			return db.Where("1 = 0")
-		}
-		domainJSON, _ := json.Marshal(auditQuery.DataDomainIDs)
 		// 新日志与迁移后的旧日志都在 detail.data_domain_ids 中声明归属数据域；
 		// 缺失该字段的少数历史事件（如校友本人早期自助修改）按该校友当前可访问学籍
 		// 保守兜底，仍要求至少一段在授权范围内。
@@ -230,7 +236,7 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 			gorm.Expr(
 				"JSON_OVERLAPS(JSON_EXTRACT(?, '$.data_domain_ids'), CAST(? AS JSON))",
 				operationLogQuery.Detail,
-				string(domainJSON),
+				authorizedDomains,
 			),
 			clause.And(
 				operationLogQuery.TargetType.Eq(auditTargetAlumni),
@@ -250,11 +256,37 @@ func applyAuditFilters(db *gorm.DB, auditQuery do.AuditQuery) *gorm.DB {
 		db = db.Where(gorm.Expr(
 			"(JSON_EXTRACT(?, '$.required_data_domain_ids') IS NULL OR JSON_CONTAINS(CAST(? AS JSON), JSON_EXTRACT(?, '$.required_data_domain_ids')))",
 			operationLogQuery.Detail,
-			string(domainJSON),
+			authorizedDomains,
 			operationLogQuery.Detail,
 		))
 	}
 	return db
+}
+
+func auditBatchMemberFilter(alumniID uint64, authorizedDomains string, domainIDs []uint64) clause.Expression {
+	memberPath := `$.batch_member_domains."` + strconv.FormatUint(alumniID, 10) + `"`
+	var member clause.Expression = gorm.Expr("JSON_EXTRACT(logs.detail, ?) IS NOT NULL", memberPath)
+	var legacyMember clause.Expression = gorm.Expr(`
+		JSON_EXTRACT(logs.detail, '$.batch_member_domains') IS NULL
+		AND JSON_CONTAINS(JSON_EXTRACT(logs.detail, '$.batch_created_alumni'),
+			JSON_OBJECT('id', CAST(? AS UNSIGNED)))`, alumniID)
+	isImport := gorm.Expr("logs.target_type = ? AND logs.action = 'import'", auditTargetBatch)
+	if authorizedDomains == "" {
+		return clause.And(isImport, clause.Or(member, legacyMember))
+	}
+
+	member = gorm.Expr("JSON_CONTAINS(CAST(? AS JSON), JSON_EXTRACT(logs.detail, ?))", authorizedDomains, memberPath)
+	// 旧批次未逐人记录导入时的数据域。仅在操作者拥有整批声明的域时显示历史。
+	legacyMember = clause.And(legacyMember, gorm.Expr(
+		"JSON_CONTAINS(CAST(? AS JSON), JSON_EXTRACT(logs.detail, '$.data_domain_ids'))", authorizedDomains))
+	activeProfileInScope := gorm.Expr(`EXISTS (
+		SELECT 1 FROM alumni_enrollments AS member_enrollment
+		JOIN alumni_profiles AS member_profile ON member_profile.id = member_enrollment.alumni_id
+		WHERE member_profile.id = ? AND member_profile.status = ? AND member_profile.deleted_at IS NULL
+		  AND member_enrollment.status = ? AND member_enrollment.deleted_at IS NULL
+		  AND member_enrollment.data_domain_id IN ?)`,
+		alumniID, common.AlumniStatusActive, common.AlumniStatusActive, domainIDs)
+	return clause.And(isImport, activeProfileInScope, clause.Or(member, legacyMember))
 }
 
 var _ AuditStore = (*AuditRepository)(nil)

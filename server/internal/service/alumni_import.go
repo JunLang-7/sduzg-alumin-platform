@@ -24,8 +24,7 @@ import (
 // maxImportDataRows 是单次导入允许的数据行上限，不含表头。
 const maxImportDataRows = 20000
 
-// maxAuditBatchRecords 限制单条导入审计保存的明细条数，给 detail 体积设上限；
-// 超出部分只保留真实总数，并在详情中标明已截断。
+// maxAuditBatchRecords 限制导入审计保存的档案快照数。档案关联与实际总数独立保存。
 const maxAuditBatchRecords = 200
 
 type importRowLayout int
@@ -282,18 +281,30 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	}
 
 	result := &dto.AlumniImportResult{Total: dataRowCount, Errors: rowErrors}
+	for _, input := range inputs {
+		result.Success += len(input.Enrollments)
+	}
+	auditMetadata := s.importAuditMetadata(ctx, inputs, result)
 	if len(inputs) == 0 {
-		s.writeImportAudit(ctx, operator, nil, nil, result)
+		// 所有行均被跳过时没有档案写入，审计失败只记录告警并返回逐行结果。
+		if s.opLogger != nil {
+			audit, err := buildImportAudit(operator, nil, nil, auditMetadata)
+			if err == nil {
+				err = s.opLogger.Write(ctx, audit)
+			}
+			if err != nil {
+				logger.Warn("failed to write import audit", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
+			}
+		}
 		return result, nil
 	}
 
-	createdIDs, err := s.alumni.BatchCreate(ctx, inputs, operator.UserID)
+	_, err = s.alumni.BatchCreate(ctx, inputs, operator.UserID, func(createdIDs []uint64) (*model.OperationLog, error) {
+		return buildImportAudit(operator, inputs, createdIDs, auditMetadata)
+	})
 	if err != nil {
 		logger.Error("failed to batch create alumni", zap.Uint64("operator_id", operator.UserID), zap.Error(err))
 		return nil, err
-	}
-	for _, input := range inputs {
-		result.Success += len(input.Enrollments)
 	}
 	if s.countCache != nil {
 		_ = s.countCache.IncrBy(ctx, int64(len(inputs)))
@@ -301,7 +312,6 @@ func (s *AlumniService) Import(ctx context.Context, operator common.AccessContex
 	if s.exportCache != nil {
 		_ = s.exportCache.Invalidate(ctx)
 	}
-	s.writeImportAudit(ctx, operator, inputs, createdIDs, result)
 	return result, nil
 }
 
@@ -559,17 +569,14 @@ type importAuditDetail struct {
 	Failed                      int                `json:"failed"`
 	SensitiveFieldsIncluded     bool               `json:"sensitive_fields_included"`
 	BatchImportFields           []auditBatchField  `json:"batch_import_fields,omitempty"`
+	BatchMemberDomains          map[uint64]uint64  `json:"batch_member_domains,omitempty"`
 	BatchCreatedAlumni          []auditBatchRecord `json:"batch_created_alumni,omitempty"`
 	BatchCreatedAlumniTotal     int                `json:"batch_created_alumni_total,omitempty"`
 	BatchCreatedAlumniTruncated bool               `json:"batch_created_alumni_truncated,omitempty"`
 	BatchHiddenSensitiveCount   int                `json:"batch_hidden_sensitive_count,omitempty"`
 }
 
-// writeImportAudit 记录导入结果和可跳转的公开字段，不写入任何校友敏感字段原值。
-func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.AccessContext, inputs []do.AlumniCreateInput, createdIDs []uint64, result *dto.AlumniImportResult) {
-	if s.opLogger == nil || result == nil {
-		return
-	}
+func (s *AlumniService) importAuditMetadata(ctx context.Context, inputs []do.AlumniCreateInput, result *dto.AlumniImportResult) importAuditDetail {
 	domainSet := make(map[uint64]struct{})
 	sensitiveFieldsIncluded := false
 	for _, input := range inputs {
@@ -586,31 +593,54 @@ func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.Ac
 	}
 	sort.Slice(domainIDs, func(i, j int) bool { return domainIDs[i] < domainIDs[j] })
 
-	batchRecords := make([]auditBatchRecord, 0, len(inputs))
-	for i, input := range inputs {
-		if i >= maxAuditBatchRecords {
-			break
-		}
-		var id uint64
-		if i < len(createdIDs) {
-			id = createdIDs[i]
-		}
+	return importAuditDetail{
+		SchemaVersion:             1,
+		DataDomainIDs:             domainIDs,
+		Total:                     result.Total,
+		Success:                   result.Success,
+		Failed:                    result.Total - result.Success,
+		SensitiveFieldsIncluded:   sensitiveFieldsIncluded,
+		TargetName:                "校友档案批量导入",
+		TargetMeta:                fmt.Sprintf("%d 条校友档案", result.Success),
+		ManagementScope:           s.importManagementScope(ctx, domainIDs),
+		Source:                    "admin_import",
+		Reason:                    "导入校友档案",
+		Status:                    "applied",
+		BatchImportFields:         auditBatchFields(),
+		BatchHiddenSensitiveCount: len(auditBatchSensitiveFields),
+	}
+}
+
+// buildImportAudit 保存完整的档案关联及限量的公开字段快照。
+func buildImportAudit(operator common.AccessContext, inputs []do.AlumniCreateInput, createdIDs []uint64, detail importAuditDetail) (*model.OperationLog, error) {
+	if len(createdIDs) != len(inputs) {
+		return nil, fmt.Errorf("import audit: got %d profile IDs for %d rows", len(createdIDs), len(inputs))
+	}
+	memberDomains := make(map[uint64]uint64, len(createdIDs))
+	batchRecords := make([]auditBatchRecord, 0, min(len(createdIDs), maxAuditBatchRecords))
+	for i, id := range createdIDs {
 		if id == 0 {
+			return nil, fmt.Errorf("import audit: missing profile ID for row %d", i+1)
+		}
+		input := inputs[i]
+		if len(input.Enrollments) != 1 {
+			return nil, fmt.Errorf("import audit: row %d has %d enrollments, want 1", i+1, len(input.Enrollments))
+		}
+		enrollment := input.Enrollments[0]
+		// 关联保存全部成功档案，独立于快照上限。
+		memberDomains[id] = enrollment.DataDomainID
+		if len(batchRecords) >= maxAuditBatchRecords {
 			continue
 		}
 		values := map[string]string{"name": input.Personal.Name}
-		meta := ""
-		if len(input.Enrollments) > 0 {
-			enrollment := input.Enrollments[0]
-			values["grade"] = enrollment.Grade
-			values["training_level"] = TrainingLevelLabel(enrollment.TrainingLevel)
-			values["class_name"] = stringOrEmpty(enrollment.ClassName)
-			values["major"] = stringOrEmpty(enrollment.Major)
-			values["training_mode"] = stringOrEmpty(enrollment.TrainingMode)
-			meta = enrollment.Grade
-			if name := stringOrEmpty(enrollment.Major); name != "" {
-				meta += " · " + name
-			}
+		values["grade"] = enrollment.Grade
+		values["training_level"] = TrainingLevelLabel(enrollment.TrainingLevel)
+		values["class_name"] = stringOrEmpty(enrollment.ClassName)
+		values["major"] = stringOrEmpty(enrollment.Major)
+		values["training_mode"] = stringOrEmpty(enrollment.TrainingMode)
+		meta := enrollment.Grade
+		if name := stringOrEmpty(enrollment.Major); name != "" {
+			meta += " · " + name
 		}
 		batchRecords = append(batchRecords, auditBatchRecord{
 			ID:          id,
@@ -620,36 +650,22 @@ func (s *AlumniService) writeImportAudit(ctx context.Context, operator common.Ac
 		})
 	}
 
-	detail, err := json.Marshal(importAuditDetail{
-		SchemaVersion:               1,
-		DataDomainIDs:               domainIDs,
-		Total:                       result.Total,
-		Success:                     result.Success,
-		Failed:                      result.Total - result.Success,
-		SensitiveFieldsIncluded:     sensitiveFieldsIncluded,
-		TargetName:                  "校友档案批量导入",
-		TargetMeta:                  fmt.Sprintf("%d 条校友档案", result.Success),
-		ManagementScope:             s.importManagementScope(ctx, domainIDs),
-		Source:                      "admin_import",
-		Reason:                      "导入校友档案",
-		Status:                      "applied",
-		BatchImportFields:           auditBatchFields(),
-		BatchCreatedAlumni:          batchRecords,
-		BatchCreatedAlumniTotal:     len(createdIDs),
-		BatchCreatedAlumniTruncated: len(createdIDs) > len(batchRecords),
-		BatchHiddenSensitiveCount:   len(auditBatchSensitiveFields),
-	})
+	detail.BatchMemberDomains = memberDomains
+	detail.BatchCreatedAlumni = batchRecords
+	detail.BatchCreatedAlumniTotal = len(createdIDs)
+	detail.BatchCreatedAlumniTruncated = len(createdIDs) > len(batchRecords)
+	encoded, err := json.Marshal(detail)
 	if err != nil {
-		return
+		return nil, fmt.Errorf("marshal import audit: %w", err)
 	}
-	detailText := string(detail)
-	_ = s.opLogger.Write(ctx, &model.OperationLog{
+	detailText := string(encoded)
+	return &model.OperationLog{
 		OperatorID:   operator.UserID,
 		OperatorRole: operator.Role,
 		Action:       AuditActionImport,
 		TargetType:   auditTargetBatch,
 		Detail:       &detailText,
-	})
+	}, nil
 }
 
 func (s *AlumniService) importManagementScope(ctx context.Context, domainIDs []uint64) string {

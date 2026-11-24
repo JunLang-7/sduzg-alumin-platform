@@ -219,7 +219,7 @@ func TestAuditServiceBatchDetailReportsTruncation(t *testing.T) {
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 24)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 24, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -237,12 +237,76 @@ func TestAuditServiceBatchDetailFallsBackForLegacyRecords(t *testing.T) {
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
 	if item.BatchCreatedAlumniTotal != 1 || item.BatchCreatedAlumniTruncated {
 		t.Fatalf("legacy record should not be marked truncated: %+v", item)
+	}
+}
+
+func TestAuditServiceBatchDetailProjectsSelectedProfile(t *testing.T) {
+	detail := `{
+		"target_name":"校友档案批量导入","target_meta":"3 条校友档案",
+		"batch_member_domains":{"701":2,"702":2,"703":2},
+		"batch_created_alumni":[
+			{"id":701,"name":"测试档案甲","target_meta":"2020级","field_values":{"grade":"2020级","email":"private@example.test"}},
+			{"id":702,"name":"测试档案乙","target_meta":"2021级","field_values":{"grade":"2021级"}}
+		],
+		"batch_created_alumni_total":3,
+		"batch_created_alumni_truncated":true,
+		"changes":[{"field_name":"grade","new_value":"批次级明细"}]
+	}`
+	for _, tc := range []struct {
+		name         string
+		profileID    uint64
+		wantSnapshot bool
+	}{
+		{name: "with snapshot", profileID: 701, wantSnapshot: true},
+		{name: "without snapshot", profileID: 703},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := &fakeAuditStore{detail: &repository.AuditEntry{
+				ID: 25, Action: AuditActionImport, TargetType: auditTargetBatch, Detail: &detail,
+			}}
+			alumni := &fakeAuditAlumniStore{err: errors.New("profile-scoped detail should use the saved snapshot")}
+			service := NewAuditService(store, alumni)
+			item, err := service.Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 25, &tc.profileID)
+			if err != nil {
+				t.Fatalf("Detail() error = %v", err)
+			}
+			if store.listQuery.TargetID == nil || *store.listQuery.TargetID != tc.profileID {
+				t.Fatalf("detail query must be scoped to the selected profile: %+v", store.listQuery)
+			}
+			if item.TargetID == nil || *item.TargetID != tc.profileID || item.Action != AuditActionImport ||
+				len(item.Changes) != 0 || item.BatchCreatedAlumniTruncated {
+				t.Fatalf("unexpected scoped batch detail: %+v", item)
+			}
+			if !tc.wantSnapshot {
+				if item.TargetName != "校友档案" || item.TargetMeta != "" ||
+					len(item.BatchCreatedAlumni) != 0 || item.BatchCreatedAlumniTotal != 0 || len(item.BatchImportFields) != 0 {
+					t.Fatalf("expected import summary without a snapshot: %+v", item)
+				}
+				return
+			}
+			if item.TargetName != "测试档案甲" || item.TargetMeta != "2020级" ||
+				len(item.BatchCreatedAlumni) != 1 || item.BatchCreatedAlumniTotal != 1 {
+				t.Fatalf("expected only the selected snapshot: %+v", item)
+			}
+			snapshot := item.BatchCreatedAlumni[0]
+			if snapshot.ID != tc.profileID || snapshot.FieldValues["grade"] != "2020级" {
+				t.Fatalf("unexpected snapshot: %+v", snapshot)
+			}
+			for _, field := range auditBatchSensitiveFields {
+				if _, ok := snapshot.FieldValues[field.FieldName]; ok {
+					t.Fatalf("scoped snapshot contains sensitive field %q", field.FieldName)
+				}
+			}
+			if len(item.BatchImportFields) != len(auditBatchPublicFields) {
+				t.Fatalf("expected only public fields: %+v", item.BatchImportFields)
+			}
+		})
 	}
 }
 
@@ -253,7 +317,7 @@ func TestAuditServiceDetailMapsAndMasksFieldDiff(t *testing.T) {
 		detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, OperatorRole: common.RoleAdmin, TargetType: "alumni_profile", TargetID: &targetID, Detail: &detail},
 	}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 19)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 19, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -280,7 +344,7 @@ func TestAuditServiceBatchDetailHidesSensitiveFieldsWithoutPermission(t *testing
 		Detail:     &detail,
 	}}
 
-	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}, 21)
+	item, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{2}}, 21, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -331,7 +395,7 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 		Permissions: map[string]bool{common.PermissionAlumniSensitiveRead: true},
 	}
 
-	item, err := NewAuditService(store, alumniStore).Detail(context.Background(), access, 22)
+	item, err := NewAuditService(store, alumniStore).Detail(context.Background(), access, 22, nil)
 	if err != nil {
 		t.Fatalf("Detail() error = %v", err)
 	}
@@ -357,7 +421,7 @@ func TestAuditServiceBatchDetailLoadsCompleteSensitiveFieldsWithPermission(t *te
 
 func TestAuditServiceDetailPropagatesNotFound(t *testing.T) {
 	store := &fakeAuditStore{detailErr: common.ErrAuditNotFound}
-	_, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 404)
+	_, err := NewAuditService(store).Detail(context.Background(), common.AccessContext{Role: common.RoleSuperAdmin}, 404, nil)
 	if !errors.Is(err, common.ErrAuditNotFound) {
 		t.Fatalf("Detail() error = %v, want ErrAuditNotFound", err)
 	}
@@ -395,7 +459,7 @@ func TestAuditServiceFileChangesRespectFilePermission(t *testing.T) {
 	for _, allowed := range []bool{false, true} {
 		store := &fakeAuditStore{detail: &repository.AuditEntry{ID: 19, Action: AuditActionUpdate, TargetType: auditTargetAlumni, TargetID: new(uint64(9)), Detail: new(`{"changes":[{"field_name":"degree_archive","old_value":"旧学位.pdf","new_value":"新学位.pdf"},{"field_name":"academic_record","new_value":"学籍.pdf"}]}`)}}
 		access := common.AccessContext{Role: common.RoleAdmin, DomainIDs: []uint64{3}, Permissions: map[string]bool{common.PermissionAlumniFilesManage: allowed}}
-		item, err := NewAuditService(store).Detail(context.Background(), access, 19)
+		item, err := NewAuditService(store).Detail(context.Background(), access, 19, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

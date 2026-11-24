@@ -11,10 +11,11 @@ export const auditApi = {
     });
   },
 
-  detail(id: number) {
+  detail(id: number, targetId?: number) {
     return request<AuditOperation>({
       method: 'GET',
       url: `/admin/audit/operations/${id}`,
+      params: targetId === undefined ? undefined : { target_id: targetId },
     });
   },
 };
