@@ -2,8 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DeleteOutlined,
   DownloadOutlined,
-  EditOutlined,
-  EyeOutlined,
   FileAddOutlined,
   FileTextOutlined,
   PlusOutlined,
@@ -644,17 +642,13 @@ export function AlumniManagementPage() {
         title: '操作',
         key: 'action',
         fixed: 'right',
-        width: 160,
+        width: 184,
         render: (_, record) => (
           <Space size={4}>
-            <Button
-              type="link"
-              icon={<EyeOutlined />}
-              onClick={() => navigate(`/alumni/${record.id}`)}
-            >
+            <Button type="link" size="small" onClick={() => navigate(`/alumni/${record.id}`)}>
               查看
             </Button>
-            <Button type="link" icon={<EditOutlined />} onClick={() => void openEditModal(record)}>
+            <Button type="link" size="small" onClick={() => void openEditModal(record)}>
               编辑
             </Button>
             <Popconfirm
@@ -669,8 +663,8 @@ export function AlumniManagementPage() {
             >
               <Button
                 type="link"
+                size="small"
                 danger
-                icon={<DeleteOutlined />}
                 disabled={(record.enrollments?.length || 0) > 1}
               >
                 删除
