@@ -194,6 +194,62 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     await expect(row).toBeVisible();
     await expect(row).toContainText('2026级');
 
+    const scrollArea = page.locator('.ant-table-content').filter({ has: row });
+    const actionHeader = page.getByRole('columnheader', { name: '操作', exact: true });
+    const actionCell = row.getByRole('cell').last();
+    const expectActionsWithinColumn = async () => {
+      const header = await actionHeader.boundingBox();
+      const cell = await actionCell.boundingBox();
+      const viewport = await scrollArea.boundingBox();
+      if (!header || !cell || !viewport) {
+        throw new Error('Expected the table and its action column to be visible');
+      }
+      expect(Math.abs(header.x - cell.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(header.width - cell.width)).toBeLessThanOrEqual(1);
+      expect(cell.x + cell.width).toBeLessThanOrEqual(viewport.x + viewport.width + 1);
+      for (const action of ['查看', '编辑', '删除']) {
+        const button = await actionCell.getByRole('button', { name: action }).boundingBox();
+        if (!button) {
+          throw new Error(`Expected the ${action} button to be visible`);
+        }
+        expect(button.x, `${action} starts within the action column`).toBeGreaterThanOrEqual(
+          cell.x - 1,
+        );
+        expect(
+          button.x + button.width,
+          `${action} ends within the action column`,
+        ).toBeLessThanOrEqual(cell.x + cell.width + 1);
+      }
+      expect(
+        await actionHeader.evaluate(
+          (header) =>
+            getComputedStyle(header).backgroundColor ===
+            getComputedStyle(header.previousElementSibling!).backgroundColor,
+        ),
+      ).toBe(true);
+      expect(
+        await actionCell.evaluate(
+          (cell) =>
+            getComputedStyle(cell).borderBottom ===
+            getComputedStyle(cell.previousElementSibling!).borderBottom,
+        ),
+      ).toBe(true);
+      return cell.x;
+    };
+
+    await expectActionsWithinColumn();
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await expect
+      .poll(() => scrollArea.evaluate((el) => el.scrollWidth - el.clientWidth))
+      .toBeGreaterThan(0);
+    expect(await scrollArea.evaluate((el) => el.scrollLeft)).toBe(0);
+    const initialColumnX = await expectActionsWithinColumn();
+    await scrollArea.evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+    });
+    await expect.poll(() => scrollArea.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+    expect(Math.abs((await expectActionsWithinColumn()) - initialColumnX)).toBeLessThanOrEqual(1);
+
     await row.getByRole('button', { name: '编辑' }).click();
     const editDialog = page.getByRole('dialog', { name: '编辑校友' });
     await editDialog.getByRole('tab', { name: '学籍与档案' }).click();
@@ -207,7 +263,21 @@ test('管理员可以创建、编辑并清理校友档案', async ({ page }) => 
     expect((await saved).ok()).toBe(true);
     await expect(editDialog).toBeHidden();
     await page.reload();
-    await expect(page.getByRole('row').filter({ hasText: alumniName })).toContainText('2027级');
+    await expect(row).toContainText('2027级');
+
+    await row.getByRole('button', { name: '删除', exact: true }).click();
+    await expect(page.getByText('确认删除该校友档案？', { exact: true })).toBeVisible();
+    const removed = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'DELETE' &&
+        /\/api\/v1\/admin\/alumni\/\d+$/.test(new URL(response.url()).pathname),
+    );
+    await page
+      .getByRole('button', { name: /确\s*定/ })
+      .last()
+      .click();
+    expect((await removed).ok()).toBe(true);
+    await expect(row).toHaveCount(0);
   } finally {
     await removeAlumni(page, alumniName).catch(() => undefined);
   }
@@ -389,6 +459,7 @@ test('管理员可独立删除、撤销并更正学籍培养类别', async ({ pa
     let row = await searchRow();
     await expect(row).toContainText('2015级');
     await expect(row).toContainText('2019级');
+    await expect(row.getByRole('button', { name: '删除', exact: true })).toBeDisabled();
 
     // 标记删除第二段后可撤销，撤销保存不会删除任何学籍。
     await row.getByRole('button', { name: '编辑' }).click();
