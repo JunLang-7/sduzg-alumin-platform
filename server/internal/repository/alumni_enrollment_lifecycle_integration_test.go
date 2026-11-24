@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/common"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -63,6 +65,111 @@ func seedLifecycleAlumni(tx *gorm.DB, name string, enrollments ...*model.AlumniE
 		}
 	}
 	return profile
+}
+
+func TestAlumniRepositorySaveRetriesOnlyMySQLDeadlock(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		mysqlCode    uint16
+		failures     int
+		wantAttempts int
+		wantCommit   bool
+	}{
+		{name: "one deadlock", mysqlCode: 1213, failures: 1, wantAttempts: 2, wantCommit: true},
+		{name: "repeated deadlock", mysqlCode: 1213, failures: 2, wantAttempts: 2},
+		{name: "lock wait timeout", mysqlCode: 1205, failures: 1, wantAttempts: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openLifecycleTestDB(t)
+			mpa, _ := lifecycleDomains(t, db)
+			operatorID := uint64(7)
+			kept := &model.AlumniEnrollment{DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: "2020级"}
+			removed := &model.AlumniEnrollment{DataDomainID: mpa.ID, TrainingLevel: common.TrainingLevelMaster, Grade: "2022级"}
+			profile := seedLifecycleAlumni(db, "学籍死锁回归测试", kept, removed)
+			t.Cleanup(func() {
+				for _, err := range []error{
+					db.Unscoped().Where("enrollment_id IN ?", []uint64{kept.ID, removed.ID}).Delete(&model.AlumniFile{}).Error,
+					db.Unscoped().Where("alumni_id = ?", profile.ID).Delete(&model.AlumniEnrollment{}).Error,
+					db.Unscoped().Delete(profile).Error,
+				} {
+					if err != nil {
+						t.Errorf("clean up deadlock fixture: %v", err)
+					}
+				}
+			})
+
+			files := []*model.AlumniFile{
+				{EnrollmentID: &kept.ID, FileType: common.FileTypeDegreeArchive, Status: common.FileStatusActive,
+					ObjectKey: fmt.Sprintf("save-deadlock/%d/formal.pdf", profile.ID), OriginalName: "formal.pdf", MimeType: "application/pdf"},
+				{EnrollmentID: &removed.ID, FileType: common.FileTypeAcademicRecord, Status: common.FileStatusDraft, UploadedBy: &operatorID,
+					ObjectKey: fmt.Sprintf("save-deadlock/%d/draft.pdf", profile.ID), OriginalName: "draft.pdf", MimeType: "application/pdf"},
+			}
+			if err := db.Create(&files).Error; err != nil {
+				t.Fatalf("seed files: %v", err)
+			}
+
+			attempts := 0
+			// 在前一段学籍的附件更新之后模拟草稿锁查询失败，以验证整笔事务的回滚与重放。
+			if err := db.Callback().Query().After("gorm:query").Register("test:save_draft_lock_error", func(tx *gorm.DB) {
+				if tx.Statement.Table != model.TableNameAlumniFile || !strings.Contains(tx.Statement.SQL.String(), "uploaded_by = ?") {
+					return
+				}
+				attempts++
+				if attempts <= tc.failures && tx.Error == nil {
+					_ = tx.AddError(&mysqldriver.MySQLError{Number: tc.mysqlCode, Message: "simulated draft lock error"})
+				}
+			}); err != nil {
+				t.Fatalf("register test query callback: %v", err)
+			}
+
+			result, err := NewAlumniRepository(db).Save(context.Background(), profile.ID, do.AlumniSaveInput{
+				Version: profile.Version, Personal: do.AlumniPersonalInput{Name: profile.Name},
+				Enrollments: []do.AlumniEnrollmentInput{
+					{ID: kept.ID, Version: kept.Version, TrainingLevel: kept.TrainingLevel, Grade: kept.Grade, RemoveFileIDs: []uint64{files[0].ID}},
+					{ID: removed.ID, Version: removed.Version, Deleted: true},
+				},
+			}, operatorID, nil)
+			if attempts != tc.wantAttempts {
+				t.Errorf("draft lock attempts = %d, want %d (save error: %v)", attempts, tc.wantAttempts, err)
+			}
+			wantVersion, wantStatus := profile.Version, common.AlumniStatusActive
+			if tc.wantCommit {
+				if err != nil {
+					t.Fatalf("save after deadlock: %v", err)
+				}
+				wantVersion++
+				wantStatus = common.AlumniStatusDeleted
+				if !slices.Equal(result.RemovedObjectKeys, []string{files[0].ObjectKey, files[1].ObjectKey}) ||
+					len(result.FileChanges) != 1 || result.FileChanges[0].FileID != files[0].ID || !result.FileChanges[0].Removed {
+					t.Fatalf("save returned file changes outside the committed attempt: %+v", result)
+				}
+			} else {
+				var mysqlErr *mysqldriver.MySQLError
+				if result != nil || !errors.As(err, &mysqlErr) || mysqlErr.Number != tc.mysqlCode {
+					t.Fatalf("save = (%+v, %v), want MySQL error %d", result, err, tc.mysqlCode)
+				}
+			}
+
+			var storedProfile model.AlumniProfile
+			if err := db.First(&storedProfile, profile.ID).Error; err != nil || storedProfile.Version != wantVersion {
+				t.Fatalf("profile version = %d, want %d (read error: %v)", storedProfile.Version, wantVersion, err)
+			}
+			var storedEnrollment model.AlumniEnrollment
+			if err := db.Unscoped().First(&storedEnrollment, removed.ID).Error; err != nil || storedEnrollment.Status != wantStatus {
+				t.Fatalf("enrollment state = %s, want %s (read error: %v)", storedEnrollment.Status, wantStatus, err)
+			}
+			for _, file := range files {
+				var stored model.AlumniFile
+				want := file.Status
+				if tc.wantCommit {
+					want = common.FileStatusDeleted
+				}
+				if err := db.Unscoped().First(&stored, file.ID).Error; err != nil || stored.Status != want {
+					t.Fatalf("file state = %s, want %s (read error: %v)", stored.Status, want, err)
+				}
+			}
+		})
+	}
 }
 
 func TestAlumniRepositorySoftDeletesSingleEnrollmentAndKeepsFiles(t *testing.T) {

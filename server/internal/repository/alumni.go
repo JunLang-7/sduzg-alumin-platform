@@ -11,9 +11,12 @@ import (
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/do"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/model"
 	"github.com/JunLang-7/sduzg-alumin-platform/server/internal/query"
+	"github.com/go-sql-driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+const mysqlDeadlockCode = 1213
 
 // AlumniStore 校友个人主档案与学籍段的持久化接口。
 // 个人档案保存稳定的身份与账号绑定；学籍段保存培养信息、管理数据域与内部备注。
@@ -590,7 +593,9 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 
 	var removedObjectKeys []string
 	var fileChanges []do.AlumniFileChange
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	save := func(tx *gorm.DB) error {
+		removedObjectKeys = nil
+		fileChanges = nil
 		var profile model.AlumniProfile
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ? AND status = ? AND deleted_at IS NULL", id, common.AlumniStatusActive).
@@ -688,9 +693,17 @@ func (r *AlumniRepository) Save(ctx context.Context, id uint64, input do.AlumniS
 			return common.ErrLastEnrollment
 		}
 		return nil
-	})
-	if err != nil {
-		return nil, err
+	}
+	db := r.db.WithContext(ctx)
+	if err := db.Transaction(save); err != nil {
+		// InnoDB 会回滚死锁中的整个事务。只有顶层事务可以从头重试。
+		_, inTransaction := db.Statement.ConnPool.(gorm.TxCommitter)
+		if inTransaction || ctx.Err() != nil || !errors.Is(err, &mysql.MySQLError{Number: mysqlDeadlockCode}) {
+			return nil, err
+		}
+		if err := db.Transaction(save); err != nil {
+			return nil, err
+		}
 	}
 
 	record, err := r.GetDetail(ctx, id, dataDomainIDs)
